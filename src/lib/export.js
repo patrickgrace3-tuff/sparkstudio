@@ -168,7 +168,78 @@ function patchSectionSlide(xml, sectionTitle) {
   return replaceMarkerText(xml, 'Section Title', sectionTitle)
 }
 
-function patchContentSlide(xml, title, bullets, accentColor = null, table = null) {
+// ── Image embedding ─────────────────────────────────────────────────────────────
+
+let _nextMediaId = 1
+
+function dataUrlToBytes(dataUrl) {
+  const match = /^data:([^;]+);base64,(.*)$/.exec(dataUrl)
+  if (!match) return null
+  const [, mimeType, base64] = match
+  const ext = mimeType === 'image/png' ? 'png'
+    : mimeType === 'image/gif' ? 'gif'
+    : 'jpg' // default — covers image/jpeg and anything else we can't identify
+  const binary = atob(base64)
+  const bytes  = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return { bytes, ext }
+}
+
+/**
+ * Registers an image (data URL) as media in the zip and adds a relationship
+ * to the given (already-cloned, slide-specific) rels XML.
+ * Returns { relsXml, rId } or null if the image couldn't be decoded.
+ */
+function embedImage(zip, relsXml, dataUrl) {
+  const decoded = dataUrlToBytes(dataUrl)
+  if (!decoded) return null
+  const { bytes, ext } = decoded
+  const mediaName = `image${_nextMediaId++}.${ext}`
+  zip.file(`ppt/media/${mediaName}`, bytes)
+
+  const rId = `rIdImg${_nextMediaId}`
+  const relationship = `<Relationship Id="${rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${mediaName}"/>`
+  const newRelsXml = relsXml.replace('</Relationships>', `${relationship}</Relationships>`)
+
+  return { relsXml: newRelsXml, rId }
+}
+
+/**
+ * Builds a <p:pic> shape XML covering the given EMU bounding box.
+ */
+function buildPictureXml(rId, x, y, cx, cy, name = 'SlideImage') {
+  return `<p:pic>
+        <p:nvPicPr>
+          <p:cNvPr id="${_nextShapeId++}" name="${name}"/>
+          <p:cNvPicPr><a:picLocks noGrp="1"/></p:cNvPicPr>
+          <p:nvPr/>
+        </p:nvPicPr>
+        <p:blipFill>
+          <a:blip r:embed="${rId}"/>
+          <a:stretch><a:fillRect/></a:stretch>
+        </p:blipFill>
+        <p:spPr>
+          <a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>
+          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+        </p:spPr>
+      </p:pic>`
+}
+
+const SLIDE_W = 12192000
+const SLIDE_H = 6858000
+
+/**
+ * Patches the content slide template with title/bullets/table, and — if the
+ * slide's style includes a background or content image — embeds it as media
+ * and injects a <p:pic> shape. Returns the patched { xml, relsXml } pair
+ * since image embedding needs to add a relationship.
+ */
+function patchContentSlide(zip, xml, relsXml, slide, table = null) {
+  const { title, bullets = [] } = slide
+  const style       = slide.style || {}
+  const accentColor = style.accent ?? null
+  const layout      = style.layout ?? 'title-top'
+
   // 1. Replace the slide title placeholder (red text at top)
   let out = replaceMarkerText(xml, 'Slide Title', title)
 
@@ -202,12 +273,36 @@ ${bulletXml}
 
   // 3. Inject table shape before </p:spTree> if table data provided
   if (table && table.headers?.length > 0 && table.rows?.length > 0) {
-    const accentHex = (accentColor ?? 'CD2F37').replace('#', '').toUpperCase()
-    const tableXml  = buildTableShapeXml(table, accentHex)
+    const tableXml = buildTableShapeXml(table, accentHex)
     out = out.replace('</p:spTree>', `${tableXml}\n</p:spTree>`)
   }
 
-  return out
+  let outRels = relsXml
+
+  // 4. Background image (any layout) — full-bleed picture placed first in
+  // z-order (right after <p:spTree>) so text/tables render on top of it.
+  if (style.bgImage) {
+    const embedded = embedImage(zip, outRels, style.bgImage)
+    if (embedded) {
+      outRels = embedded.relsXml
+      const picXml = buildPictureXml(embedded.rId, 0, 0, SLIDE_W, SLIDE_H, 'SlideBackgroundImage')
+      out = out.replace('<p:spTree>', `<p:spTree>${picXml}`)
+    }
+  }
+
+  // 5. Content image (image-right layout) — placed in the right-hand column.
+  if (layout === 'image-right' && style.contentImage) {
+    const embedded = embedImage(zip, outRels, style.contentImage)
+    if (embedded) {
+      outRels = embedded.relsXml
+      const colW   = Math.round(SLIDE_W * 0.38)
+      const colX   = SLIDE_W - colW
+      const picXml = buildPictureXml(embedded.rId, colX, 0, colW, SLIDE_H, 'SlideContentImage')
+      out = out.replace('</p:spTree>', `${picXml}\n</p:spTree>`)
+    }
+  }
+
+  return { xml: out, relsXml: outRels }
 }
 
 // ── ID management ─────────────────────────────────────────────────────────────
@@ -271,13 +366,12 @@ export async function exportToPptx(deck) {
 
     // All content slides for this dept
     for (const slide of group.slides) {
-      // Apply custom accent color from slide style if set
-      const accent = slide.style?.accent ?? null
+      const { xml: patchedXml, relsXml: patchedRels } = patchContentSlide(zip, slide3Xml, slide3Rels, slide, slide.table ?? null)
       newSlides.push({
         filename: `ppt/slides/slide${idx}.xml`,
         relsFilename: `ppt/slides/_rels/slide${idx}.xml.rels`,
-        xml: rewriteShapeIds(patchContentSlide(slide3Xml, slide.title, slide.bullets || [], accent, slide.table ?? null)),
-        relsXml: slide3Rels,
+        xml: rewriteShapeIds(patchedXml),
+        relsXml: patchedRels,
       })
       idx++
     }
