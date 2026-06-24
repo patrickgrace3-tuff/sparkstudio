@@ -302,6 +302,24 @@ ${bulletXml}
     }
   }
 
+  // 6. Freely positioned/resized images (PowerPoint-style overlay) — placed
+  // last so they sit on top of background/content images and text.
+  if (Array.isArray(style.images)) {
+    for (const img of style.images) {
+      if (!img?.src) continue
+      const embedded = embedImage(zip, outRels, img.src)
+      if (embedded) {
+        outRels = embedded.relsXml
+        const x  = Math.round((img.x ?? 0.3) * SLIDE_W)
+        const y  = Math.round((img.y ?? 0.3) * SLIDE_H)
+        const cx = Math.round((img.w ?? 0.3) * SLIDE_W)
+        const cy = Math.round((img.h ?? 0.3) * SLIDE_H)
+        const picXml = buildPictureXml(embedded.rId, x, y, cx, cy, 'SlideFreeImage')
+        out = out.replace('</p:spTree>', `${picXml}\n</p:spTree>`)
+      }
+    }
+  }
+
   return { xml: out, relsXml: outRels }
 }
 
