@@ -55,7 +55,7 @@ export async function generateDeck(deptContributions, clientName = "") {
 
   const slideData = deptContributions
     .map(({ dept, slides, fileSummary }) => {
-      const slideText = slides.map(s => `  Title: ${s.title}\n  Content: ${s.body}`).join('\n')
+      const slideText = slides.map(s => `  Id: ${s._id}\n  Title: ${s.title}\n  Content: ${s.body}`).join('\n')
       const fileText  = fileSummary ? `\nSupporting files:\n${fileSummary}` : ''
       return `Department: ${dept}\nSlides:\n${slideText}${fileText}`
     })
@@ -73,12 +73,13 @@ RULES — follow exactly:
 - Do NOT create any slide with dept "All", "Overview", "Introduction", "Closing", "Conclusion", or "Summary"
 - Do NOT create intro slides or closing slides — those are added automatically
 - Only output content slides for the listed departments
+- Each input slide has an "Id" — every output slide must include a "sourceId" field that exactly copies the Id of the input slide it was generated from (verbatim, unchanged). If you split or merge slides, pick the most relevant input Id.
 
 Return ONLY valid JSON, no markdown:
 {
   "title": "Presentation title including client name",
   "slides": [
-    { "num": 1, "title": "Slide title", "dept": "Exact department name", "bullets": ["bullet 1", "bullet 2"] }
+    { "num": 1, "title": "Slide title", "dept": "Exact department name", "bullets": ["bullet 1", "bullet 2"], "sourceId": "the input slide's exact Id" }
   ]
 }
 
