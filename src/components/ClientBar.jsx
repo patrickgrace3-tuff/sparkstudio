@@ -89,6 +89,7 @@ const styles = {
   label: {
     fontSize: 11,
     fontWeight: 600,
+    fontFamily: 'var(--font-display)',
     color: 'var(--color-text-muted)',
     textTransform: 'uppercase',
     letterSpacing: '0.07em',
@@ -97,7 +98,7 @@ const styles = {
   select: {
     background: 'var(--color-bg-secondary)',
     border: '0.5px solid var(--color-border)',
-    borderRadius: 7,
+    borderRadius: 'var(--radius-sm)',
     padding: '6px 32px 6px 12px',
     fontSize: 14,
     fontWeight: 500,
@@ -115,7 +116,7 @@ const styles = {
   addInput: {
     background: 'var(--color-bg-secondary)',
     border: '0.5px solid var(--color-border)',
-    borderRadius: 6,
+    borderRadius: 'var(--radius-sm)',
     padding: '5px 10px',
     fontSize: 13,
     color: 'var(--color-text-primary)',
@@ -123,10 +124,10 @@ const styles = {
     width: 180,
   },
   btnPrimary: {
-    background: 'var(--color-text-primary)',
-    color: 'var(--color-bg)',
+    background: 'var(--color-accent)',
+    color: '#FFFFFF',
     border: 'none',
-    borderRadius: 6,
+    borderRadius: 'var(--radius-pill)',
     padding: '5px 14px',
     fontSize: 12,
     fontWeight: 500,
@@ -135,7 +136,7 @@ const styles = {
   btnGhost: {
     background: 'none',
     border: '0.5px solid var(--color-border)',
-    borderRadius: 6,
+    borderRadius: 'var(--radius-pill)',
     padding: '5px 12px',
     fontSize: 12,
     color: 'var(--color-text-secondary)',
@@ -143,11 +144,11 @@ const styles = {
   },
   btnDanger: {
     background: 'none',
-    border: '0.5px solid #ef444466',
-    borderRadius: 6,
+    border: '0.5px solid var(--color-error)',
+    borderRadius: 'var(--radius-pill)',
     padding: '5px 12px',
     fontSize: 12,
-    color: '#ef4444',
+    color: 'var(--color-error)',
     cursor: 'pointer',
   },
   confirmText: {

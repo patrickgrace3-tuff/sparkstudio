@@ -51,8 +51,8 @@ export default function SlideCard({ slide, index, deptColor, onDelete, onEdit })
 }
 
 const styles = {
-  card:       { display: 'flex', gap: 10, alignItems: 'flex-start', background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 8, padding: '12px 14px', position: 'relative', overflow: 'hidden' },
-  accent:     { position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, borderRadius: '8px 0 0 8px' },
+  card:       { display: 'flex', gap: 10, alignItems: 'flex-start', background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '12px 14px', position: 'relative', overflow: 'hidden' },
+  accent:     { position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, borderRadius: 'var(--radius-md) 0 0 var(--radius-md)' },
   num:        { fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', paddingTop: 2, minWidth: 20, fontVariantNumeric: 'tabular-nums' },
   content:    { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 5 },
   title:      { fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 },
@@ -60,8 +60,8 @@ const styles = {
   bullet:     { fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.4, paddingLeft: 12, position: 'relative' },
   body:       { fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.5, margin: 0 },
   stylePills: { display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 2 },
-  pill:       { fontSize: 10, color: 'var(--color-text-muted)', background: 'var(--color-bg-tertiary)', border: '0.5px solid var(--color-border)', borderRadius: 99, padding: '1px 7px' },
+  pill:       { fontSize: 10, color: 'var(--color-text-muted)', background: 'var(--color-bg-tertiary)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '1px 7px' },
   actions:    { display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 },
-  editBtn:    { background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 5, padding: '4px 10px', fontSize: 11, fontWeight: 500, color: 'var(--color-text-primary)', cursor: 'pointer' },
-  deleteBtn:  { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 5, padding: '4px 8px', fontSize: 10, color: 'var(--color-text-muted)', cursor: 'pointer' },
+  editBtn:    { background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '4px 10px', fontSize: 11, fontWeight: 500, color: 'var(--color-text-primary)', cursor: 'pointer' },
+  deleteBtn:  { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '4px 8px', fontSize: 10, color: 'var(--color-text-muted)', cursor: 'pointer' },
 }
