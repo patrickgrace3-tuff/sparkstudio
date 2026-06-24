@@ -109,14 +109,20 @@ export default function App() {
       })
       const result = await generateDeck(withData, activeClient.name)
 
-      // Re-attach table data to generated slides by matching on title
-      // (the AI re-generates slide text but doesn't know about tables)
+      // Re-attach table and style data (images, colors, layout, fonts) to generated
+      // slides by matching on title — the AI only returns title/bullets/dept,
+      // it doesn't know about tables or visual styling set in the slide editor.
       const allSlidesFlat = Object.values(allSlides).flat()
       result.slides = result.slides.map(genSlide => {
         const original = allSlidesFlat.find(
-          s => s.title?.toLowerCase().trim() === genSlide.title?.toLowerCase().trim() && s.table
+          s => s.title?.toLowerCase().trim() === genSlide.title?.toLowerCase().trim()
         )
-        return original?.table ? { ...genSlide, table: original.table } : genSlide
+        if (!original) return genSlide
+        return {
+          ...genSlide,
+          ...(original.table ? { table: original.table } : {}),
+          ...(original.style ? { style: original.style } : {}),
+        }
       })
 
       setDeckMap(prev => ({ ...prev, [activeClientId]: result }))
