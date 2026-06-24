@@ -7,72 +7,54 @@ function deptColor(deptName) {
 }
 
 function CoverSlidePreview({ scale = 1 }) {
-  return (
-    <div style={{ ...S.slide, background: 'linear-gradient(135deg, #8B0000 0%, #1a0000 60%, #111 100%)', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: 20 * scale }}>
-      <div style={{ textAlign: 'right' }}>
-        <div style={{ fontSize: 11 * scale, fontWeight: 800, color: '#fff', letterSpacing: 2, textTransform: 'uppercase' }}>SPARK STUDIO</div>
-        <div style={{ fontSize: 13 * scale, color: '#CD2F37', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 * scale }}>PRESENTATION</div>
-        <div style={{ fontSize: 10 * scale, color: 'rgba(255,255,255,0.6)', fontStyle: 'italic' }}>The Center for Conversion's Factory of Ideas</div>
-      </div>
-    </div>
-  )
+  return <div style={{ ...S.slide, background: `url(/branding/cover-bg.jpg) center/cover no-repeat` }} />
 }
 
 function ClosingSlidePreview({ scale = 1 }) {
   return (
-    <div style={{ ...S.slide, background: 'linear-gradient(135deg, #1a0000 0%, #111 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 * scale }}>
-      <span style={{ fontSize: 16 * scale, fontWeight: 800, color: '#fff', letterSpacing: 0.5 }}>Thank You for Joining Us</span>
-      <div style={{ width: 40 * scale, height: 2, background: '#CD2F37', borderRadius: 1 }} />
-      <span style={{ fontSize: 9 * scale, color: 'rgba(255,255,255,0.5)', letterSpacing: 1, textTransform: 'uppercase' }}>Spark Studio</span>
+    <div style={{ ...S.slide, background: `url(/branding/section-bg.jpg) center/cover no-repeat`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <span style={{ fontSize: 16 * scale, fontWeight: 800, color: '#fff', letterSpacing: 0.5, textAlign: 'center', width: '91%' }}>Thank You for Joining Us</span>
     </div>
   )
 }
 
 function SectionSlidePreview({ dept, scale = 1 }) {
   return (
-    <div style={{ ...S.slide, background: 'linear-gradient(135deg, #1a0000 0%, #111 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <span style={{ fontSize: 18 * scale, fontWeight: 800, color: '#fff', letterSpacing: 0.5 }}>{dept}</span>
+    <div style={{ ...S.slide, background: `url(/branding/section-bg.jpg) center/cover no-repeat`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <span style={{ fontSize: 18 * scale, fontWeight: 800, color: '#fff', letterSpacing: 0.5, textAlign: 'center', width: '91%' }}>{dept}</span>
     </div>
   )
 }
 
+// Positions below are lifted directly from the real template's slide3.xml
+// placeholder coordinates (converted from EMU to % of slide), so this preview
+// renders the same layout the pptx export actually produces — the exporter
+// uses a single fixed content-slide template for every slide regardless of
+// the "layout" style choice (only bgImage/contentImage are composited on top).
 function ContentSlidePreview({ slide, scale = 1 }) {
   const { title, bullets = [], style = {}, table } = slide
-  const bg     = style.bg      || '#FFFFFF'
   const tc     = style.textCol || '#1A1A1A'
   const accent = style.accent  || deptColor(slide.dept) || '#CD2F37'
   const font   = style.font    || 'Arial, sans-serif'
   const bgImg  = style.bgImage || null
-  const layout = style.layout  || 'title-top'
+  const showContentImage = style.layout === 'image-right' && style.contentImage
 
   const wrap = {
     ...S.slide,
-    background: bgImg ? `url(${bgImg}) center/cover no-repeat` : bg,
+    background: bgImg ? `url(${bgImg}) center/cover no-repeat` : `url(/branding/content-bg.jpg) center/cover no-repeat`,
     fontFamily: font,
-    padding: `${12 * scale}px ${14 * scale}px`,
-    display: 'flex',
-    flexDirection: layout === 'title-left' ? 'row' : 'column',
     position: 'relative',
     overflow: 'hidden',
   }
 
-  const logoEl = (
-    <div style={{ position: 'absolute', top: 6 * scale, left: 10 * scale, zIndex: 2, fontSize: 8 * scale, fontWeight: 800, letterSpacing: 0.5, color: bgImg ? '#fff' : '#111' }}>
-      SPARK<span style={{ color: accent }}>K</span>
-      <div style={{ fontSize: 5 * scale, fontWeight: 500, letterSpacing: 0.5, color: bgImg ? 'rgba(255,255,255,0.7)' : '#888' }}>STUDIO</div>
-    </div>
+  const titleEl = (
+    <p style={{ position: 'absolute', left: '15.25%', top: '5.1%', width: '77.9%', fontSize: 11 * scale, fontWeight: 400, color: accent, margin: 0, lineHeight: 1.3 }}>{title}</p>
   )
 
-  const footerEl = (
-    <div style={{ position: 'absolute', bottom: 4 * scale, left: 10 * scale, zIndex: 2, fontSize: 5.5 * scale, fontStyle: 'italic', color: bgImg ? 'rgba(255,255,255,0.6)' : '#999' }}>Source:</div>
-  )
-
-  const titleEl = <p style={{ fontSize: 12 * scale, fontWeight: 700, color: bgImg ? '#fff' : accent, margin: `${10 * scale}px 0 ${6 * scale}px`, lineHeight: 1.3 }}>{title}</p>
-  const bar     = <div style={{ height: 2, background: `linear-gradient(90deg, #111 0%, ${accent} 100%)`, borderRadius: 1, marginBottom: 7 * scale, width: layout === 'centered' ? '30%' : '100%', alignSelf: layout === 'centered' ? 'center' : 'auto' }} />
   const bulletEls = (
     <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-      {bullets.slice(0, 5).map((b, i) => (
-        <li key={i} style={{ fontSize: 10 * scale, color: tc, padding: `${1 * scale}px 0 ${1 * scale}px ${10 * scale}px`, position: 'relative', lineHeight: 1.4 }}>
+      {bullets.slice(0, 6).map((b, i) => (
+        <li key={i} style={{ fontSize: 8.5 * scale, color: tc, padding: `${1 * scale}px 0 ${1 * scale}px ${9 * scale}px`, position: 'relative', lineHeight: 1.4 }}>
           <span style={{ position: 'absolute', left: 0, color: accent }}>•</span>
           {b.replace(/^[-–•]\s*/, '')}
         </li>
@@ -82,13 +64,13 @@ function ContentSlidePreview({ slide, scale = 1 }) {
 
   const tableEl = table?.headers?.length > 0 ? (
     <div style={{ overflowX: 'auto', marginTop: 4 * scale }}>
-      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 8 * scale }}>
+      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 7.5 * scale }}>
         <thead>
           <tr>{table.headers.map((h, i) => <th key={i} style={{ background: accent, color: '#fff', padding: `${2 * scale}px ${5 * scale}px`, border: '0.5px solid rgba(255,255,255,0.2)', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>)}</tr>
         </thead>
         <tbody>
           {table.rows.slice(0, 5).map((row, ri) => (
-            <tr key={ri} style={{ background: ri % 2 === 0 ? 'rgba(255,255,255,0.05)' : 'transparent' }}>
+            <tr key={ri} style={{ background: ri % 2 === 0 ? 'rgba(0,0,0,0.04)' : 'transparent' }}>
               {table.headers.map((_, ci) => <td key={ci} style={{ color: tc, padding: `${2 * scale}px ${5 * scale}px`, border: '0.5px solid rgba(128,128,128,0.2)', whiteSpace: 'nowrap' }}>{row[ci] ?? ''}</td>)}
             </tr>
           ))}
@@ -97,71 +79,21 @@ function ContentSlidePreview({ slide, scale = 1 }) {
     </div>
   ) : null
 
-  if (layout === 'title-left') {
-    return (
-      <div style={wrap}>
-        {logoEl}{footerEl}
-        {bgImg && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)' }} />}
-        <div style={{ width: '35%', background: accent, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 8 * scale, zIndex: 1 }}>
-          <p style={{ fontSize: 11 * scale, fontWeight: 700, color: '#fff', textAlign: 'center', margin: 0 }}>{title}</p>
-        </div>
-        <div style={{ flex: 1, padding: `${8 * scale}px ${10 * scale}px`, zIndex: 1, overflow: 'hidden' }}>{bulletEls}</div>
-      </div>
-    )
-  }
+  const sourceEl = (
+    <div style={{ position: 'absolute', left: '1.8%', top: '90.4%', width: '48.4%', fontSize: 6.5 * scale, fontStyle: 'italic', color: '#7F7F7F' }}>Source:</div>
+  )
 
-  if (layout === 'centered') {
-    return (
-      <div style={{ ...wrap, alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
-        {logoEl}{footerEl}
-        {bgImg && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }} />}
-        <div style={{ position: 'relative', zIndex: 1, width: '100%' }}>
-          {titleEl}{bar}{bulletEls}
-        </div>
-      </div>
-    )
-  }
-
-  if (layout === 'split') {
-    const half = Math.ceil(bullets.length / 2)
-    return (
-      <div style={wrap}>
-        {logoEl}{footerEl}
-        {bgImg && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)' }} />}
-        <div style={{ position: 'relative', zIndex: 1, width: '100%' }}>
-          {titleEl}{bar}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: `0 ${10 * scale}px` }}>
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-              {bullets.slice(0, half).map((b, i) => <li key={i} style={{ fontSize: 10 * scale, color: tc, padding: `${1 * scale}px 0 ${1 * scale}px ${10 * scale}px`, position: 'relative', lineHeight: 1.4 }}><span style={{ position: 'absolute', left: 0, color: accent }}>•</span>{b.replace(/^[-–•]\s*/, '')}</li>)}
-            </ul>
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-              {bullets.slice(half).map((b, i) => <li key={i} style={{ fontSize: 10 * scale, color: tc, padding: `${1 * scale}px 0 ${1 * scale}px ${10 * scale}px`, position: 'relative', lineHeight: 1.4 }}><span style={{ position: 'absolute', left: 0, color: accent }}>•</span>{b.replace(/^[-–•]\s*/, '')}</li>)}
-            </ul>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (layout === 'image-right') {
-    return (
-      <div style={{ ...wrap, flexDirection: 'row' }}>
-        {logoEl}{footerEl}
-        {bgImg && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)' }} />}
-        <div style={{ flex: 1, zIndex: 1, overflow: 'hidden' }}>{titleEl}{bar}{bulletEls}</div>
-        <div style={{ width: '38%', background: style.contentImage ? `url(${style.contentImage}) center/cover` : '#333', marginLeft: 8 * scale, borderRadius: 4, zIndex: 1 }} />
-      </div>
-    )
-  }
-
-  // full-image + default title-top
   return (
     <div style={wrap}>
-      {logoEl}{footerEl}
       {bgImg && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }} />}
-      <div style={{ position: 'relative', zIndex: 1, width: '100%', overflow: 'hidden' }}>
-        {titleEl}{bar}{bulletEls}{tableEl}
+      {titleEl}
+      <div style={{ position: 'absolute', left: '4.5%', top: '19%', width: showContentImage ? '52%' : '82.9%', height: '63%', overflow: 'hidden' }}>
+        {bulletEls}{tableEl}
       </div>
+      {showContentImage && (
+        <div style={{ position: 'absolute', right: '3%', top: '19%', width: '38%', height: '63%', background: `url(${style.contentImage}) center/cover`, borderRadius: 4 }} />
+      )}
+      {sourceEl}
     </div>
   )
 }
