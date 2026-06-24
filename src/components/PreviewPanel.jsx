@@ -38,9 +38,9 @@ function SectionSlidePreview({ dept, scale = 1 }) {
 
 function ContentSlidePreview({ slide, scale = 1 }) {
   const { title, bullets = [], style = {}, table } = slide
-  const bg     = style.bg      || '#1a1a1a'
-  const tc     = style.textCol || 'rgba(255,255,255,0.88)'
-  const accent = style.accent  || deptColor(slide.dept)
+  const bg     = style.bg      || '#FFFFFF'
+  const tc     = style.textCol || '#1A1A1A'
+  const accent = style.accent  || deptColor(slide.dept) || '#CD2F37'
   const font   = style.font    || 'Arial, sans-serif'
   const bgImg  = style.bgImage || null
   const layout = style.layout  || 'title-top'
@@ -56,8 +56,19 @@ function ContentSlidePreview({ slide, scale = 1 }) {
     overflow: 'hidden',
   }
 
-  const titleEl = <p style={{ fontSize: 12 * scale, fontWeight: 700, color: accent, margin: `0 0 ${6 * scale}px`, lineHeight: 1.3 }}>{title}</p>
-  const bar     = <div style={{ height: 2, background: accent, borderRadius: 1, marginBottom: 7 * scale, width: layout === 'centered' ? '30%' : '100%', alignSelf: layout === 'centered' ? 'center' : 'auto' }} />
+  const logoEl = (
+    <div style={{ position: 'absolute', top: 6 * scale, left: 10 * scale, zIndex: 2, fontSize: 8 * scale, fontWeight: 800, letterSpacing: 0.5, color: bgImg ? '#fff' : '#111' }}>
+      SPARK<span style={{ color: accent }}>K</span>
+      <div style={{ fontSize: 5 * scale, fontWeight: 500, letterSpacing: 0.5, color: bgImg ? 'rgba(255,255,255,0.7)' : '#888' }}>STUDIO</div>
+    </div>
+  )
+
+  const footerEl = (
+    <div style={{ position: 'absolute', bottom: 4 * scale, left: 10 * scale, zIndex: 2, fontSize: 5.5 * scale, fontStyle: 'italic', color: bgImg ? 'rgba(255,255,255,0.6)' : '#999' }}>Source:</div>
+  )
+
+  const titleEl = <p style={{ fontSize: 12 * scale, fontWeight: 700, color: bgImg ? '#fff' : accent, margin: `${10 * scale}px 0 ${6 * scale}px`, lineHeight: 1.3 }}>{title}</p>
+  const bar     = <div style={{ height: 2, background: `linear-gradient(90deg, #111 0%, ${accent} 100%)`, borderRadius: 1, marginBottom: 7 * scale, width: layout === 'centered' ? '30%' : '100%', alignSelf: layout === 'centered' ? 'center' : 'auto' }} />
   const bulletEls = (
     <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
       {bullets.slice(0, 5).map((b, i) => (
@@ -89,6 +100,7 @@ function ContentSlidePreview({ slide, scale = 1 }) {
   if (layout === 'title-left') {
     return (
       <div style={wrap}>
+        {logoEl}{footerEl}
         {bgImg && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)' }} />}
         <div style={{ width: '35%', background: accent, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 8 * scale, zIndex: 1 }}>
           <p style={{ fontSize: 11 * scale, fontWeight: 700, color: '#fff', textAlign: 'center', margin: 0 }}>{title}</p>
@@ -101,6 +113,7 @@ function ContentSlidePreview({ slide, scale = 1 }) {
   if (layout === 'centered') {
     return (
       <div style={{ ...wrap, alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+        {logoEl}{footerEl}
         {bgImg && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }} />}
         <div style={{ position: 'relative', zIndex: 1, width: '100%' }}>
           {titleEl}{bar}{bulletEls}
@@ -113,6 +126,7 @@ function ContentSlidePreview({ slide, scale = 1 }) {
     const half = Math.ceil(bullets.length / 2)
     return (
       <div style={wrap}>
+        {logoEl}{footerEl}
         {bgImg && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)' }} />}
         <div style={{ position: 'relative', zIndex: 1, width: '100%' }}>
           {titleEl}{bar}
@@ -132,6 +146,7 @@ function ContentSlidePreview({ slide, scale = 1 }) {
   if (layout === 'image-right') {
     return (
       <div style={{ ...wrap, flexDirection: 'row' }}>
+        {logoEl}{footerEl}
         {bgImg && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)' }} />}
         <div style={{ flex: 1, zIndex: 1, overflow: 'hidden' }}>{titleEl}{bar}{bulletEls}</div>
         <div style={{ width: '38%', background: style.contentImage ? `url(${style.contentImage}) center/cover` : '#333', marginLeft: 8 * scale, borderRadius: 4, zIndex: 1 }} />
@@ -142,6 +157,7 @@ function ContentSlidePreview({ slide, scale = 1 }) {
   // full-image + default title-top
   return (
     <div style={wrap}>
+      {logoEl}{footerEl}
       {bgImg && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }} />}
       <div style={{ position: 'relative', zIndex: 1, width: '100%', overflow: 'hidden' }}>
         {titleEl}{bar}{bulletEls}{tableEl}
