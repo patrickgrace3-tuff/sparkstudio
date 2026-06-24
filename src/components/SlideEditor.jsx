@@ -29,8 +29,102 @@ const BG_PRESETS = [
   { label: 'Custom',      bg: null,      text: null,      accent: null },
 ]
 
+function clamp(v, min, max) {
+  return Math.min(Math.max(v, min), max)
+}
+
+// ── Freely positioned/resized images overlaid on the slide, PowerPoint-style ──
+function FreeImageLayer({ images, onChange }) {
+  const containerRef = useRef(null)
+  const dragRef = useRef(null)
+
+  function onPointerMove(e) {
+    const d = dragRef.current
+    if (!d) return
+    const rect = containerRef.current.getBoundingClientRect()
+    const dx = (e.clientX - d.startX) / rect.width
+    const dy = (e.clientY - d.startY) / rect.height
+    const next = [...images]
+    if (d.mode === 'move') {
+      next[d.idx] = {
+        ...next[d.idx],
+        x: clamp(d.orig.x + dx, 0, 1 - d.orig.w),
+        y: clamp(d.orig.y + dy, 0, 1 - d.orig.h),
+      }
+    } else {
+      next[d.idx] = {
+        ...next[d.idx],
+        w: clamp(d.orig.w + dx, 0.05, 1 - d.orig.x),
+        h: clamp(d.orig.h + dy, 0.05, 1 - d.orig.y),
+      }
+    }
+    onChange(next)
+  }
+
+  function onPointerUp() {
+    dragRef.current = null
+    window.removeEventListener('pointermove', onPointerMove)
+    window.removeEventListener('pointerup', onPointerUp)
+  }
+
+  function startDrag(e, idx, mode) {
+    e.stopPropagation()
+    e.preventDefault()
+    dragRef.current = { idx, mode, startX: e.clientX, startY: e.clientY, orig: { ...images[idx] } }
+    window.addEventListener('pointermove', onPointerMove)
+    window.addEventListener('pointerup', onPointerUp)
+  }
+
+  function removeImage(idx) {
+    onChange(images.filter((_, i) => i !== idx))
+  }
+
+  return (
+    <div ref={containerRef} style={{ position: 'absolute', inset: 0 }}>
+      {images.map((img, i) => (
+        <div
+          key={i}
+          onPointerDown={e => startDrag(e, i, 'move')}
+          style={{
+            position: 'absolute',
+            left: `${img.x * 100}%`,
+            top: `${img.y * 100}%`,
+            width: `${img.w * 100}%`,
+            height: `${img.h * 100}%`,
+            backgroundImage: `url(${img.src})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            border: '1px dashed rgba(255,255,255,0.8)',
+            outline: '1px dashed rgba(0,0,0,0.4)',
+            cursor: 'move',
+            boxSizing: 'border-box',
+          }}
+        >
+          <button
+            onPointerDown={e => e.stopPropagation()}
+            onClick={() => removeImage(i)}
+            style={{
+              position: 'absolute', top: -10, right: -10, width: 20, height: 20,
+              borderRadius: '50%', background: '#ef4444', color: '#fff', border: 'none',
+              fontSize: 11, cursor: 'pointer', lineHeight: 1,
+            }}
+          >✕</button>
+          <div
+            onPointerDown={e => startDrag(e, i, 'resize')}
+            style={{
+              position: 'absolute', bottom: -6, right: -6, width: 14, height: 14,
+              background: '#fff', border: '2px solid var(--color-accent)', borderRadius: 3,
+              cursor: 'nwse-resize',
+            }}
+          />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── Live slide preview canvas ─────────────────────────────────────────────────
-function SlideCanvas({ slide, bgImage, table }) {
+function SlideCanvas({ slide, bgImage, table, onImagesChange }) {
   const { title, bullets, style = {} } = slide
   const font    = style.font    ?? FONTS[0].value
   const layout  = style.layout  ?? 'title-top'
@@ -219,6 +313,7 @@ function SlideCanvas({ slide, bgImage, table }) {
         <TablePreview tbl={table} />
       </div>
       <div style={{ position: 'absolute', left: '1.8%', top: '90.4%', width: '48.4%', fontSize: '0.55em', fontStyle: 'italic', color: bgImage ? 'rgba(255,255,255,0.7)' : '#7F7F7F' }}>Source:</div>
+      <FreeImageLayer images={style.images || []} onChange={onImagesChange} />
     </div>
   )
 }
@@ -238,6 +333,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
       textCol: slide.style?.textCol ?? '#1a1a1a',
       accent:  slide.style?.accent  ?? '#CD2F37',
       contentImage: slide.style?.contentImage ?? null,
+      images:  slide.style?.images  ?? [],
     },
   })
   const [bgImage,     setBgImage]     = useState(slide.style?.bgImage ?? null)
@@ -250,6 +346,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
   )
   const bgInputRef      = useRef(null)
   const contentImgRef   = useRef(null)
+  const freeImgRef      = useRef(null)
 
   function update(key, val) {
     setDraft(d => ({ ...d, [key]: val }))
@@ -340,6 +437,21 @@ export default function SlideEditor({ slide, onSave, onClose }) {
     const reader = new FileReader()
     reader.onload = ev => updateStyle('contentImage', ev.target.result)
     reader.readAsDataURL(file)
+  }
+
+  function handleFreeImageUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = ev => {
+      const next = [...(draft.style.images || []), { src: ev.target.result, x: 0.3, y: 0.3, w: 0.3, h: 0.3 }]
+      updateStyle('images', next)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  function removeFreeImage(i) {
+    updateStyle('images', draft.style.images.filter((_, idx) => idx !== i))
   }
 
   function handleSave() {
@@ -509,6 +621,23 @@ export default function SlideEditor({ slide, onSave, onClose }) {
                   <input ref={bgInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBgUpload} />
                 </div>
 
+                <label style={styles.label}>Images (drag in preview to position/resize)</label>
+                <div style={styles.uploadRow}>
+                  <button style={styles.uploadBtn} onClick={() => freeImgRef.current?.click()}>+ Add image</button>
+                  <input ref={freeImgRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFreeImageUpload} />
+                </div>
+                {draft.style.images?.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {draft.style.images.map((img, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <img src={img.src} style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4 }} />
+                        <span style={{ fontSize: 11, color: 'var(--color-text-muted)', flex: 1 }}>Image {i + 1}</span>
+                        <button style={styles.microBtn} onClick={() => removeFreeImage(i)}>✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {(draft.style.layout === 'image-right') && (
                   <>
                     <label style={styles.label}>Content image (right panel)</label>
@@ -574,7 +703,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
           {/* Right — live preview */}
           <div style={styles.preview}>
             <div style={styles.previewLabel}>Live preview</div>
-            <SlideCanvas slide={draft} bgImage={bgImage} table={table} />
+            <SlideCanvas slide={draft} bgImage={bgImage} table={table} onImagesChange={next => updateStyle('images', next)} />
             <div style={styles.previewHint}>
               {draft.bullets.length} bullet{draft.bullets.length !== 1 ? 's' : ''} · {draft.style.layout.replace('-', ' ')} layout
             </div>
