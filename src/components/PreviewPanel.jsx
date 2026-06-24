@@ -94,6 +94,20 @@ function ContentSlidePreview({ slide, scale = 1 }) {
         <div style={{ position: 'absolute', right: '3%', top: '19%', width: '38%', height: '63%', background: `url(${style.contentImage}) center/cover`, borderRadius: 4 }} />
       )}
       {sourceEl}
+      {(style.images || []).map((img, i) => (
+        <img
+          key={i}
+          src={img.src}
+          style={{
+            position: 'absolute',
+            left: `${img.x * 100}%`,
+            top: `${img.y * 100}%`,
+            width: `${img.w * 100}%`,
+            height: `${img.h * 100}%`,
+            objectFit: 'cover',
+          }}
+        />
+      ))}
     </div>
   )
 }
