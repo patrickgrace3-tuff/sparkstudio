@@ -74,7 +74,8 @@ export default function App() {
   }
 
   function addSlide(slide) {
-    setSlides({ ...allSlides, [activeDeptId]: [...deptSlides, slide] })
+    const withId = { ...slide, _id: slide._id ?? `s${Date.now()}${Math.random().toString(36).slice(2)}` }
+    setSlides({ ...allSlides, [activeDeptId]: [...deptSlides, withId] })
   }
 
   function deleteSlide(index) {
@@ -110,13 +111,15 @@ export default function App() {
       const result = await generateDeck(withData, activeClient.name)
 
       // Re-attach table and style data (images, colors, layout, fonts) to generated
-      // slides by matching on title — the AI only returns title/bullets/dept,
-      // it doesn't know about tables or visual styling set in the slide editor.
+      // slides — the AI only returns title/bullets/dept, it doesn't know about
+      // tables or visual styling set in the slide editor. Match on the stable
+      // _id we sent it (echoed back as sourceId) rather than title text, since
+      // the AI is free to reword titles and a text match would silently drop
+      // the original's style/table data whenever it does.
       const allSlidesFlat = Object.values(allSlides).flat()
       result.slides = result.slides.map(genSlide => {
-        const original = allSlidesFlat.find(
-          s => s.title?.toLowerCase().trim() === genSlide.title?.toLowerCase().trim()
-        )
+        const original = allSlidesFlat.find(s => s._id === genSlide.sourceId)
+          ?? allSlidesFlat.find(s => s.title?.toLowerCase().trim() === genSlide.title?.toLowerCase().trim())
         if (!original) return genSlide
         return {
           ...genSlide,
