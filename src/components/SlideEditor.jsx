@@ -190,19 +190,35 @@ function SlideCanvas({ slide, bgImage, table }) {
     </div>
   ) : null
 
-  // Default: title-top
+  // Default: title-top — this is the only layout the pptx exporter actually
+  // produces (other layout choices only affect bgImage/contentImage
+  // compositing), so render it using the real template background image and
+  // the exact placeholder positions (lifted from the template's OOXML) so
+  // this preview matches the exported pptx, not a CSS approximation of it.
   return (
-    <div style={{ ...canvasStyle, padding: '5%', flexDirection: 'column' }}>
-      <div style={titleStyle}>{title}</div>
-      {accentBar}
-      <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-        {(bullets || []).map((b, i) => (
-          <li key={i} style={{ ...bulletStyle, display: 'flex', gap: 8, marginBottom: '0.5em' }}>
-            <span style={{ color: accent, fontWeight: 700, flexShrink: 0 }}>—</span>{b}
-          </li>
-        ))}
-      </ul>
-      <TablePreview tbl={table} />
+    <div style={{
+      width: '100%',
+      aspectRatio: '16/9',
+      background: bgImage ? `url(${bgImage}) center/cover no-repeat` : `url(/branding/content-bg.jpg) center/cover no-repeat`,
+      fontFamily: font,
+      position: 'relative',
+      overflow: 'hidden',
+      borderRadius: 6,
+      boxShadow: '0 4px 24px rgba(0,0,0,0.18)',
+    }}>
+      {bgImage && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }} />}
+      <div style={{ position: 'absolute', left: '15.25%', top: '5.1%', width: '77.9%', fontSize: '1.3em', fontWeight: 400, color: bgImage ? '#fff' : accent, lineHeight: 1.3 }}>{title}</div>
+      <div style={{ position: 'absolute', left: '4.5%', top: '19%', width: '82.9%', height: '63%', overflow: 'hidden' }}>
+        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+          {(bullets || []).map((b, i) => (
+            <li key={i} style={{ color: bgImage ? '#fff' : textCol, fontSize: '0.8em', lineHeight: 1.6, display: 'flex', gap: 8, marginBottom: '0.5em', textShadow: bgImage ? '0 1px 3px rgba(0,0,0,0.6)' : 'none' }}>
+              <span style={{ color: accent, fontWeight: 700, flexShrink: 0 }}>•</span>{b}
+            </li>
+          ))}
+        </ul>
+        <TablePreview tbl={table} />
+      </div>
+      <div style={{ position: 'absolute', left: '1.8%', top: '90.4%', width: '48.4%', fontSize: '0.55em', fontStyle: 'italic', color: bgImage ? 'rgba(255,255,255,0.7)' : '#7F7F7F' }}>Source:</div>
     </div>
   )
 }
