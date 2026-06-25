@@ -43,7 +43,7 @@ function SectionSlidePreview({ dept }) {
 // uses a single fixed content-slide template for every slide regardless of
 // the "layout" style choice (only bgImage/contentImage are composited on top).
 function ContentSlidePreview({ slide }) {
-  const { title, bullets = [], style = {}, table } = slide
+  const { title, bullets = [], style = {}, table, source } = slide
   const tc     = style.textCol || '#1A1A1A'
   const accent = style.accent  || deptColor(slide.dept) || '#CD2F37'
   const font   = style.font    || 'Arial, sans-serif'
@@ -100,7 +100,7 @@ function ContentSlidePreview({ slide }) {
   ) : null
 
   const sourceEl = (
-    <div style={{ position: 'absolute', left: '1.8%', top: '90.4%', width: '48.4%', fontSize: '1.2cqw', fontStyle: 'italic', color: '#7F7F7F' }}>Source:</div>
+    <div style={{ position: 'absolute', left: '1.8%', top: '90.4%', width: '48.4%', fontSize: '1.2cqw', fontStyle: 'italic', color: '#7F7F7F' }}>Source: {source}</div>
   )
 
   return (
