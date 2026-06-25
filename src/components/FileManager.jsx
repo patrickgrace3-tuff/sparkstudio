@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react'
 import { loadFiles, saveFiles, loadGlobalFiles, saveGlobalFiles, uid, fetchLinkContent } from '../lib/files.js'
 import WordEditor  from './WordEditor.jsx'
 import ExcelEditor from './ExcelEditor.jsx'
+import RequirementsChecklist from './RequirementsChecklist.jsx'
 
 export default function FileManager({ clientId, deptId, deptName, deptColor, isGlobal = false }) {
   const [data,       setData]       = useState(() =>
@@ -228,6 +229,8 @@ export default function FileManager({ clientId, deptId, deptName, deptColor, isG
       onDragLeave={() => setDragging(false)}
       onDrop={handleDrop}
     >
+      {!isGlobal && <RequirementsChecklist clientId={clientId} deptId={deptId} deptColor={deptColor} />}
+
       {/* Toolbar */}
       <div style={styles.toolbar}>
         <button style={styles.toolBtn} onClick={() => createFile('word')}>+ Word doc</button>

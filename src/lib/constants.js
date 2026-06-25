@@ -11,6 +11,46 @@ export const DEPARTMENTS = [
   { id: 'product',              name: 'Product',               color: '#9B59B6' },
 ]
  
+// ─── Per-department file/link requirements ────────────────────────────────────
+// Shown as a checklist in each department's Files tab so contributors know
+// exactly what Spark Studio expects from them. Purely informational today —
+// checking an item off doesn't gate anything (see MVP proposal doc).
+export const DEPT_REQUIREMENTS = {
+  marketing: [
+    'Latest slides from the data rundown / survey data',
+    'Client Information Sheet (use the templated slide)',
+  ],
+  'social-media': [
+    'Note the year-over-year timeframe on anything you pull',
+    'Hey Orca information',
+    'Facebook / Instagram / LinkedIn data',
+    'Review Tracker info — benchmark rating + reviews-to-5-stars outcomes',
+    'Looker report link',
+    'Monitoring Playbook',
+  ],
+  digital: [
+    'Note the year-over-year timeframe on anything you pull',
+    'Vendor platform data (job boards)',
+    'Looker report link',
+    'Geo-sheets breakdown',
+    'Best performance: SEM Aware | SEM Interactive | Social Advertising',
+  ],
+  creative: [
+    'SharePoint access for images/videos used in creative & design slides',
+    'Recommendations',
+    'Creative Package Recap',
+  ],
+  'client-services': [
+    'Note the year-over-year timeframe on anything you pull',
+    'Access to all Looker reports, for review',
+    'My Team slide (use the templated slide)',
+  ],
+  product: [
+    'Agents Looker report link',
+    'Lead Assist Looker report link',
+  ],
+}
+
 // ─── Anthropic API ───────────────────────────────────────────────────────────
 // Set your API key in a .env file at the project root:
 //   VITE_ANTHROPIC_API_KEY=sk-ant-...

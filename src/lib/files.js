@@ -45,6 +45,23 @@ export function uid() {
   return Math.random().toString(36).slice(2, 10)
 }
 
+// ── Per-department requirements checklist (which items have been checked off) ──
+
+function checklistKey(clientId, deptId) {
+  return `pres-builder:checklist:${clientId}:${deptId}`
+}
+
+export function loadChecklist(clientId, deptId) {
+  try {
+    const raw = localStorage.getItem(checklistKey(clientId, deptId))
+    return raw ? JSON.parse(raw) : []
+  } catch { return [] }
+}
+
+export function saveChecklist(clientId, deptId, checkedItems) {
+  localStorage.setItem(checklistKey(clientId, deptId), JSON.stringify(checkedItems))
+}
+
 // ── Uploaded file content extraction ─────────────────────────────────────────
 
 /**
