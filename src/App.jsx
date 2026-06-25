@@ -10,7 +10,7 @@ import AIAssistant  from './components/AIAssistant.jsx'
 import { DEPARTMENTS } from './lib/constants.js'
 import { loadClients, saveClients } from './lib/clients.js'
 import { loadSlides, saveSlides } from './lib/storage.js'
-import { loadFiles, summariseForAI, loadGlobalFiles, saveGlobalFiles } from './lib/files.js'
+import { loadFiles, buildAIContext, loadGlobalFiles, saveGlobalFiles } from './lib/files.js'
 import { enhanceSlideBody, generateDeck } from './lib/api.js'
 import { exportToPptx } from './lib/export.js'
 
@@ -103,9 +103,10 @@ export default function App() {
     setActiveTab('preview')
 
     try {
+      const globalData = loadGlobalFiles(activeClientId)
       const withData = contributions.map(d => {
         const fileData    = loadFiles(activeClientId, d.id)
-        const fileSummary = summariseForAI(fileData, d.name)
+        const fileSummary = buildAIContext(fileData, d.name, globalData).textSummary
         return { dept: d.name, slides: allSlides[d.id] || [], fileSummary }
       })
       const result = await generateDeck(withData, activeClient.name)

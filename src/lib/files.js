@@ -147,6 +147,31 @@ export function extractUploadedContent(file) {
   return text.slice(0, 3000)
 }
 
+// ── SharePoint / web links ────────────────────────────────────────────────────
+
+/**
+ * Best-effort fetch of a linked file's text content (e.g. a SharePoint
+ * "anyone with the link" share URL, or any other directly-fetchable URL).
+ * Browsers can't read content behind Microsoft auth without an OAuth/Graph
+ * integration and a backend, so this is intentionally best-effort: if the
+ * fetch is blocked (CORS, login redirect, etc.) we just keep the link itself
+ * as a named reference the AI can see, rather than failing the whole flow.
+ */
+export async function fetchLinkContent(url) {
+  try {
+    const res = await fetch(url, { mode: 'cors' })
+    if (!res.ok) return { text: null, error: `HTTP ${res.status}` }
+    const contentType = res.headers.get('content-type') || ''
+    if (contentType.includes('text') || contentType.includes('json') || contentType.includes('csv') || contentType.includes('xml')) {
+      const text = await res.text()
+      return { text: text.slice(0, 3000), error: null }
+    }
+    return { text: null, error: 'Unsupported content type for auto-read' }
+  } catch {
+    return { text: null, error: 'Could not be fetched directly (likely requires sign-in) — kept as a reference link' }
+  }
+}
+
 // ── AI context builder ────────────────────────────────────────────────────────
 
 /**
@@ -205,6 +230,13 @@ export function buildAIContext(data, deptName, globalData = null) {
           lines.push(`[Binary file — ${mime || 'unknown'}, ${kb}KB — not readable as text]`)
         }
       }
+    } else if (f.type === 'link') {
+      const url = f.content?.url ?? ''
+      if (f.content?.fetchedText) {
+        lines.push(`[Linked file: "${f.name}" — ${url}]\n${f.content.fetchedText}`)
+      } else {
+        lines.push(`[Linked file: "${f.name}" — ${url} — content could not be auto-read (${f.content?.fetchError || 'sign-in required'}); treat as a named reference only]`)
+      }
     }
   }
 
@@ -212,9 +244,4 @@ export function buildAIContext(data, deptName, globalData = null) {
     textSummary: allFiles.length ? lines.join('\n') : '',
     pdfFiles,
   }
-}
-
-/** Legacy helper — text-only summary (used by deck generator) */
-export function summariseForAI(data, deptName) {
-  return buildAIContext(data, deptName).textSummary
 }

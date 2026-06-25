@@ -34,11 +34,11 @@ export default function AIAssistant({ clientId, clientName, deptId, deptName, de
 
     const globalFiles = globalData.files.map(f => {
       const isPdf = f.name.toLowerCase().endsWith('.pdf') || (f.content?.mimeType ?? '').includes('pdf')
-      return `  - "${f.name}" [GLOBAL]${isPdf ? ' (PDF, read natively)' : ''}`
+      return `  - "${f.name}" [GLOBAL]${isPdf ? ' (PDF, read natively)' : ''}${f.type === 'link' ? ' (linked file)' : ''}`
     })
     const deptFiles = fileData.files.map(f => {
       const isPdf = f.name.toLowerCase().endsWith('.pdf') || (f.content?.mimeType ?? '').includes('pdf')
-      return `  - "${f.name}"${isPdf ? ' (PDF, read natively)' : ''}`
+      return `  - "${f.name}"${isPdf ? ' (PDF, read natively)' : ''}${f.type === 'link' ? ' (linked file)' : ''}`
     })
     const fileInventory = [...globalFiles, ...deptFiles].join('\n') || '  (none)'
 
