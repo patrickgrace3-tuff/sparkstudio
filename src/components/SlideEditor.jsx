@@ -237,6 +237,13 @@ function SlideCanvas({
   const accent  = style.accent  ?? '#CD2F37'
   const contentImage = style.contentImage ?? null
 
+  // containerType: 'inline-size' + cqw (container-query width) units below tie
+  // every font size to this canvas's own rendered pixel width, instead of the
+  // ambient root font-size. That's what kept the preview, the fullscreen
+  // editor, and the deck grid/presenter views from matching each other —
+  // each rendered the slide at a different pixel width but text sizes were
+  // either fixed px or em (relative to the page's 16px root), so the same
+  // slide looked like a different scale everywhere it was shown.
   const canvasStyle = {
     width: '100%',
     aspectRatio: '16/9',
@@ -250,20 +257,21 @@ function SlideCanvas({
     boxShadow: '0 4px 24px rgba(0,0,0,0.18)',
     display: 'flex',
     flexDirection: layout === 'title-left' ? 'row' : 'column',
+    containerType: 'inline-size',
   }
 
   const titleStyle = {
     color: accent,
     fontWeight: 700,
     lineHeight: 1.2,
-    fontSize: layout === 'centered' ? '2.2em' : '1.7em',
+    fontSize: layout === 'centered' ? '4.7cqw' : '3.6cqw',
     textAlign: layout === 'centered' ? 'center' : 'left',
     textShadow: bgImage ? '0 1px 4px rgba(0,0,0,0.5)' : 'none',
   }
 
   const bulletStyle = {
     color: textCol,
-    fontSize: '0.85em',
+    fontSize: '1.8cqw',
     lineHeight: 1.6,
     textShadow: bgImage ? '0 1px 3px rgba(0,0,0,0.6)' : 'none',
   }
@@ -276,7 +284,7 @@ function SlideCanvas({
     return (
       <div style={canvasStyle}>
         <div style={{ width: '38%', background: accent, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '5%' }}>
-          <div style={{ ...titleStyle, color: '#fff', fontSize: '1.5em', textAlign: 'center' }}>{title}</div>
+          <div style={{ ...titleStyle, color: '#fff', fontSize: '3.2cqw', textAlign: 'center' }}>{title}</div>
         </div>
         <div style={{ flex: 1, padding: '5%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
@@ -345,7 +353,7 @@ function SlideCanvas({
             ))}
           </ul>
         </div>
-        <div style={{ width: '40%', background: contentImage ? `url(${contentImage}) center/cover` : '#e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: '0.75em' }}>
+        <div style={{ width: '40%', background: contentImage ? `url(${contentImage}) center/cover` : '#e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: '1.6cqw' }}>
           {!contentImage && 'Upload image →'}
         </div>
       </div>
@@ -357,7 +365,7 @@ function SlideCanvas({
       <div style={{ ...canvasStyle, alignItems: 'center', justifyContent: 'center', padding: '8%', flexDirection: 'column' }}>
         {bgImage && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }} />}
         <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', width: '100%' }}>
-          <div style={{ ...titleStyle, color: '#fff', fontSize: '2em' }}>{title}</div>
+          <div style={{ ...titleStyle, color: '#fff', fontSize: '4.2cqw' }}>{title}</div>
           <div style={{ width: '25%', height: 3, background: accent, borderRadius: 2, margin: '10px auto 14px' }} />
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             {(bullets || []).map((b, i) => (
@@ -372,7 +380,7 @@ function SlideCanvas({
   // Table preview component — headers/cells are directly editable in place.
   const TablePreview = ({ tbl }) => tbl ? (
     <div style={{ overflowX: 'auto' }}>
-      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '0.55em' }}>
+      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '1.2cqw' }}>
         <thead>
           <tr>{tbl.headers.map((h, i) => (
             <th
@@ -402,7 +410,7 @@ function SlideCanvas({
           ))}
         </tbody>
       </table>
-      {tbl.rows.length > 6 && <p style={{ fontSize: '0.5em', color: textCol, opacity: 0.6, margin: '2px 0 0' }}>+{tbl.rows.length - 6} more rows</p>}
+      {tbl.rows.length > 6 && <p style={{ fontSize: '1.1cqw', color: textCol, opacity: 0.6, margin: '2px 0 0' }}>+{tbl.rows.length - 6} more rows</p>}
     </div>
   ) : null
 
@@ -421,6 +429,7 @@ function SlideCanvas({
       overflow: 'hidden',
       borderRadius: 6,
       boxShadow: '0 4px 24px rgba(0,0,0,0.18)',
+      containerType: 'inline-size',
     }}>
       {bgImage && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }} />}
       <div
@@ -428,12 +437,12 @@ function SlideCanvas({
         suppressContentEditableWarning
         onPointerDown={stopForEdit}
         onBlur={e => onTitleChange?.(e.currentTarget.textContent)}
-        style={{ position: 'absolute', left: '15.25%', top: '5.1%', width: '77.9%', fontSize: '1.3em', fontWeight: 400, color: bgImage ? '#fff' : accent, lineHeight: 1.3, outline: 'none', cursor: onTitleChange ? 'text' : 'default' }}
+        style={{ position: 'absolute', left: '15.25%', top: '5.1%', width: '77.9%', fontSize: '2.8cqw', fontWeight: 400, color: bgImage ? '#fff' : accent, lineHeight: 1.3, outline: 'none', cursor: onTitleChange ? 'text' : 'default' }}
       >{title}</div>
       <DraggableBox box={style.bodyBox || { x: 0.045, y: 0.19, w: 0.829, h: table ? 0.4 : 0.63 }} onChange={onBodyBoxChange}>
         <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {(bullets || []).map((b, i) => (
-            <li key={i} style={{ color: bgImage ? '#fff' : textCol, fontSize: '0.8em', lineHeight: 1.6, display: 'flex', gap: 8, marginBottom: '0.5em', textShadow: bgImage ? '0 1px 3px rgba(0,0,0,0.6)' : 'none' }}>
+            <li key={i} style={{ color: bgImage ? '#fff' : textCol, fontSize: '1.7cqw', lineHeight: 1.6, display: 'flex', gap: 8, marginBottom: '0.5em', textShadow: bgImage ? '0 1px 3px rgba(0,0,0,0.6)' : 'none' }}>
               <span style={{ color: accent, fontWeight: 700, flexShrink: 0 }}>•</span>
               <span
                 contentEditable={!!onBulletChange}
@@ -451,7 +460,7 @@ function SlideCanvas({
           <TablePreview tbl={table} />
         </DraggableBox>
       )}
-      <div style={{ position: 'absolute', left: '1.8%', top: '90.4%', width: '48.4%', fontSize: '0.55em', fontStyle: 'italic', color: bgImage ? 'rgba(255,255,255,0.7)' : '#7F7F7F' }}>Source:</div>
+      <div style={{ position: 'absolute', left: '1.8%', top: '90.4%', width: '48.4%', fontSize: '1.2cqw', fontStyle: 'italic', color: bgImage ? 'rgba(255,255,255,0.7)' : '#7F7F7F' }}>Source:</div>
       <FreeImageLayer images={style.images || []} onChange={onImagesChange} />
     </div>
   )
