@@ -111,12 +111,13 @@ export default function App() {
       })
       const result = await generateDeck(withData, activeClient.name)
 
-      // Re-attach table and style data (images, colors, layout, fonts) to generated
-      // slides — the AI only returns title/bullets/dept, it doesn't know about
-      // tables or visual styling set in the slide editor. Match on the stable
-      // _id we sent it (echoed back as sourceId) rather than title text, since
-      // the AI is free to reword titles and a text match would silently drop
-      // the original's style/table data whenever it does.
+      // Re-attach table, style, and source data (images, colors, layout, fonts,
+      // citation) to generated slides — the AI only returns title/bullets/dept,
+      // it doesn't know about tables, visual styling, or sources set in the
+      // slide editor. Match on the stable _id we sent it (echoed back as
+      // sourceId) rather than title text, since the AI is free to reword
+      // titles and a text match would silently drop the original's data
+      // whenever it does.
       const allSlidesFlat = Object.values(allSlides).flat()
       result.slides = result.slides.map(genSlide => {
         const original = allSlidesFlat.find(s => s._id === genSlide.sourceId)
@@ -124,8 +125,9 @@ export default function App() {
         if (!original) return genSlide
         return {
           ...genSlide,
-          ...(original.table ? { table: original.table } : {}),
-          ...(original.style ? { style: original.style } : {}),
+          ...(original.table  ? { table:  original.table }  : {}),
+          ...(original.style  ? { style:  original.style }  : {}),
+          ...(original.source ? { source: original.source } : {}),
         }
       })
 

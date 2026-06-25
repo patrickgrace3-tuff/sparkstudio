@@ -176,6 +176,19 @@ function patchSectionSlide(xml, sectionTitle) {
   return replaceMarkerText(xml, 'Section Title', sectionTitle)
 }
 
+// The template's "Source:" text box has a second, empty paragraph right
+// below the "Source:" label reserved for the actual citation text — find
+// the first empty <a:r><a:t></a:t></a:r> run that follows the "Source:"
+// label (scoped narrowly so we don't touch unrelated empty runs elsewhere
+// in the slide, e.g. bullet placeholders) and fill it in.
+function patchSourceText(xml, sourceText) {
+  if (!sourceText) return xml
+  return xml.replace(
+    /(<a:t>Source:<\/a:t>[\s\S]*?<a:r>)<a:t><\/a:t>(<\/a:r>)/,
+    `$1<a:t>${escapeXml(sourceText)}</a:t>$2`
+  )
+}
+
 // ── Image embedding ─────────────────────────────────────────────────────────────
 
 let _nextMediaId = 1
@@ -243,13 +256,14 @@ const SLIDE_H = 6858000
  * since image embedding needs to add a relationship.
  */
 function patchContentSlide(zip, xml, relsXml, slide, table = null) {
-  const { title, bullets = [] } = slide
+  const { title, bullets = [], source } = slide
   const style       = slide.style || {}
   const accentColor = style.accent ?? null
   const layout      = style.layout ?? 'title-top'
 
   // 1. Replace the slide title placeholder (red text at top)
   let out = replaceMarkerText(xml, 'Slide Title', title)
+  out = patchSourceText(out, source)
 
   // Apply custom accent color — replaces the default Spark red (CD2F37)
   if (accentColor) {

@@ -227,9 +227,9 @@ function stopForEdit(e) {
 // ── Live slide preview canvas ─────────────────────────────────────────────────
 function SlideCanvas({
   slide, bgImage, table, onImagesChange, onBodyBoxChange, onTableBoxChange,
-  onTitleChange, onBulletChange, onTableHeaderChange, onTableCellChange,
+  onTitleChange, onBulletChange, onTableHeaderChange, onTableCellChange, onSourceChange,
 }) {
-  const { title, bullets, style = {} } = slide
+  const { title, bullets, source, style = {} } = slide
   const font    = style.font    ?? FONTS[0].value
   const layout  = style.layout  ?? 'title-top'
   const bg      = style.bg      ?? '#FFFFFF'
@@ -460,7 +460,16 @@ function SlideCanvas({
           <TablePreview tbl={table} />
         </DraggableBox>
       )}
-      <div style={{ position: 'absolute', left: '1.8%', top: '90.4%', width: '48.4%', fontSize: '1.2cqw', fontStyle: 'italic', color: bgImage ? 'rgba(255,255,255,0.7)' : '#7F7F7F' }}>Source:</div>
+      <div style={{ position: 'absolute', left: '1.8%', top: '90.4%', width: '48.4%', fontSize: '1.2cqw', fontStyle: 'italic', color: bgImage ? 'rgba(255,255,255,0.7)' : '#7F7F7F', display: 'flex', gap: '0.3em' }}>
+        <span style={{ flexShrink: 0 }}>Source:</span>
+        <span
+          contentEditable={!!onSourceChange}
+          suppressContentEditableWarning
+          onPointerDown={stopForEdit}
+          onBlur={e => onSourceChange?.(e.currentTarget.textContent)}
+          style={{ outline: 'none', cursor: onSourceChange ? 'text' : 'default' }}
+        >{source}</span>
+      </div>
       <FreeImageLayer images={style.images || []} onChange={onImagesChange} />
     </div>
   )
@@ -471,6 +480,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
   const [draft,    setDraft]    = useState({
     title:   slide.title   ?? '',
     body:    slide.body    ?? '',
+    source:  slide.source  ?? '',
     bullets: slide.bullets?.length
       ? [...slide.bullets]
       : (slide.body ?? '').split('\n').filter(Boolean),
@@ -639,6 +649,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
       title:   draft.title,
       bullets: draft.bullets.filter(Boolean),
       body:    draft.bullets.filter(Boolean).join('\n'),
+      source:  draft.source,
       style:   draft.style,
       table:   table && table.headers.length > 0 ? table : null,
     }
@@ -773,6 +784,14 @@ export default function SlideEditor({ slide, onSave, onClose }) {
                     <button style={styles.addBulletBtn} onClick={addTableRow}>+ Add row</button>
                   </div>
                 )}
+
+                <label style={styles.label}>Source</label>
+                <input
+                  style={styles.input}
+                  value={draft.source}
+                  onChange={e => update('source', e.target.value)}
+                  placeholder="e.g. Internal CRM data, Q2 2026"
+                />
               </div>
             )}
 
@@ -899,6 +918,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
               onBulletChange={(i, text) => updateBullet(i, text.trim())}
               onTableHeaderChange={(ci, text) => setTableHeader(ci, text.trim())}
               onTableCellChange={(ri, ci, text) => setTableCell(ri, ci, text.trim())}
+              onSourceChange={text => update('source', text.trim())}
             />
             <div style={styles.previewHint}>
               {draft.bullets.length} bullet{draft.bullets.length !== 1 ? 's' : ''} · {draft.style.layout.replace('-', ' ')} layout
