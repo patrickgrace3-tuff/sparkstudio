@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react'
-import { loadFiles, saveFiles, loadGlobalFiles, saveGlobalFiles, uid } from '../lib/files.js'
+import { loadFiles, saveFiles, loadGlobalFiles, saveGlobalFiles, uid, fetchLinkContent } from '../lib/files.js'
 import WordEditor  from './WordEditor.jsx'
 import ExcelEditor from './ExcelEditor.jsx'
 
@@ -12,6 +12,8 @@ export default function FileManager({ clientId, deptId, deptName, deptColor, isG
   const [newFolderMode, setNewFolderMode] = useState(false)
   const [folderDraft,   setFolderDraft]   = useState('')
   const [dragging,   setDragging]   = useState(false)
+  const [newLinkMode, setNewLinkMode] = useState(false)
+  const [linkDraft,   setLinkDraft]   = useState('')
   const fileInputRef = useRef(null)
 
   function persist(updated) {
@@ -104,6 +106,39 @@ export default function FileManager({ clientId, deptId, deptName, deptColor, isG
     Array.from(e.dataTransfer.files).forEach(handleUpload)
   }
 
+  // ── SharePoint / web links ───────────────────────────────────────────────────
+  async function addLink() {
+    const url = linkDraft.trim()
+    if (!url) return
+    setLinkDraft('')
+    setNewLinkMode(false)
+    const name = url.split('/').pop().split('?')[0] || url
+    const file = {
+      id: uid(), name, type: 'link',
+      folderId: activeFolderId,
+      content: { url, fetchedText: null, fetchError: 'Fetching…' },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    persist({ ...data, files: [...data.files, file] })
+    refetchLink(file.id, url)
+  }
+
+  async function refetchLink(fileId, url) {
+    const { text, error } = await fetchLinkContent(url)
+    setData(prev => {
+      const updated = {
+        ...prev,
+        files: prev.files.map(f =>
+          f.id === fileId ? { ...f, content: { ...f.content, fetchedText: text, fetchError: error } } : f
+        ),
+      }
+      if (isGlobal) saveGlobalFiles(clientId, updated)
+      else saveFiles(clientId, deptId, updated)
+      return updated
+    })
+  }
+
   // ── Breadcrumb ─────────────────────────────────────────────────────────────
   function getFolderPath(folderId) {
     const path = []
@@ -124,6 +159,39 @@ export default function FileManager({ clientId, deptId, deptName, deptColor, isG
   // ── If a file is open, show the editor ────────────────────────────────────
   if (openFile) {
     const saved = data.files.find(f => f.id === openFile.id) ?? openFile
+
+    if (saved.type === 'link') {
+      return (
+        <div style={styles.editorWrap}>
+          <div style={styles.editorHeader}>
+            <button style={styles.backBtn} onClick={() => setOpenFile(null)}>← Back</button>
+            <input
+              style={styles.fileNameInput}
+              value={saved.name}
+              onChange={e => renameFile(saved.id, e.target.value)}
+            />
+            <span style={styles.fileTypeBadge}>SharePoint link</span>
+          </div>
+          <div style={styles.editorBody}>
+            <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', wordBreak: 'break-all' }}>
+              <a href={saved.content.url} target="_blank" rel="noreferrer">{saved.content.url}</a>
+            </p>
+            {saved.content.fetchedText ? (
+              <>
+                <p style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Content auto-read and available to the AI:</p>
+                <pre style={{ fontSize: 12, whiteSpace: 'pre-wrap', background: 'var(--color-bg-secondary)', padding: 12, borderRadius: 8, maxHeight: 300, overflow: 'auto' }}>{saved.content.fetchedText}</pre>
+              </>
+            ) : (
+              <p style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+                {saved.content.fetchError === 'Fetching…' ? 'Fetching…' : `Couldn't auto-read this link's content (${saved.content.fetchError}). The AI will still see the file name and link as a reference.`}
+              </p>
+            )}
+            <button style={styles.toolBtn} onClick={() => refetchLink(saved.id, saved.content.url)}>↻ Retry fetch</button>
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div style={styles.editorWrap}>
         <div style={styles.editorHeader}>
@@ -167,6 +235,22 @@ export default function FileManager({ clientId, deptId, deptName, deptColor, isG
         <button style={styles.toolBtn} onClick={() => fileInputRef.current?.click()}>↑ Upload file</button>
         <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }}
           onChange={e => Array.from(e.target.files).forEach(handleUpload)} />
+        {newLinkMode ? (
+          <div style={styles.folderInputRow}>
+            <input
+              style={{ ...styles.folderInput, width: 260 }}
+              value={linkDraft}
+              onChange={e => setLinkDraft(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') addLink(); if (e.key === 'Escape') setNewLinkMode(false) }}
+              placeholder="Paste SharePoint share link"
+              autoFocus
+            />
+            <button style={styles.toolBtn} onClick={addLink}>Add</button>
+            <button style={styles.ghostBtn} onClick={() => setNewLinkMode(false)}>Cancel</button>
+          </div>
+        ) : (
+          <button style={styles.toolBtn} onClick={() => setNewLinkMode(true)}>🔗 Link SharePoint file</button>
+        )}
         <div style={{ flex: 1 }} />
         {newFolderMode ? (
           <div style={styles.folderInputRow}>
@@ -226,9 +310,12 @@ export default function FileManager({ clientId, deptId, deptName, deptColor, isG
 
         {/* Files */}
         {currentFiles.map(file => {
-          const icon = file.type === 'word' ? '📝' : file.type === 'excel' ? '📊' : '📎'
-          const canOpen = file.type === 'word' || file.type === 'excel'
+          const icon = file.type === 'word' ? '📝' : file.type === 'excel' ? '📊' : file.type === 'link' ? '🔗' : '📎'
+          const canOpen = file.type === 'word' || file.type === 'excel' || file.type === 'link'
           const date = new Date(file.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })
+          const linkStatus = file.type === 'link'
+            ? (file.content?.fetchedText ? 'Content readable' : file.content?.fetchError === 'Fetching…' ? 'Fetching…' : 'Reference only')
+            : null
           return (
             <div key={file.id} style={styles.item}>
               <button
@@ -237,6 +324,7 @@ export default function FileManager({ clientId, deptId, deptName, deptColor, isG
               >
                 <span style={styles.itemIcon}>{icon}</span>
                 <span style={styles.itemName}>{file.name}</span>
+                {linkStatus && <span style={styles.itemMeta}>{linkStatus}</span>}
                 <span style={styles.itemMeta}>{date}</span>
               </button>
               <button style={styles.itemDelete} onClick={() => deleteFile(file.id)}>✕</button>
