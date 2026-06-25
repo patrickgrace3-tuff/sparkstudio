@@ -906,22 +906,24 @@ export default function SlideEditor({ slide, onSave, onClose }) {
 
           {/* Right — live preview */}
           <div style={styles.preview}>
-            <div style={styles.previewLabel}>Live preview</div>
-            <SlideCanvas
-              slide={draft}
-              bgImage={bgImage}
-              table={table}
-              onImagesChange={next => updateStyle('images', next)}
-              onBodyBoxChange={next => updateStyle('bodyBox', next)}
-              onTableBoxChange={next => updateStyle('tableBox', next)}
-              onTitleChange={text => update('title', text.trim())}
-              onBulletChange={(i, text) => updateBullet(i, text.trim())}
-              onTableHeaderChange={(ci, text) => setTableHeader(ci, text.trim())}
-              onTableCellChange={(ri, ci, text) => setTableCell(ri, ci, text.trim())}
-              onSourceChange={text => update('source', text.trim())}
-            />
-            <div style={styles.previewHint}>
-              {draft.bullets.length} bullet{draft.bullets.length !== 1 ? 's' : ''} · {draft.style.layout.replace('-', ' ')} layout
+            <div style={styles.previewInner}>
+              <div style={styles.previewLabel}>Live preview</div>
+              <SlideCanvas
+                slide={draft}
+                bgImage={bgImage}
+                table={table}
+                onImagesChange={next => updateStyle('images', next)}
+                onBodyBoxChange={next => updateStyle('bodyBox', next)}
+                onTableBoxChange={next => updateStyle('tableBox', next)}
+                onTitleChange={text => update('title', text.trim())}
+                onBulletChange={(i, text) => updateBullet(i, text.trim())}
+                onTableHeaderChange={(ci, text) => setTableHeader(ci, text.trim())}
+                onTableCellChange={(ri, ci, text) => setTableCell(ri, ci, text.trim())}
+                onSourceChange={text => update('source', text.trim())}
+              />
+              <div style={styles.previewHint}>
+                {draft.bullets.length} bullet{draft.bullets.length !== 1 ? 's' : ''} · {draft.style.layout.replace('-', ' ')} layout
+              </div>
             </div>
           </div>
         </div>
@@ -980,7 +982,8 @@ const styles = {
   colorPicker:      { width: 36, height: 36, border: '0.5px solid var(--color-border)', borderRadius: 6, cursor: 'pointer', padding: 2 },
   colorVal:         { fontSize: 12, color: 'var(--color-text-muted)', fontFamily: 'monospace' },
   select:           { background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 7, padding: '7px 10px', fontSize: 13, color: 'var(--color-text-primary)', width: '100%', outline: 'none' },
-  preview:          { flex: 1, display: 'flex', flexDirection: 'column', padding: '20px 24px', gap: 12, background: 'var(--color-bg-secondary)', overflow: 'auto' },
+  preview:          { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px 24px', gap: 12, background: 'var(--color-bg-secondary)', overflow: 'auto' },
+  previewInner:     { width: '100%', maxWidth: 900 },
   previewLabel:     { fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' },
   previewHint:      { fontSize: 11, color: 'var(--color-text-muted)', textAlign: 'center' },
 }
