@@ -1,5 +1,16 @@
 import React, { useState, useRef } from 'react'
 import { DEPARTMENTS } from '../lib/constants.js'
+import { parseRichText } from '../lib/richtext.js'
+
+function RichText({ text }) {
+  return parseRichText(text).map((seg, i) => {
+    let node = seg.text
+    if (seg.bold && seg.italic) return <strong key={i}><em>{node}</em></strong>
+    if (seg.bold)   return <strong key={i}>{node}</strong>
+    if (seg.italic) return <em key={i}>{node}</em>
+    return <React.Fragment key={i}>{node}</React.Fragment>
+  })
+}
 
 const FONTS = [
   { label: 'Arial', value: 'Arial, sans-serif' },
@@ -123,8 +134,78 @@ function FreeImageLayer({ images, onChange }) {
   )
 }
 
+// ── A single draggable/resizable box (PowerPoint-style) overlaid on the slide,
+// used to reposition the bullet-point content area ─────────────────────────────
+function DraggableBox({ box, onChange, children }) {
+  const containerRef = useRef(null)
+  const dragRef = useRef(null)
+
+  function onPointerMove(e) {
+    const d = dragRef.current
+    if (!d) return
+    const rect = containerRef.current.parentElement.getBoundingClientRect()
+    const dx = (e.clientX - d.startX) / rect.width
+    const dy = (e.clientY - d.startY) / rect.height
+    if (d.mode === 'move') {
+      onChange({
+        ...box,
+        x: clamp(d.orig.x + dx, 0, 1 - d.orig.w),
+        y: clamp(d.orig.y + dy, 0, 1 - d.orig.h),
+      })
+    } else {
+      onChange({
+        ...box,
+        w: clamp(d.orig.w + dx, 0.1, 1 - d.orig.x),
+        h: clamp(d.orig.h + dy, 0.1, 1 - d.orig.y),
+      })
+    }
+  }
+
+  function onPointerUp() {
+    dragRef.current = null
+    window.removeEventListener('pointermove', onPointerMove)
+    window.removeEventListener('pointerup', onPointerUp)
+  }
+
+  function startDrag(e, mode) {
+    e.stopPropagation()
+    e.preventDefault()
+    dragRef.current = { mode, startX: e.clientX, startY: e.clientY, orig: { ...box } }
+    window.addEventListener('pointermove', onPointerMove)
+    window.addEventListener('pointerup', onPointerUp)
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      onPointerDown={e => startDrag(e, 'move')}
+      style={{
+        position: 'absolute',
+        left: `${box.x * 100}%`,
+        top: `${box.y * 100}%`,
+        width: `${box.w * 100}%`,
+        height: `${box.h * 100}%`,
+        overflow: 'hidden',
+        cursor: 'move',
+        outline: '1px dashed rgba(0,0,0,0.25)',
+        boxSizing: 'border-box',
+      }}
+    >
+      {children}
+      <div
+        onPointerDown={e => startDrag(e, 'resize')}
+        style={{
+          position: 'absolute', bottom: -6, right: -6, width: 14, height: 14,
+          background: '#fff', border: '2px solid var(--color-accent)', borderRadius: 3,
+          cursor: 'nwse-resize',
+        }}
+      />
+    </div>
+  )
+}
+
 // ── Live slide preview canvas ─────────────────────────────────────────────────
-function SlideCanvas({ slide, bgImage, table, onImagesChange }) {
+function SlideCanvas({ slide, bgImage, table, onImagesChange, onBodyBoxChange }) {
   const { title, bullets, style = {} } = slide
   const font    = style.font    ?? FONTS[0].value
   const layout  = style.layout  ?? 'title-top'
@@ -178,7 +259,7 @@ function SlideCanvas({ slide, bgImage, table, onImagesChange }) {
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             {(bullets || []).map((b, i) => (
               <li key={i} style={{ ...bulletStyle, display: 'flex', gap: 8, marginBottom: '0.5em' }}>
-                <span style={{ color: accent, fontWeight: 700, flexShrink: 0 }}>—</span>{b}
+                <span style={{ color: accent, fontWeight: 700, flexShrink: 0 }}>—</span><RichText text={b} />
               </li>
             ))}
           </ul>
@@ -197,14 +278,14 @@ function SlideCanvas({ slide, bgImage, table, onImagesChange }) {
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             {(bullets || []).slice(0, half).map((b, i) => (
               <li key={i} style={{ ...bulletStyle, display: 'flex', gap: 6, marginBottom: '0.4em' }}>
-                <span style={{ color: accent }}>•</span>{b}
+                <span style={{ color: accent }}>•</span><RichText text={b} />
               </li>
             ))}
           </ul>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             {(bullets || []).slice(half).map((b, i) => (
               <li key={i} style={{ ...bulletStyle, display: 'flex', gap: 6, marginBottom: '0.4em' }}>
-                <span style={{ color: accent }}>•</span>{b}
+                <span style={{ color: accent }}>•</span><RichText text={b} />
               </li>
             ))}
           </ul>
@@ -220,7 +301,7 @@ function SlideCanvas({ slide, bgImage, table, onImagesChange }) {
         <div style={{ width: '30%', height: 3, background: accent, borderRadius: 2, margin: '12px auto 16px' }} />
         <ul style={{ listStyle: 'none', padding: 0, margin: 0, textAlign: 'center' }}>
           {(bullets || []).map((b, i) => (
-            <li key={i} style={{ ...bulletStyle, marginBottom: '0.5em' }}>{b}</li>
+            <li key={i} style={{ ...bulletStyle, marginBottom: '0.5em' }}><RichText text={b} /></li>
           ))}
         </ul>
       </div>
@@ -236,7 +317,7 @@ function SlideCanvas({ slide, bgImage, table, onImagesChange }) {
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             {(bullets || []).map((b, i) => (
               <li key={i} style={{ ...bulletStyle, display: 'flex', gap: 6, marginBottom: '0.4em' }}>
-                <span style={{ color: accent }}>•</span>{b}
+                <span style={{ color: accent }}>•</span><RichText text={b} />
               </li>
             ))}
           </ul>
@@ -257,7 +338,7 @@ function SlideCanvas({ slide, bgImage, table, onImagesChange }) {
           <div style={{ width: '25%', height: 3, background: accent, borderRadius: 2, margin: '10px auto 14px' }} />
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             {(bullets || []).map((b, i) => (
-              <li key={i} style={{ ...bulletStyle, color: 'rgba(255,255,255,0.92)', marginBottom: '0.4em' }}>{b}</li>
+              <li key={i} style={{ ...bulletStyle, color: 'rgba(255,255,255,0.92)', marginBottom: '0.4em' }}><RichText text={b} /></li>
             ))}
           </ul>
         </div>
@@ -302,16 +383,16 @@ function SlideCanvas({ slide, bgImage, table, onImagesChange }) {
     }}>
       {bgImage && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }} />}
       <div style={{ position: 'absolute', left: '15.25%', top: '5.1%', width: '77.9%', fontSize: '1.3em', fontWeight: 400, color: bgImage ? '#fff' : accent, lineHeight: 1.3 }}>{title}</div>
-      <div style={{ position: 'absolute', left: '4.5%', top: '19%', width: '82.9%', height: '63%', overflow: 'hidden' }}>
+      <DraggableBox box={style.bodyBox || { x: 0.045, y: 0.19, w: 0.829, h: 0.63 }} onChange={onBodyBoxChange}>
         <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {(bullets || []).map((b, i) => (
             <li key={i} style={{ color: bgImage ? '#fff' : textCol, fontSize: '0.8em', lineHeight: 1.6, display: 'flex', gap: 8, marginBottom: '0.5em', textShadow: bgImage ? '0 1px 3px rgba(0,0,0,0.6)' : 'none' }}>
-              <span style={{ color: accent, fontWeight: 700, flexShrink: 0 }}>•</span>{b}
+              <span style={{ color: accent, fontWeight: 700, flexShrink: 0 }}>•</span><span><RichText text={b} /></span>
             </li>
           ))}
         </ul>
         <TablePreview tbl={table} />
-      </div>
+      </DraggableBox>
       <div style={{ position: 'absolute', left: '1.8%', top: '90.4%', width: '48.4%', fontSize: '0.55em', fontStyle: 'italic', color: bgImage ? 'rgba(255,255,255,0.7)' : '#7F7F7F' }}>Source:</div>
       <FreeImageLayer images={style.images || []} onChange={onImagesChange} />
     </div>
@@ -334,10 +415,12 @@ export default function SlideEditor({ slide, onSave, onClose }) {
       accent:  slide.style?.accent  ?? '#CD2F37',
       contentImage: slide.style?.contentImage ?? null,
       images:  slide.style?.images  ?? [],
+      bodyBox: slide.style?.bodyBox ?? { x: 0.045, y: 0.19, w: 0.829, h: 0.63 },
     },
   })
   const [bgImage,     setBgImage]     = useState(slide.style?.bgImage ?? null)
   const [activePanel, setActivePanel] = useState('content') // content | layout | style
+  const [fullscreen,  setFullscreen]  = useState(false)
   // Table state — separate from draft so edits are granular
   const [table, setTable] = useState(
     slide.table
@@ -347,6 +430,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
   const bgInputRef      = useRef(null)
   const contentImgRef   = useRef(null)
   const freeImgRef      = useRef(null)
+  const bulletInputRefs = useRef([])
 
   function update(key, val) {
     setDraft(d => ({ ...d, [key]: val }))
@@ -374,6 +458,28 @@ export default function SlideEditor({ slide, onSave, onClose }) {
     if (j < 0 || j >= b.length) return
     ;[b[i], b[j]] = [b[j], b[i]]
     update('bullets', b)
+  }
+
+  // Wrap the selected text of bullet `i` in markdown-style markers (** for
+  // bold, * for italic), or wrap the whole bullet if nothing is selected.
+  function toggleBulletFormat(i, marker) {
+    const input = bulletInputRefs.current[i]
+    const text = draft.bullets[i] ?? ''
+    let start = input?.selectionStart ?? 0
+    let end   = input?.selectionEnd   ?? text.length
+    if (start === end) { start = 0; end = text.length }
+
+    const before  = text.slice(0, start)
+    const selected = text.slice(start, end)
+    const after   = text.slice(end)
+    const wrapped = `${marker}${selected}${marker}`
+    const already = selected.startsWith(marker) && selected.endsWith(marker) && selected.length >= marker.length * 2
+    const next = already
+      ? `${before}${selected.slice(marker.length, selected.length - marker.length)}${after}`
+      : `${before}${wrapped}${after}`
+
+    updateBullet(i, next)
+    requestAnimationFrame(() => input?.focus())
   }
 
   // ── Table helpers ──────────────────────────────────────────────────────────
@@ -468,13 +574,16 @@ export default function SlideEditor({ slide, onSave, onClose }) {
   }
 
   return (
-    <div style={styles.overlay}>
-      <div style={styles.modal}>
+    <div style={fullscreen ? styles.overlayFull : styles.overlay}>
+      <div style={fullscreen ? styles.modalFull : styles.modal}>
 
         {/* Header */}
         <div style={styles.header}>
           <span style={styles.headerTitle}>Edit Slide</span>
           <div style={styles.headerBtns}>
+            <button style={styles.btnFullscreen} onClick={() => setFullscreen(f => !f)}>
+              {fullscreen ? '⤡ Exit fullscreen' : '⤢ Fullscreen'}
+            </button>
             <button style={styles.btnSave} onClick={handleSave}>Save changes</button>
             <button style={styles.btnClose} onClick={onClose}>✕</button>
           </div>
@@ -517,11 +626,14 @@ export default function SlideEditor({ slide, onSave, onClose }) {
                         <button style={styles.microBtn} onClick={() => moveBullet(i, 1)} disabled={i === draft.bullets.length - 1}>↓</button>
                       </div>
                       <input
+                        ref={el => { bulletInputRefs.current[i] = el }}
                         style={styles.bulletInput}
                         value={b}
                         onChange={e => updateBullet(i, e.target.value)}
                         placeholder={`Bullet ${i + 1}`}
                       />
+                      <button style={styles.formatBtn} title="Bold" onMouseDown={e => e.preventDefault()} onClick={() => toggleBulletFormat(i, '**')}><b>B</b></button>
+                      <button style={styles.formatBtn} title="Italic" onMouseDown={e => e.preventDefault()} onClick={() => toggleBulletFormat(i, '*')}><i>I</i></button>
                       <button style={styles.microBtn} onClick={() => removeBullet(i)}>✕</button>
                     </div>
                   ))}
@@ -703,7 +815,13 @@ export default function SlideEditor({ slide, onSave, onClose }) {
           {/* Right — live preview */}
           <div style={styles.preview}>
             <div style={styles.previewLabel}>Live preview</div>
-            <SlideCanvas slide={draft} bgImage={bgImage} table={table} onImagesChange={next => updateStyle('images', next)} />
+            <SlideCanvas
+              slide={draft}
+              bgImage={bgImage}
+              table={table}
+              onImagesChange={next => updateStyle('images', next)}
+              onBodyBoxChange={next => updateStyle('bodyBox', next)}
+            />
             <div style={styles.previewHint}>
               {draft.bullets.length} bullet{draft.bullets.length !== 1 ? 's' : ''} · {draft.style.layout.replace('-', ' ')} layout
             </div>
@@ -717,11 +835,14 @@ export default function SlideEditor({ slide, onSave, onClose }) {
 const styles = {
   overlay:          { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 },
   modal:            { background: 'var(--color-bg)', borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: 1100, maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' },
+  overlayFull:      { position: 'fixed', inset: 0, background: 'var(--color-bg)', zIndex: 1000, display: 'flex', alignItems: 'stretch', justifyContent: 'stretch', padding: 0 },
+  modalFull:        { background: 'var(--color-bg)', borderRadius: 0, width: '100%', height: '100%', maxWidth: 'none', maxHeight: 'none', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: 'none' },
   header:           { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '0.5px solid var(--color-border)', flexShrink: 0 },
   headerTitle:      { fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: '0.03em', color: 'var(--color-text-primary)' },
   headerBtns:       { display: 'flex', gap: 8, alignItems: 'center' },
   btnSave:          { background: 'var(--color-accent)', color: '#FFFFFF', border: 'none', borderRadius: 'var(--radius-pill)', padding: '7px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
   btnClose:         { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '7px 12px', fontSize: 13, cursor: 'pointer', color: 'var(--color-text-secondary)' },
+  btnFullscreen:    { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '7px 14px', fontSize: 13, cursor: 'pointer', color: 'var(--color-text-secondary)' },
   body:             { display: 'flex', flex: 1, overflow: 'hidden' },
   controls:         { width: 300, flexShrink: 0, borderRight: '0.5px solid var(--color-border)', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
   panelTabs:        { display: 'flex', borderBottom: '0.5px solid var(--color-border)', padding: '0 12px' },
@@ -735,6 +856,7 @@ const styles = {
   bulletDragBtns:   { display: 'flex', flexDirection: 'column', gap: 2 },
   bulletInput:      { flex: 1, background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 6, padding: '6px 8px', fontSize: 12, color: 'var(--color-text-primary)', outline: 'none' },
   microBtn:         { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 4, padding: '2px 6px', fontSize: 10, cursor: 'pointer', color: 'var(--color-text-muted)', lineHeight: 1.4 },
+  formatBtn:        { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 4, padding: '2px 7px', fontSize: 11, cursor: 'pointer', color: 'var(--color-text-secondary)', lineHeight: 1.4 },
   addBulletBtn:     { background: 'none', border: '0.5px dashed var(--color-border)', borderRadius: 6, padding: '6px', fontSize: 12, color: 'var(--color-text-muted)', cursor: 'pointer', textAlign: 'center' },
   tableSectionHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
   tableEditor:      { display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 },

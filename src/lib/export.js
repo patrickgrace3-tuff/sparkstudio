@@ -12,6 +12,7 @@
  */
 
 import JSZip from 'jszip'
+import { parseRichText } from './richtext.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -49,7 +50,23 @@ function buildBulletParagraphs(bullets, accentHex) {
   const accent = accentHex || 'CD2F37'
   return bullets
     .map(b => {
-      const text = escapeXml(b.replace(/^[-\u2013\u2022\*]\s*/, '').trim())
+      const cleaned = b.replace(/^[-\u2013\u2022]\s*/, '').trim()
+      const runs = parseRichText(cleaned)
+        .map(seg => {
+          const boldAttr   = seg.bold   ? ' b="1"' : ''
+          const italicAttr = seg.italic ? ' i="1"' : ''
+          return `<a:r>
+          <a:rPr lang="en-US" sz="1800"${boldAttr}${italicAttr} dirty="0">
+            <a:solidFill><a:srgbClr val="1A1A1A"/></a:solidFill>
+            <a:latin typeface="Arial"/>
+            <a:ea typeface="Arial"/>
+            <a:cs typeface="Arial"/>
+            <a:sym typeface="Arial"/>
+          </a:rPr>
+          <a:t>${escapeXml(seg.text)}</a:t>
+        </a:r>`
+        })
+        .join('\n')
       return `<a:p>
         <a:pPr indent="0" lvl="0" marL="342900" marR="0" rtl="0" algn="l">
           <a:spcBef><a:spcPts val="100"/></a:spcBef>
@@ -58,16 +75,7 @@ function buildBulletParagraphs(bullets, accentHex) {
           <a:buSzPct val="100000"/>
           <a:buChar char="&#x2022;"/>
         </a:pPr>
-        <a:r>
-          <a:rPr lang="en-US" sz="1800" dirty="0">
-            <a:solidFill><a:srgbClr val="1A1A1A"/></a:solidFill>
-            <a:latin typeface="Arial"/>
-            <a:ea typeface="Arial"/>
-            <a:cs typeface="Arial"/>
-            <a:sym typeface="Arial"/>
-          </a:rPr>
-          <a:t>${text}</a:t>
-        </a:r>
+${runs}
       </a:p>`
     })
     .join('\n')
@@ -253,12 +261,20 @@ function patchContentSlide(zip, xml, relsXml, slide, table = null) {
   const accentHex = (accentColor ?? 'CD2F37').replace('#', '').toUpperCase()
   const bulletXml = buildBulletParagraphs(bullets.length ? bullets : ['No content provided.'], accentHex)
 
-  // Find the shape containing "Slide Body" and replace its entire txBody
+  // PowerPoint-style repositioning of the bullet content box (defaults match
+  // the template's original placeholder position, so untouched slides are unaffected)
+  const bodyBox = style.bodyBox || { x: 0.045, y: 0.19, w: 0.829, h: 0.63 }
+  const bodyX  = Math.round(bodyBox.x * SLIDE_W)
+  const bodyY  = Math.round(bodyBox.y * SLIDE_H)
+  const bodyCx = Math.round(bodyBox.w * SLIDE_W)
+  const bodyCy = Math.round(bodyBox.h * SLIDE_H)
+
+  // Find the shape containing "Slide Body" and replace its entire txBody + position
   out = out.replace(
     /(<p:sp>(?:(?!<\/p:sp>)[\s\S])*?<a:t>Slide Body<\/a:t>(?:(?!<\/p:sp>)[\s\S])*?<\/p:sp>)/,
     (match) => {
       // Replace only the txBody portion, preserving nvSpPr and spPr
-      return match.replace(
+      let patched = match.replace(
         /<p:txBody>[\s\S]*?<\/p:txBody>/,
         `<p:txBody>
           <a:bodyPr anchorCtr="0" anchor="t" bIns="45700" lIns="91425" spcFirstLastPara="1" rIns="91425" wrap="square" tIns="45700">
@@ -268,6 +284,14 @@ function patchContentSlide(zip, xml, relsXml, slide, table = null) {
 ${bulletXml}
         </p:txBody>`
       )
+      // Override (or insert) the shape's position/size to reflect a custom bodyBox
+      const xfrm = `<a:xfrm><a:off x="${bodyX}" y="${bodyY}"/><a:ext cx="${bodyCx}" cy="${bodyCy}"/></a:xfrm>`
+      if (/<a:xfrm>[\s\S]*?<\/a:xfrm>/.test(patched)) {
+        patched = patched.replace(/<a:xfrm>[\s\S]*?<\/a:xfrm>/, xfrm)
+      } else {
+        patched = patched.replace(/<p:spPr>/, `<p:spPr>${xfrm}`)
+      }
+      return patched
     }
   )
 
