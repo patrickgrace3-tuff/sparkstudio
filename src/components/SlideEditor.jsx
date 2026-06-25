@@ -91,13 +91,14 @@ function FreeImageLayer({ images, onChange }) {
   }
 
   return (
-    <div ref={containerRef} style={{ position: 'absolute', inset: 0 }}>
+    <div ref={containerRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
       {images.map((img, i) => (
         <div
           key={i}
           onPointerDown={e => startDrag(e, i, 'move')}
           style={{
             position: 'absolute',
+            pointerEvents: 'auto',
             left: `${img.x * 100}%`,
             top: `${img.y * 100}%`,
             width: `${img.w * 100}%`,
@@ -178,34 +179,56 @@ function DraggableBox({ box, onChange, children }) {
   return (
     <div
       ref={containerRef}
-      onPointerDown={e => startDrag(e, 'move')}
       style={{
         position: 'absolute',
         left: `${box.x * 100}%`,
         top: `${box.y * 100}%`,
         width: `${box.w * 100}%`,
         height: `${box.h * 100}%`,
-        overflow: 'hidden',
-        cursor: 'move',
         outline: '1px dashed rgba(0,0,0,0.25)',
         boxSizing: 'border-box',
       }}
     >
-      {children}
+      <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+        {children}
+      </div>
+      {/* Drag handle — kept separate from the editable content (and outside
+          the overflow:hidden content layer) so clicking into text doesn't
+          get swallowed by the box's move-drag, and the handle stays visible
+          even when the box sits at the canvas edge. */}
+      <div
+        onPointerDown={e => startDrag(e, 'move')}
+        title="Drag to move"
+        style={{
+          position: 'absolute', top: -10, left: -10, width: 20, height: 20,
+          background: '#fff', border: '2px solid var(--color-accent)', borderRadius: '50%',
+          cursor: 'move', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 10, color: 'var(--color-accent)', userSelect: 'none', zIndex: 2,
+        }}
+      >✛</div>
       <div
         onPointerDown={e => startDrag(e, 'resize')}
         style={{
           position: 'absolute', bottom: -6, right: -6, width: 14, height: 14,
           background: '#fff', border: '2px solid var(--color-accent)', borderRadius: 3,
-          cursor: 'nwse-resize',
+          cursor: 'nwse-resize', zIndex: 2,
         }}
       />
     </div>
   )
 }
 
+// Stops a click meant for placing a text cursor / selecting text from also
+// triggering the parent DraggableBox's move-drag.
+function stopForEdit(e) {
+  e.stopPropagation()
+}
+
 // ── Live slide preview canvas ─────────────────────────────────────────────────
-function SlideCanvas({ slide, bgImage, table, onImagesChange, onBodyBoxChange }) {
+function SlideCanvas({
+  slide, bgImage, table, onImagesChange, onBodyBoxChange, onTableBoxChange,
+  onTitleChange, onBulletChange, onTableHeaderChange, onTableCellChange,
+}) {
   const { title, bullets, style = {} } = slide
   const font    = style.font    ?? FONTS[0].value
   const layout  = style.layout  ?? 'title-top'
@@ -346,17 +369,35 @@ function SlideCanvas({ slide, bgImage, table, onImagesChange, onBodyBoxChange })
     )
   }
 
-  // Table preview component
+  // Table preview component — headers/cells are directly editable in place.
   const TablePreview = ({ tbl }) => tbl ? (
-    <div style={{ marginTop: '3%', overflowX: 'auto' }}>
+    <div style={{ overflowX: 'auto' }}>
       <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '0.55em' }}>
         <thead>
-          <tr>{tbl.headers.map((h, i) => <th key={i} style={{ background: accent, color: '#fff', padding: '3px 6px', border: '0.5px solid rgba(255,255,255,0.3)', fontWeight: 700, whiteSpace: 'nowrap' }}>{h}</th>)}</tr>
+          <tr>{tbl.headers.map((h, i) => (
+            <th
+              key={i}
+              contentEditable={!!onTableHeaderChange}
+              suppressContentEditableWarning
+              onPointerDown={stopForEdit}
+              onBlur={e => onTableHeaderChange?.(i, e.currentTarget.textContent)}
+              style={{ background: accent, color: '#fff', padding: '3px 6px', border: '0.5px solid rgba(255,255,255,0.3)', fontWeight: 700, whiteSpace: 'nowrap', outline: 'none', cursor: onTableHeaderChange ? 'text' : 'default' }}
+            >{h}</th>
+          ))}</tr>
         </thead>
         <tbody>
           {tbl.rows.slice(0, 6).map((row, ri) => (
             <tr key={ri} style={{ background: ri % 2 === 0 ? 'rgba(0,0,0,0.04)' : 'transparent' }}>
-              {tbl.headers.map((_, ci) => <td key={ci} style={{ color: textCol, padding: '2px 6px', border: '0.5px solid rgba(128,128,128,0.2)', whiteSpace: 'nowrap' }}>{row[ci] ?? ''}</td>)}
+              {tbl.headers.map((_, ci) => (
+                <td
+                  key={ci}
+                  contentEditable={!!onTableCellChange}
+                  suppressContentEditableWarning
+                  onPointerDown={stopForEdit}
+                  onBlur={e => onTableCellChange?.(ri, ci, e.currentTarget.textContent)}
+                  style={{ color: textCol, padding: '2px 6px', border: '0.5px solid rgba(128,128,128,0.2)', whiteSpace: 'nowrap', outline: 'none', cursor: onTableCellChange ? 'text' : 'default' }}
+                >{row[ci] ?? ''}</td>
+              ))}
             </tr>
           ))}
         </tbody>
@@ -382,17 +423,34 @@ function SlideCanvas({ slide, bgImage, table, onImagesChange, onBodyBoxChange })
       boxShadow: '0 4px 24px rgba(0,0,0,0.18)',
     }}>
       {bgImage && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }} />}
-      <div style={{ position: 'absolute', left: '15.25%', top: '5.1%', width: '77.9%', fontSize: '1.3em', fontWeight: 400, color: bgImage ? '#fff' : accent, lineHeight: 1.3 }}>{title}</div>
-      <DraggableBox box={style.bodyBox || { x: 0.045, y: 0.19, w: 0.829, h: 0.63 }} onChange={onBodyBoxChange}>
+      <div
+        contentEditable={!!onTitleChange}
+        suppressContentEditableWarning
+        onPointerDown={stopForEdit}
+        onBlur={e => onTitleChange?.(e.currentTarget.textContent)}
+        style={{ position: 'absolute', left: '15.25%', top: '5.1%', width: '77.9%', fontSize: '1.3em', fontWeight: 400, color: bgImage ? '#fff' : accent, lineHeight: 1.3, outline: 'none', cursor: onTitleChange ? 'text' : 'default' }}
+      >{title}</div>
+      <DraggableBox box={style.bodyBox || { x: 0.045, y: 0.19, w: 0.829, h: table ? 0.4 : 0.63 }} onChange={onBodyBoxChange}>
         <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {(bullets || []).map((b, i) => (
             <li key={i} style={{ color: bgImage ? '#fff' : textCol, fontSize: '0.8em', lineHeight: 1.6, display: 'flex', gap: 8, marginBottom: '0.5em', textShadow: bgImage ? '0 1px 3px rgba(0,0,0,0.6)' : 'none' }}>
-              <span style={{ color: accent, fontWeight: 700, flexShrink: 0 }}>•</span><span><RichText text={b} /></span>
+              <span style={{ color: accent, fontWeight: 700, flexShrink: 0 }}>•</span>
+              <span
+                contentEditable={!!onBulletChange}
+                suppressContentEditableWarning
+                onPointerDown={stopForEdit}
+                onBlur={e => onBulletChange?.(i, e.currentTarget.innerText)}
+                style={{ outline: 'none', cursor: onBulletChange ? 'text' : 'default' }}
+              ><RichText text={b} /></span>
             </li>
           ))}
         </ul>
-        <TablePreview tbl={table} />
       </DraggableBox>
+      {table && (
+        <DraggableBox box={style.tableBox || { x: 0.045, y: 0.55, w: 0.829, h: 0.32 }} onChange={onTableBoxChange}>
+          <TablePreview tbl={table} />
+        </DraggableBox>
+      )}
       <div style={{ position: 'absolute', left: '1.8%', top: '90.4%', width: '48.4%', fontSize: '0.55em', fontStyle: 'italic', color: bgImage ? 'rgba(255,255,255,0.7)' : '#7F7F7F' }}>Source:</div>
       <FreeImageLayer images={style.images || []} onChange={onImagesChange} />
     </div>
@@ -517,6 +575,12 @@ export default function SlideEditor({ slide, onSave, onClose }) {
 
   function initTable() {
     setTable({ headers: ['Column 1', 'Column 2', 'Column 3'], rows: [['', '', ''], ['', '', '']] })
+    // Give bullets and table their own non-overlapping regions by default —
+    // both stay independently draggable/resizable after this.
+    if (!draft.style.tableBox) {
+      updateStyle('bodyBox', draft.style.bodyBox ?? { x: 0.045, y: 0.19, w: 0.829, h: 0.4 })
+      updateStyle('tableBox', { x: 0.045, y: 0.6, w: 0.829, h: 0.32 })
+    }
   }
 
   function applyPreset(preset) {
@@ -821,6 +885,11 @@ export default function SlideEditor({ slide, onSave, onClose }) {
               table={table}
               onImagesChange={next => updateStyle('images', next)}
               onBodyBoxChange={next => updateStyle('bodyBox', next)}
+              onTableBoxChange={next => updateStyle('tableBox', next)}
+              onTitleChange={text => update('title', text.trim())}
+              onBulletChange={(i, text) => updateBullet(i, text.trim())}
+              onTableHeaderChange={(ci, text) => setTableHeader(ci, text.trim())}
+              onTableCellChange={(ri, ci, text) => setTableCell(ri, ci, text.trim())}
             />
             <div style={styles.previewHint}>
               {draft.bullets.length} bullet{draft.bullets.length !== 1 ? 's' : ''} · {draft.style.layout.replace('-', ' ')} layout
