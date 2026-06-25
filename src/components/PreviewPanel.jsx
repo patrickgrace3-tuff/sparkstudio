@@ -1,5 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { DEPARTMENTS } from '../lib/constants.js'
+import { parseRichText } from '../lib/richtext.js'
+
+function RichText({ text }) {
+  return parseRichText(text).map((seg, i) => {
+    let node = seg.text
+    if (seg.bold && seg.italic) return <strong key={i}><em>{node}</em></strong>
+    if (seg.bold)   return <strong key={i}>{node}</strong>
+    if (seg.italic) return <em key={i}>{node}</em>
+    return <React.Fragment key={i}>{node}</React.Fragment>
+  })
+}
 
 function deptColor(deptName) {
   const d = DEPARTMENTS.find(d => d.name.toLowerCase() === (deptName || '').toLowerCase())
@@ -56,11 +67,13 @@ function ContentSlidePreview({ slide, scale = 1 }) {
       {bullets.slice(0, 6).map((b, i) => (
         <li key={i} style={{ fontSize: 8.5 * scale, color: tc, padding: `${1 * scale}px 0 ${1 * scale}px ${9 * scale}px`, position: 'relative', lineHeight: 1.4 }}>
           <span style={{ position: 'absolute', left: 0, color: accent }}>•</span>
-          {b.replace(/^[-–•]\s*/, '')}
+          <RichText text={b.replace(/^[-–•]\s*/, '')} />
         </li>
       ))}
     </ul>
   )
+
+  const bodyBox = style.bodyBox || { x: 0.045, y: 0.19, w: 0.829, h: 0.63 }
 
   const tableEl = table?.headers?.length > 0 ? (
     <div style={{ overflowX: 'auto', marginTop: 4 * scale }}>
@@ -87,7 +100,7 @@ function ContentSlidePreview({ slide, scale = 1 }) {
     <div style={wrap}>
       {bgImg && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }} />}
       {titleEl}
-      <div style={{ position: 'absolute', left: '4.5%', top: '19%', width: showContentImage ? '52%' : '82.9%', height: '63%', overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', left: `${bodyBox.x * 100}%`, top: `${bodyBox.y * 100}%`, width: showContentImage ? '52%' : `${bodyBox.w * 100}%`, height: `${bodyBox.h * 100}%`, overflow: 'hidden' }}>
         {bulletEls}{tableEl}
       </div>
       {showContentImage && (
