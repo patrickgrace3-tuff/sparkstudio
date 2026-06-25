@@ -454,7 +454,14 @@ export async function exportToPptx(deck) {
 
   // ── Update presentation.xml — replace sldIdLst entirely ─────────────────────
   let presXml = await zip.file('ppt/presentation.xml').async('string')
-  const existingNums = [...presXml.matchAll(/id="(\d+)"/g)].map(m => +m[1])
+  // Only look at existing <p:sldId> entries — sldMasterId/sldLayoutId use a
+  // separate, much higher ID range (PowerPoint reserves 0x80000000+ for
+  // those), and folding them into this counter produces slide IDs above the
+  // valid ST_SlideId range, which PowerPoint flags as a corrupt file.
+  const existingSldIdListMatch = presXml.match(/<p:sldIdLst>[\s\S]*?<\/p:sldIdLst>/)
+  const existingNums = existingSldIdListMatch
+    ? [...existingSldIdListMatch[0].matchAll(/<p:sldId id="(\d+)"/g)].map(m => +m[1])
+    : []
   let maxSldId = Math.max(300, ...existingNums)
 
   // Build entries: slide1 (cover) keeps its original rId7, new slides get fresh IDs
