@@ -185,14 +185,17 @@ function DraggableBox({ box, onChange, children }) {
         top: `${box.y * 100}%`,
         width: `${box.w * 100}%`,
         height: `${box.h * 100}%`,
-        overflow: 'hidden',
         outline: '1px dashed rgba(0,0,0,0.25)',
         boxSizing: 'border-box',
       }}
     >
-      {children}
-      {/* Drag handle — kept separate from the editable content so clicking
-          into text doesn't get swallowed by the box's move-drag. */}
+      <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+        {children}
+      </div>
+      {/* Drag handle — kept separate from the editable content (and outside
+          the overflow:hidden content layer) so clicking into text doesn't
+          get swallowed by the box's move-drag, and the handle stays visible
+          even when the box sits at the canvas edge. */}
       <div
         onPointerDown={e => startDrag(e, 'move')}
         title="Drag to move"
