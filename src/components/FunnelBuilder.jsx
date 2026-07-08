@@ -21,10 +21,7 @@ function FunnelIcon({ size = 48 }) {
 
 // ── Slide-style preview of the funnel ────────────────────────────────────────
 export function FunnelSlidePreview({ config, scale = 1 }) {
-  const activeStages = FUNNEL_STAGES.map(stage => ({
-    ...stage,
-    activeItems: stage.items.filter(item => config?.[stage.id]?.[item] !== false),
-  })).filter(s => s.activeItems.length > 0)
+  const activeStages = FUNNEL_STAGES
 
   return (
     <div style={{
@@ -72,17 +69,21 @@ export function FunnelSlidePreview({ config, scale = 1 }) {
               padding: '0.8cqw 1cqw',
               display: 'flex', flexWrap: 'wrap', gap: '0.5cqw',
             }}>
-              {stage.activeItems.map((item, i) => (
-                <span key={i} style={{
-                  background: isGray(item) ? '#4a4a4a' : '#CD2F37',
-                  color: '#fff',
-                  fontSize: '0.95cqw',
-                  fontWeight: 500,
-                  padding: '0.3cqw 0.8cqw',
-                  borderRadius: '0.4cqw',
-                  whiteSpace: 'nowrap',
-                }}>{item}</span>
-              ))}
+              {stage.items.map((item, i) => {
+                const active = config?.[stage.id]?.[item] !== false
+                return (
+                  <span key={i} style={{
+                    background: active ? '#CD2F37' : '#4a4a4a',
+                    color: '#fff',
+                    fontSize: '0.95cqw',
+                    fontWeight: 500,
+                    padding: '0.3cqw 0.8cqw',
+                    borderRadius: '0.4cqw',
+                    whiteSpace: 'nowrap',
+                    opacity: active ? 1 : 0.55,
+                  }}>{item}</span>
+                )
+              })}
             </div>
           </div>
         ))}
@@ -91,12 +92,6 @@ export function FunnelSlidePreview({ config, scale = 1 }) {
   )
 }
 
-// Some items in the reference image appear in a dark gray pill — approximate
-// which ones based on presence of specific keywords
-function isGray(item) {
-  return ['Employer Brand Hub', 'Blog', 'PrintPromo Swag', 'Collateral Material',
-          'SEM Interactive Brand Display', 'Fleet Intel', 'Driver Journey'].includes(item)
-}
 
 function FunnelIconScaled() {
   return (
