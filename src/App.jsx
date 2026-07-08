@@ -125,6 +125,10 @@ export default function App() {
         if (!original) return genSlide
         return {
           ...genSlide,
+          // Always restore the user's exact bullet text — the AI paraphrases,
+          // which the user doesn't want.
+          bullets: original.bullets?.length ? original.bullets : genSlide.bullets,
+          body:    original.body || genSlide.body,
           ...(original.table  ? { table:  original.table }  : {}),
           ...(original.style  ? { style:  original.style }  : {}),
           ...(original.source ? { source: original.source } : {}),
