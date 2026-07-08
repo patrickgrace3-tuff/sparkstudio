@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { DEPARTMENTS } from '../lib/constants.js'
 import { parseRichText } from '../lib/richtext.js'
+import { FunnelSlidePreview } from './FunnelBuilder.jsx'
 
 function RichText({ text }) {
   return parseRichText(text).map((seg, i) => {
@@ -147,7 +148,7 @@ function groupByDept(slides) {
 }
 
 // ── Build a flat, ordered list of slide descriptors shared by grid + presenter view ──
-function buildSlideList(deck) {
+function buildSlideList(deck, funnelConfig) {
   const groups = groupByDept(deck.slides)
   const list = [{ kind: 'cover', label: 'Cover' }]
   for (const group of groups) {
@@ -155,6 +156,9 @@ function buildSlideList(deck) {
     for (const slide of group.slides) {
       list.push({ kind: 'content', label: group.dept, slide })
     }
+  }
+  if (funnelConfig) {
+    list.push({ kind: 'funnel', label: 'Funnel', funnelConfig })
   }
   list.push({ kind: 'closing', label: 'Closing' })
   return list
@@ -165,6 +169,7 @@ function renderSlide(item) {
     case 'cover':   return <CoverSlidePreview />
     case 'section': return <SectionSlidePreview dept={item.dept} />
     case 'closing': return <ClosingSlidePreview />
+    case 'funnel':  return <FunnelSlidePreview config={item.funnelConfig} />
     default:        return <ContentSlidePreview slide={item.slide} />
   }
 }
@@ -200,7 +205,7 @@ function PresenterView({ slides, startIndex, onClose }) {
   )
 }
 
-export default function PreviewPanel({ deck, isGenerating, onExport, isExporting }) {
+export default function PreviewPanel({ deck, funnelConfig, isGenerating, onExport, isExporting }) {
   const [presenting, setPresenting] = useState(false)
   const [startIndex, setStartIndex] = useState(0)
 
@@ -221,7 +226,7 @@ export default function PreviewPanel({ deck, isGenerating, onExport, isExporting
     )
   }
 
-  const slides = buildSlideList(deck)
+  const slides = buildSlideList(deck, funnelConfig)
 
   return (
     <div style={S.wrapper}>

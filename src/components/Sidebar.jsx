@@ -10,6 +10,7 @@ export default function Sidebar({
   presTitle,
   onOpenGlobal,
   globalFileCount,
+  onOpenFunnel,
 }) {
   const totalSlides = Object.values(allSlides).reduce((a, b) => a + b.length, 0)
 
@@ -47,6 +48,12 @@ export default function Sidebar({
         )}
       </button>
 
+      {/* Funnel Builder */}
+      <button style={styles.funnelBtn} onClick={onOpenFunnel}>
+        <span style={styles.globalIcon}>🔻</span>
+        <span style={styles.globalLabel}>Funnel</span>
+      </button>
+
       <div style={styles.footer}>
         <p style={styles.totalLabel}>{totalSlides} slide{totalSlides !== 1 ? 's' : ''} total</p>
         <button
@@ -80,6 +87,7 @@ const styles = {
   totalLabel: { fontSize: 12, color: 'var(--color-text-muted)', textAlign: 'center' },
   generateBtn: { width: '100%', padding: '10px 0', borderRadius: 'var(--radius-pill)', border: 'none', background: 'var(--color-accent)', color: '#FFFFFF', fontSize: 14, fontWeight: 600, fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: '0.03em' },
   globalBtn:   { display: 'flex', alignItems: 'center', gap: 8, margin: '4px 6px 0', padding: '9px 8px', borderRadius: 'var(--radius-sm)', border: '0.5px solid var(--color-border)', background: 'var(--color-bg)', cursor: 'pointer', width: 'calc(100% - 12px)', textAlign: 'left' },
+  funnelBtn:   { display: 'flex', alignItems: 'center', gap: 8, margin: '4px 6px 0', padding: '9px 8px', borderRadius: 'var(--radius-sm)', border: '0.5px solid var(--color-border)', background: 'var(--color-bg)', cursor: 'pointer', width: 'calc(100% - 12px)', textAlign: 'left' },
   globalIcon:  { fontSize: 14 },
   globalLabel: { fontSize: 13, color: 'var(--color-text-primary)', flex: 1 },
   globalBadge: { fontSize: 11, color: '#7F77DD', background: '#7F77DD12', border: '0.5px solid #7F77DD44', padding: '1px 7px', borderRadius: 99 },
