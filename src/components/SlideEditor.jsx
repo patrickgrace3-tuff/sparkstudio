@@ -495,9 +495,26 @@ export default function SlideEditor({ slide, onSave, onClose }) {
       bodyBox: slide.style?.bodyBox ?? { x: 0.045, y: 0.19, w: 0.829, h: 0.63 },
     },
   })
-  const [bgImage,     setBgImage]     = useState(slide.style?.bgImage ?? null)
-  const [activePanel, setActivePanel] = useState('content') // content | layout | style
-  const [fullscreen,  setFullscreen]  = useState(false)
+  const [bgImage,       setBgImage]       = useState(slide.style?.bgImage ?? null)
+  const [activePanel,   setActivePanel]   = useState('content') // content | layout | style
+  const [fullscreen,    setFullscreen]    = useState(false)
+  const [controlsWidth, setControlsWidth] = useState(300)
+  const splitterDragRef = useRef(null)
+
+  function onSplitterPointerDown(e) {
+    e.preventDefault()
+    splitterDragRef.current = { startX: e.clientX, startW: controlsWidth }
+    const onMove = (ev) => {
+      const dx = ev.clientX - splitterDragRef.current.startX
+      setControlsWidth(Math.max(200, Math.min(600, splitterDragRef.current.startW + dx)))
+    }
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
   // Table state — separate from draft so edits are granular
   const [table, setTable] = useState(
     slide.table
@@ -676,7 +693,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
         <div style={styles.body}>
 
           {/* Left — controls */}
-          <div style={styles.controls}>
+          <div style={{ ...styles.controls, width: controlsWidth }}>
             {/* Panel tabs */}
             <div style={styles.panelTabs}>
               {['content', 'layout', 'style'].map(p => (
@@ -904,6 +921,9 @@ export default function SlideEditor({ slide, onSave, onClose }) {
             )}
           </div>
 
+          {/* Drag splitter */}
+          <div style={styles.splitter} onPointerDown={onSplitterPointerDown} title="Drag to resize" />
+
           {/* Right — live preview */}
           <div style={styles.preview}>
             <div style={styles.previewInner}>
@@ -944,7 +964,8 @@ const styles = {
   btnClose:         { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '7px 12px', fontSize: 13, cursor: 'pointer', color: 'var(--color-text-secondary)' },
   btnFullscreen:    { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '7px 14px', fontSize: 13, cursor: 'pointer', color: 'var(--color-text-secondary)' },
   body:             { display: 'flex', flex: 1, overflow: 'hidden' },
-  controls:         { width: 300, flexShrink: 0, borderRight: '0.5px solid var(--color-border)', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
+  controls:         { flexShrink: 0, borderRight: 'none', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
+  splitter:         { width: 5, flexShrink: 0, cursor: 'col-resize', background: 'var(--color-border)', transition: 'background 0.15s', userSelect: 'none' },
   panelTabs:        { display: 'flex', borderBottom: '0.5px solid var(--color-border)', padding: '0 12px' },
   panelTab:         { flex: 1, padding: '10px 4px', fontSize: 12, background: 'none', border: 'none', borderBottomWidth: 2, borderBottomStyle: 'solid', borderBottomColor: 'transparent', cursor: 'pointer', color: 'var(--color-text-secondary)', marginBottom: -1 },
   panelTabActive:   { color: 'var(--color-accent)', borderBottomColor: 'var(--color-accent)', fontWeight: 600 },
@@ -982,8 +1003,8 @@ const styles = {
   colorPicker:      { width: 36, height: 36, border: '0.5px solid var(--color-border)', borderRadius: 6, cursor: 'pointer', padding: 2 },
   colorVal:         { fontSize: 12, color: 'var(--color-text-muted)', fontFamily: 'monospace' },
   select:           { background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 7, padding: '7px 10px', fontSize: 13, color: 'var(--color-text-primary)', width: '100%', outline: 'none' },
-  preview:          { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px 24px', gap: 12, background: 'var(--color-bg-secondary)', overflow: 'auto' },
-  previewInner:     { width: '100%', maxWidth: 900 },
+  preview:          { flex: 1, display: 'flex', flexDirection: 'column', padding: '20px 24px', gap: 12, background: 'var(--color-bg-secondary)', overflow: 'auto' },
+  previewInner:     { width: '100%' },
   previewLabel:     { fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' },
   previewHint:      { fontSize: 11, color: 'var(--color-text-muted)', textAlign: 'center' },
 }
