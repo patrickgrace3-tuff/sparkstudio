@@ -7,7 +7,9 @@ import PreviewPanel from './components/PreviewPanel.jsx'
 import FileManager  from './components/FileManager.jsx'
 import SlideEditor  from './components/SlideEditor.jsx'
 import AIAssistant  from './components/AIAssistant.jsx'
+import FunnelBuilder from './components/FunnelBuilder.jsx'
 import { DEPARTMENTS } from './lib/constants.js'
+import { loadFunnelConfig } from './lib/funnel.js'
 import { loadClients, saveClients } from './lib/clients.js'
 import { loadSlides, saveSlides } from './lib/storage.js'
 import { loadFiles, buildAIContext, loadGlobalFiles, saveGlobalFiles } from './lib/files.js'
@@ -27,6 +29,7 @@ export default function App() {
   const [isExporting,    setIsExporting]    = useState(false)
   const [editingSlide,   setEditingSlide]   = useState(null) // { index, slide }
   const [showGlobal,     setShowGlobal]     = useState(false)
+  const [showFunnel,     setShowFunnel]     = useState(false)
 
   useEffect(() => {
     if (!activeClientId) return
@@ -178,9 +181,15 @@ export default function App() {
           presTitle={activeClient?.name ?? 'Presentation'}
           onOpenGlobal={() => setShowGlobal(true)}
           globalFileCount={loadGlobalFiles(activeClientId ?? '').files.length}
+          onOpenFunnel={() => setShowFunnel(true)}
         />
 
         <div style={styles.main}>
+          {/* Funnel Builder modal */}
+          {showFunnel && (
+            <FunnelBuilder onClose={() => setShowFunnel(false)} />
+          )}
+
           {/* Global Files overlay */}
           {showGlobal && activeClientId && (
             <div style={styles.globalOverlay}>
@@ -297,6 +306,7 @@ export default function App() {
           {activeTab === 'preview' && (
             <PreviewPanel
               deck={deck}
+              funnelConfig={loadFunnelConfig()}
               isGenerating={isGenerating}
               onExport={handleExport}
               isExporting={isExporting}
