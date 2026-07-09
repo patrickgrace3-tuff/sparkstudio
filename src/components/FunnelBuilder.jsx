@@ -48,15 +48,15 @@ export function FunnelSlidePreview({ config, scale = 1 }) {
         gap: '1cqw',
       }}>
         {activeStages.map(stage => (
-          <div key={stage.id} style={{ display: 'flex', alignItems: 'center', gap: '2cqw', minHeight: 0 }}>
+          <div key={stage.id} style={{ display: 'flex', alignItems: 'center', gap: '1.5cqw', minHeight: 0 }}>
             {/* Icon + label */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1.2cqw', flexShrink: 0, width: '22cqw' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.8cqw', flexShrink: 0, width: '18cqw' }}>
               <div style={{ flexShrink: 0 }}>
                 <FunnelIconScaled />
               </div>
               <span style={{
-                fontSize: '2cqw', fontWeight: 800, color: '#fff',
-                letterSpacing: '0.08em', whiteSpace: 'nowrap',
+                fontSize: '1.6cqw', fontWeight: 800, color: '#fff',
+                letterSpacing: '0.06em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
               }}>{stage.label}</span>
             </div>
 
@@ -213,8 +213,8 @@ export default function FunnelBuilder({ onClose }) {
 }
 
 const S = {
-  overlay:      { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  modal:        { background: 'var(--color-bg)', borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: 1280, height: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' },
+  overlay:      { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 },
+  modal:        { background: 'var(--color-bg)', borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: 1500, height: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' },
   header:       { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '0.5px solid var(--color-border)', flexShrink: 0 },
   title:        { fontSize: 15, fontWeight: 700, color: 'var(--color-text-primary)', marginRight: 12 },
   sub:          { fontSize: 13, color: 'var(--color-text-muted)' },
