@@ -98,12 +98,13 @@ export function TeamSlidePreview({ config, onMemberMove }) {
     return pt.matrixTransform(svg.getScreenCTM().inverse())
   }
 
-  function onPhotoPointerDown(e, member) {
+  function onPhotoPointerDown(e, member, currentX, currentY) {
     if (!onMemberMove) return
     e.preventDefault()
     e.stopPropagation()
     const p = svgPoint(e)
-    dragRef.current = { memberId: member.id, ox: p.x - (member.svgX ?? 0), oy: p.y - (member.svgY ?? 0) }
+    // Use the actual rendered position so there's no jump on first move
+    dragRef.current = { memberId: member.id, ox: p.x - currentX, oy: p.y - currentY }
     window.addEventListener('pointermove', onWindowMove)
     window.addEventListener('pointerup',   onWindowUp)
   }
@@ -128,14 +129,14 @@ export function TeamSlidePreview({ config, onMemberMove }) {
     }}>
 
       {/* ── Left half — wheel ─────────────────────────────────────── */}
-      <div style={{ flex: '0 0 58%', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {/* MY TEAM title */}
-        <div style={{ position: 'absolute', top: '5%', left: '6%' }}>
+      <div style={{ flex: '0 0 58%', display: 'flex', flexDirection: 'column', padding: '3% 4% 2%' }}>
+        {/* MY TEAM title — above the wheel, never overlapping */}
+        <div style={{ marginBottom: '2%', flexShrink: 0 }}>
           <div style={{ fontSize: '3.5cqw', fontWeight: 900, color: '#1a1a1a', letterSpacing: '-0.02em', lineHeight: 1 }}>MY TEAM</div>
           <div style={{ width: '4.5cqw', height: '0.4cqw', background: '#CD2F37', marginTop: '0.5cqw' }} />
         </div>
 
-        <svg ref={svgRef} viewBox="0 0 400 400" style={{ width: '90%', height: '90%', overflow: 'visible' }}>
+        <svg ref={svgRef} viewBox="0 0 400 400" style={{ width: '100%', flex: 1, minHeight: 0, overflow: 'visible' }}>
           <defs>
             {/* Label arcs for each dept */}
             {wheelDepts.map((dept, i) => {
@@ -215,7 +216,7 @@ export function TeamSlidePreview({ config, onMemberMove }) {
               <g
                 key={m.id}
                 style={{ cursor: isDraggable ? 'grab' : 'default' }}
-                onPointerDown={e => onPhotoPointerDown(e, m)}
+                onPointerDown={e => onPhotoPointerDown(e, m, x, y)}
               >
                 <circle cx={x} cy={y} r={pr + 2} fill="#CD2F37" />
                 {m.imageDataUrl ? (
@@ -590,8 +591,8 @@ function MemberRow({ member, onEdit, onDelete, badge }) {
 }
 
 const S = {
-  overlay:      { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 },
-  modal:        { background: 'var(--color-bg)', borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: 1500, height: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' },
+  overlay:      { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'stretch', justifyContent: 'stretch' },
+  modal:        { background: 'var(--color-bg)', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
   header:       { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '0.5px solid var(--color-border)', flexShrink: 0 },
   title:        { fontSize: 15, fontWeight: 700, color: 'var(--color-text-primary)' },
   sub:          { fontSize: 13, color: 'var(--color-text-muted)' },
