@@ -20,7 +20,7 @@ function FunnelIcon({ size = 48 }) {
 }
 
 // ── Slide-style preview of the funnel ────────────────────────────────────────
-export function FunnelSlidePreview({ config, scale = 1 }) {
+export function FunnelSlidePreview({ config, scale = 1, onToggle }) {
   const activeStages = FUNNEL_STAGES
 
   return (
@@ -72,16 +72,23 @@ export function FunnelSlidePreview({ config, scale = 1 }) {
               {stage.items.map((item, i) => {
                 const active = config?.[stage.id]?.[item] !== false
                 return (
-                  <span key={i} style={{
-                    background: active ? '#CD2F37' : '#4a4a4a',
-                    color: '#fff',
-                    fontSize: '0.95cqw',
-                    fontWeight: 500,
-                    padding: '0.3cqw 0.8cqw',
-                    borderRadius: '0.4cqw',
-                    whiteSpace: 'nowrap',
-                    opacity: active ? 1 : 0.55,
-                  }}>{item}</span>
+                  <span
+                    key={i}
+                    onClick={onToggle ? () => onToggle(stage.id, item) : undefined}
+                    style={{
+                      background: active ? '#CD2F37' : '#4a4a4a',
+                      color: '#fff',
+                      fontSize: '0.95cqw',
+                      fontWeight: 500,
+                      padding: '0.3cqw 0.8cqw',
+                      borderRadius: '0.4cqw',
+                      whiteSpace: 'nowrap',
+                      opacity: active ? 1 : 0.55,
+                      cursor: onToggle ? 'pointer' : 'default',
+                      userSelect: 'none',
+                      transition: 'background 0.15s, opacity 0.15s',
+                    }}
+                  >{item}</span>
                 )
               })}
             </div>
@@ -200,7 +207,7 @@ export default function FunnelBuilder({ onClose }) {
           {/* Right — live preview */}
           <div style={S.preview}>
             <div style={S.previewLabel}>Live preview</div>
-            <FunnelSlidePreview config={config} />
+            <FunnelSlidePreview config={config} onToggle={toggle} />
             <div style={S.previewHint}>
               This slide will appear in your generated deck
             </div>
