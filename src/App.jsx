@@ -11,6 +11,7 @@ import FunnelBuilder from './components/FunnelBuilder.jsx'
 import TeamBuilder   from './components/TeamBuilder.jsx'
 import { DEPARTMENTS } from './lib/constants.js'
 import { loadFunnelConfig } from './lib/funnel.js'
+import { loadTeamConfig }  from './lib/team.js'
 import { loadClients, saveClients } from './lib/clients.js'
 import { loadSlides, saveSlides } from './lib/storage.js'
 import { loadFiles, buildAIContext, loadGlobalFiles, saveGlobalFiles } from './lib/files.js'
@@ -314,6 +315,7 @@ export default function App() {
             <PreviewPanel
               deck={deck}
               funnelConfig={loadFunnelConfig()}
+              teamConfig={loadTeamConfig()}
               isGenerating={isGenerating}
               onExport={handleExport}
               isExporting={isExporting}

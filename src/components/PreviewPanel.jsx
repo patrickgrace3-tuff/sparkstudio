@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { DEPARTMENTS } from '../lib/constants.js'
 import { parseRichText } from '../lib/richtext.js'
 import { FunnelSlidePreview } from './FunnelBuilder.jsx'
+import { TeamSlidePreview } from './TeamBuilder.jsx'
 
 function RichText({ text }) {
   return parseRichText(text).map((seg, i) => {
@@ -148,7 +149,7 @@ function groupByDept(slides) {
 }
 
 // ── Build a flat, ordered list of slide descriptors shared by grid + presenter view ──
-function buildSlideList(deck, funnelConfig) {
+function buildSlideList(deck, funnelConfig, teamConfig) {
   const groups = groupByDept(deck.slides)
   const list = [{ kind: 'cover', label: 'Cover' }]
   for (const group of groups) {
@@ -160,6 +161,9 @@ function buildSlideList(deck, funnelConfig) {
   if (funnelConfig) {
     list.push({ kind: 'funnel', label: 'Funnel', funnelConfig })
   }
+  if (teamConfig) {
+    list.push({ kind: 'team', label: 'My Team', teamConfig })
+  }
   list.push({ kind: 'closing', label: 'Closing' })
   return list
 }
@@ -170,6 +174,7 @@ function renderSlide(item) {
     case 'section': return <SectionSlidePreview dept={item.dept} />
     case 'closing': return <ClosingSlidePreview />
     case 'funnel':  return <FunnelSlidePreview config={item.funnelConfig} />
+    case 'team':    return <TeamSlidePreview config={item.teamConfig} />
     default:        return <ContentSlidePreview slide={item.slide} />
   }
 }
@@ -205,9 +210,12 @@ function PresenterView({ slides, startIndex, onClose }) {
   )
 }
 
-export default function PreviewPanel({ deck, funnelConfig, isGenerating, onExport, isExporting }) {
-  const [presenting, setPresenting] = useState(false)
-  const [startIndex, setStartIndex] = useState(0)
+export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerating, onExport, isExporting }) {
+  const [presenting,  setPresenting]  = useState(false)
+  const [startIndex,  setStartIndex]  = useState(0)
+  const [order,       setOrder]       = useState(null)   // null = use default order
+  const dragIdx = useRef(null)
+  const overIdx = useRef(null)
 
   if (isGenerating) {
     return (
@@ -226,7 +234,39 @@ export default function PreviewPanel({ deck, funnelConfig, isGenerating, onExpor
     )
   }
 
-  const slides = buildSlideList(deck, funnelConfig)
+  const baseSlides = buildSlideList(deck, funnelConfig, teamConfig)
+  // Apply custom order if the user has reordered slides
+  const slides = order ? order.map(i => baseSlides[i]) : baseSlides
+
+  // ── Drag-to-reorder handlers ──────────────────────────────────────────────
+  function onDragStart(e, i) {
+    dragIdx.current = i
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  function onDragOver(e, i) {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    overIdx.current = i
+  }
+
+  function onDrop(e, i) {
+    e.preventDefault()
+    const from = dragIdx.current
+    if (from === null || from === i) return
+    const base = order || baseSlides.map((_, idx) => idx)
+    const next = [...base]
+    const [moved] = next.splice(from, 1)
+    next.splice(i, 0, moved)
+    setOrder(next)
+    dragIdx.current = null
+    overIdx.current = null
+  }
+
+  function onDragEnd() {
+    dragIdx.current = null
+    overIdx.current = null
+  }
 
   return (
     <div style={S.wrapper}>
@@ -254,8 +294,13 @@ export default function PreviewPanel({ deck, funnelConfig, isGenerating, onExpor
       <div style={S.grid}>
         {slides.map((item, i) => (
           <div
-            key={i}
-            style={S.slideWrapper}
+            key={`${item.kind}-${i}`}
+            draggable
+            onDragStart={e => onDragStart(e, i)}
+            onDragOver={e => onDragOver(e, i)}
+            onDrop={e => onDrop(e, i)}
+            onDragEnd={onDragEnd}
+            style={{ ...S.slideWrapper, cursor: 'grab' }}
             onClick={() => { setStartIndex(i); setPresenting(true) }}
           >
             <div style={S.slideLabel}>Slide {i + 1} · {item.label}</div>
