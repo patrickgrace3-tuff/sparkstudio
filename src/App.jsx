@@ -145,10 +145,10 @@ export default function App() {
     }
   }
 
-  async function handleExport() {
+  async function handleExport(orderedSlides) {
     if (!deck) return
     setIsExporting(true)
-    try { await exportToPptx(deck) }
+    try { await exportToPptx(orderedSlides, deck) }
     catch (err) { alert('Export failed: ' + err.message) }
     finally { setIsExporting(false) }
   }

@@ -376,71 +376,192 @@ function patchClosingSlide(xml) {
   return replaceMarkerText(xml, 'Section Title', 'Thank You for Joining Us')
 }
 
+// ── React component → PNG data URL ───────────────────────────────────────────
+// Renders a React element into a hidden off-screen div, serialises the DOM
+// into an SVG foreignObject, draws it on a canvas, and returns a PNG data URL.
+// Works for slide preview components because they use only inline styles and
+// data: URLs — no external resources that would taint the canvas.
+
+async function renderComponentToDataUrl(reactElement, width = 1280, height = 720) {
+  const { createRoot } = await import('react-dom/client')
+
+  const container = document.createElement('div')
+  container.style.cssText = `position:fixed;left:-99999px;top:0;width:${width}px;height:${height}px;overflow:hidden;background:#fff`
+  document.body.appendChild(container)
+
+  const root = createRoot(container)
+  await new Promise(resolve => {
+    root.render(reactElement)
+    // Two animation frames to ensure layout + paint complete
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  })
+
+  const svgStr = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">`,
+    `<foreignObject width="100%" height="100%">`,
+    `<html xmlns="http://www.w3.org/1999/xhtml"><body style="margin:0;padding:0">`,
+    container.innerHTML,
+    `</body></html></foreignObject></svg>`,
+  ].join('')
+
+  const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' })
+  const url  = URL.createObjectURL(blob)
+
+  const dataUrl = await new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width  = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, width, height)
+      ctx.drawImage(img, 0, 0, width, height)
+      URL.revokeObjectURL(url)
+      resolve(canvas.toDataURL('image/png'))
+    }
+    img.onerror = reject
+    img.src = url
+  })
+
+  root.unmount()
+  document.body.removeChild(container)
+  return dataUrl
+}
+
+// Build a minimal blank slide XML with a single full-bleed image.
+function buildImageSlideXml(rId) {
+  const id1 = _nextShapeId++
+  const id2 = _nextShapeId++
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+       xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+       xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld>
+    <p:spTree>
+      <p:nvGrpSpPr>
+        <p:cNvPr id="${id1}" name=""/>
+        <p:cNvGrpSpPr/>
+        <p:nvPr/>
+      </p:nvGrpSpPr>
+      <p:grpSpPr>
+        <a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm>
+      </p:grpSpPr>
+      <p:pic>
+        <p:nvPicPr>
+          <p:cNvPr id="${id2}" name="SlideImage"/>
+          <p:cNvPicPr><a:picLocks noGrp="1"/></p:cNvPicPr>
+          <p:nvPr/>
+        </p:nvPicPr>
+        <p:blipFill>
+          <a:blip r:embed="${rId}"/>
+          <a:stretch><a:fillRect/></a:stretch>
+        </p:blipFill>
+        <p:spPr>
+          <a:xfrm><a:off x="0" y="0"/><a:ext cx="${SLIDE_W}" cy="${SLIDE_H}"/></a:xfrm>
+          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+        </p:spPr>
+      </p:pic>
+    </p:spTree>
+  </p:cSld>
+</p:sld>`
+}
+
+// Build rels XML for a blank image slide (layout rel inherited from slide2, image rel added).
+function buildImageSlideRels(layoutRId, imgRId, mediaName) {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="${layoutRId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+  <Relationship Id="${imgRId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${mediaName}"/>
+</Relationships>`
+}
+
+// Embed a PNG data URL as a media file and return the rels + rId for the image.
+function embedPng(zip, dataUrl) {
+  const base64  = dataUrl.split(',')[1]
+  const binary  = atob(base64)
+  const bytes   = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  const name    = `image${_nextMediaId++}.png`
+  zip.file(`ppt/media/${name}`, bytes)
+  return name
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────────
 
-export async function exportToPptx(deck) {
-  const buffer = await fetchTemplate()
-  const zip = await JSZip.loadAsync(buffer)
+// orderedSlides: the slide descriptor array from PreviewPanel (may be reordered
+// by the user). Each item: { kind, label, slide?, dept?, funnelConfig?, teamConfig? }
+export async function exportToPptx(orderedSlides, deck) {
+  const { createElement } = await import('react')
+  const { FunnelSlidePreview } = await import('../components/FunnelBuilder.jsx')
+  const { TeamSlidePreview }   = await import('../components/TeamBuilder.jsx')
 
-  // Read template slide XMLs
+  const buffer = await fetchTemplate()
+  const zip    = await JSZip.loadAsync(buffer)
+
   const slide2Xml = await zip.file('ppt/slides/slide2.xml').async('string')
   const slide3Xml = await zip.file('ppt/slides/slide3.xml').async('string')
-
-  // Read rels for slides 2 & 3 (needed so backgrounds/images resolve)
-  const getRels = async (n) => {
+  const getRels   = async (n) => {
     const f = zip.file(`ppt/slides/_rels/slide${n}.xml.rels`)
     return f ? f.async('string') : null
   }
   const slide2Rels = await getRels(2)
   const slide3Rels = await getRels(3)
 
-  // Group slides by department — one section divider per dept
-  const groups = []
-  let _currentDept = null
-  for (const slide of deck.slides) {
-    if (!_currentDept || _currentDept.dept !== slide.dept) {
-      _currentDept = { dept: slide.dept, slides: [] }
-      groups.push(_currentDept)
-    }
-    _currentDept.slides.push(slide)
-  }
-
-  // Build slide list: cover stays as slide1
-  // Then for each dept group: 1 section + N content slides
   const newSlides = []
   let idx = 4
 
-  for (const group of groups) {
-    // Section divider — one per dept
-    newSlides.push({
-      filename: `ppt/slides/slide${idx}.xml`,
-      relsFilename: `ppt/slides/_rels/slide${idx}.xml.rels`,
-      xml: rewriteShapeIds(patchSectionSlide(slide2Xml, group.dept)),
-      relsXml: slide2Rels,
-    })
-    idx++
+  for (const item of orderedSlides) {
+    if (item.kind === 'cover') continue   // slide1 is kept as-is from template
 
-    // All content slides for this dept
-    for (const slide of group.slides) {
-      const { xml: patchedXml, relsXml: patchedRels } = patchContentSlide(zip, slide3Xml, slide3Rels, slide, slide.table ?? null)
+    if (item.kind === 'section') {
       newSlides.push({
-        filename: `ppt/slides/slide${idx}.xml`,
+        filename:     `ppt/slides/slide${idx}.xml`,
         relsFilename: `ppt/slides/_rels/slide${idx}.xml.rels`,
-        xml: rewriteShapeIds(patchedXml),
-        relsXml: patchedRels,
+        xml:          rewriteShapeIds(patchSectionSlide(slide2Xml, item.dept)),
+        relsXml:      slide2Rels,
+      })
+      idx++
+
+    } else if (item.kind === 'content') {
+      const { xml: patchedXml, relsXml: patchedRels } = patchContentSlide(zip, slide3Xml, slide3Rels, item.slide, item.slide.table ?? null)
+      newSlides.push({
+        filename:     `ppt/slides/slide${idx}.xml`,
+        relsFilename: `ppt/slides/_rels/slide${idx}.xml.rels`,
+        xml:          rewriteShapeIds(patchedXml),
+        relsXml:      patchedRels,
+      })
+      idx++
+
+    } else if (item.kind === 'closing') {
+      newSlides.push({
+        filename:     `ppt/slides/slide${idx}.xml`,
+        relsFilename: `ppt/slides/_rels/slide${idx}.xml.rels`,
+        xml:          rewriteShapeIds(patchClosingSlide(slide2Xml)),
+        relsXml:      slide2Rels,
+      })
+      idx++
+
+    } else if (item.kind === 'funnel' || item.kind === 'team') {
+      // Render the visual component to a PNG and embed as a full-bleed image slide
+      const element = item.kind === 'funnel'
+        ? createElement(FunnelSlidePreview, { config: item.funnelConfig })
+        : createElement(TeamSlidePreview,   { config: item.teamConfig })
+
+      const dataUrl  = await renderComponentToDataUrl(element, 1280, 720)
+      const imgRId   = `rIdImg${_nextMediaId}`
+      const mediaName = embedPng(zip, dataUrl)
+      const layoutRId = `rIdLayout${idx}`
+
+      newSlides.push({
+        filename:     `ppt/slides/slide${idx}.xml`,
+        relsFilename: `ppt/slides/_rels/slide${idx}.xml.rels`,
+        xml:          buildImageSlideXml(imgRId),
+        relsXml:      buildImageSlideRels(layoutRId, imgRId, mediaName),
       })
       idx++
     }
   }
-
-  // Always add closing "Thank you" slide using the dark section template
-  newSlides.push({
-    filename: `ppt/slides/slide${idx}.xml`,
-    relsFilename: `ppt/slides/_rels/slide${idx}.xml.rels`,
-    xml: rewriteShapeIds(patchClosingSlide(slide2Xml)),
-    relsXml: slide2Rels,
-  })
-  idx++
 
   // ── Remove template slides 2 & 3 from zip (only slide 1 cover is kept) ────
   zip.remove('ppt/slides/slide2.xml')
@@ -448,7 +569,6 @@ export async function exportToPptx(deck) {
   zip.remove('ppt/slides/_rels/slide2.xml.rels')
   zip.remove('ppt/slides/_rels/slide3.xml.rels')
 
-  // Add new slide files to zip
   for (const s of newSlides) {
     zip.file(s.filename, s.xml)
     if (s.relsXml) zip.file(s.relsFilename, s.relsXml)
@@ -456,38 +576,30 @@ export async function exportToPptx(deck) {
 
   // ── Update [Content_Types].xml ───────────────────────────────────────────────
   let ctXml = await zip.file('[Content_Types].xml').async('string')
-  // Remove template slide 2 & 3 overrides
   ctXml = ctXml
     .replace(/<Override[^/]*PartName="\/ppt\/slides\/slide2\.xml"[^/]*\/>/g, '')
     .replace(/<Override[^/]*PartName="\/ppt\/slides\/slide3\.xml"[^/]*\/>/g, '')
-  // Add new slide overrides
   const ctOverrides = newSlides
     .map(s => `<Override PartName="/${s.filename}" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`)
     .join('\n')
+  // Ensure PNG type is registered
+  if (!ctXml.includes('image/png')) {
+    ctXml = ctXml.replace('</Types>', `<Default Extension="png" ContentType="image/png"/>\n</Types>`)
+  }
   zip.file('[Content_Types].xml', ctXml.replace('</Types>', `${ctOverrides}\n</Types>`))
 
-  // ── Update presentation.xml — replace sldIdLst entirely ─────────────────────
+  // ── Update presentation.xml ──────────────────────────────────────────────────
   let presXml = await zip.file('ppt/presentation.xml').async('string')
-  // Only look at existing <p:sldId> entries — sldMasterId/sldLayoutId use a
-  // separate, much higher ID range (PowerPoint reserves 0x80000000+ for
-  // those), and folding them into this counter produces slide IDs above the
-  // valid ST_SlideId range, which PowerPoint flags as a corrupt file.
   const existingSldIdListMatch = presXml.match(/<p:sldIdLst>[\s\S]*?<\/p:sldIdLst>/)
   const existingNums = existingSldIdListMatch
     ? [...existingSldIdListMatch[0].matchAll(/<p:sldId id="(\d+)"/g)].map(m => +m[1])
     : []
   let maxSldId = Math.max(300, ...existingNums)
 
-  // Build entries: slide1 (cover) keeps its original rId7, new slides get fresh IDs
-  const sldIdEntries = newSlides.map((_, i) => ({
-    id: ++maxSldId,
-    rId: `rIdGen${i + 1}`,
-  }))
-
-  // Replace the entire sldIdLst — slide1 (rId7) first, then new slides
+  const sldIdEntries = newSlides.map((_, i) => ({ id: ++maxSldId, rId: `rIdGen${i + 1}` }))
   const sldIdXml = [
     '<p:sldId id="256" r:id="rId7"/>',
-    ...sldIdEntries.map(e => `<p:sldId id="${e.id}" r:id="${e.rId}"/>`)
+    ...sldIdEntries.map(e => `<p:sldId id="${e.id}" r:id="${e.rId}"/>`),
   ].join('\n    ')
 
   presXml = presXml.replace(/<p:sldIdLst>[\s\S]*?<\/p:sldIdLst>/, `<p:sldIdLst>\n    ${sldIdXml}\n  </p:sldIdLst>`)
@@ -495,17 +607,15 @@ export async function exportToPptx(deck) {
 
   // ── Update presentation.xml.rels ─────────────────────────────────────────────
   let presRels = await zip.file('ppt/_rels/presentation.xml.rels').async('string')
-  // Remove slide2 and slide3 relationships
   presRels = presRels
     .replace(/<Relationship[^/]*Target="slides\/slide2\.xml"[^/]*\/>/g, '')
     .replace(/<Relationship[^/]*Target="slides\/slide3\.xml"[^/]*\/>/g, '')
-  // Add new slide relationships
-  const newRelsXml = newSlides
+  const newRelsEntries = newSlides
     .map((s, i) => `<Relationship Id="${sldIdEntries[i].rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="${s.filename.replace('ppt/', '')}"/>`)
     .join('\n')
-  zip.file('ppt/_rels/presentation.xml.rels', presRels.replace('</Relationships>', `${newRelsXml}\n</Relationships>`))
+  zip.file('ppt/_rels/presentation.xml.rels', presRels.replace('</Relationships>', `${newRelsEntries}\n</Relationships>`))
 
-  // Generate blob and trigger download
+  // ── Generate and download ────────────────────────────────────────────────────
   const blob = await zip.generateAsync({
     type: 'blob',
     mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
@@ -517,9 +627,7 @@ export async function exportToPptx(deck) {
     .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '.pptx'
 
   const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
+  const a   = document.createElement('a')
+  a.href = url; a.download = filename; a.click()
   URL.revokeObjectURL(url)
 }
