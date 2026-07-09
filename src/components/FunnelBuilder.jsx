@@ -50,13 +50,13 @@ export function FunnelSlidePreview({ config, scale = 1 }) {
         {activeStages.map(stage => (
           <div key={stage.id} style={{ display: 'flex', alignItems: 'center', gap: '1.5cqw', minHeight: 0 }}>
             {/* Icon + label */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.8cqw', flexShrink: 0, width: '18cqw' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.8cqw', flexShrink: 0, width: '22cqw' }}>
               <div style={{ flexShrink: 0 }}>
                 <FunnelIconScaled />
               </div>
               <span style={{
-                fontSize: '1.6cqw', fontWeight: 800, color: '#fff',
-                letterSpacing: '0.06em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                fontSize: '1.4cqw', fontWeight: 800, color: '#fff',
+                letterSpacing: '0.05em', whiteSpace: 'nowrap',
               }}>{stage.label}</span>
             </div>
 
