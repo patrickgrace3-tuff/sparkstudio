@@ -11,6 +11,7 @@ export default function Sidebar({
   onOpenGlobal,
   globalFileCount,
   onOpenFunnel,
+  onOpenTeam,
 }) {
   const totalSlides = Object.values(allSlides).reduce((a, b) => a + b.length, 0)
 
@@ -52,6 +53,12 @@ export default function Sidebar({
       <button style={styles.funnelBtn} onClick={onOpenFunnel}>
         <span style={styles.globalIcon}>🔻</span>
         <span style={styles.globalLabel}>Funnel</span>
+      </button>
+
+      {/* My Team Builder */}
+      <button style={styles.funnelBtn} onClick={onOpenTeam}>
+        <span style={styles.globalIcon}>👥</span>
+        <span style={styles.globalLabel}>My Team</span>
       </button>
 
       <div style={styles.footer}>

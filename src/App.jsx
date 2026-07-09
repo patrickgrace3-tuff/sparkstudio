@@ -8,6 +8,7 @@ import FileManager  from './components/FileManager.jsx'
 import SlideEditor  from './components/SlideEditor.jsx'
 import AIAssistant  from './components/AIAssistant.jsx'
 import FunnelBuilder from './components/FunnelBuilder.jsx'
+import TeamBuilder   from './components/TeamBuilder.jsx'
 import { DEPARTMENTS } from './lib/constants.js'
 import { loadFunnelConfig } from './lib/funnel.js'
 import { loadClients, saveClients } from './lib/clients.js'
@@ -30,6 +31,7 @@ export default function App() {
   const [editingSlide,   setEditingSlide]   = useState(null) // { index, slide }
   const [showGlobal,     setShowGlobal]     = useState(false)
   const [showFunnel,     setShowFunnel]     = useState(false)
+  const [showTeam,       setShowTeam]       = useState(false)
 
   useEffect(() => {
     if (!activeClientId) return
@@ -178,10 +180,14 @@ export default function App() {
           onOpenGlobal={() => setShowGlobal(true)}
           globalFileCount={loadGlobalFiles(activeClientId ?? '').files.length}
           onOpenFunnel={() => setShowFunnel(true)}
+          onOpenTeam={() => setShowTeam(true)}
         />
 
         <div style={styles.main}>
           {/* Funnel Builder modal */}
+          {showTeam && (
+            <TeamBuilder onClose={() => setShowTeam(false)} />
+          )}
           {showFunnel && (
             <FunnelBuilder onClose={() => setShowFunnel(false)} />
           )}
