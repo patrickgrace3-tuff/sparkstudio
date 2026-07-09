@@ -196,6 +196,7 @@ export default function App() {
               </div>
               <FileManager
                 clientId={activeClientId}
+                clientName={activeClient?.name}
                 deptId="__global__"
                 deptName="Global Files"
                 deptColor="#7F77DD"
