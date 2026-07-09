@@ -192,6 +192,10 @@ export default function App() {
             <FunnelBuilder onClose={() => setShowFunnel(false)} />
           )}
 
+          {showTeam && (
+            <TeamBuilder onClose={() => setShowTeam(false)} />
+          )}
+
           {/* Global Files overlay */}
           {showGlobal && activeClientId && (
             <div style={styles.globalOverlay}>
