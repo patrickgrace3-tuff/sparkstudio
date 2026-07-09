@@ -283,7 +283,7 @@ export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerat
           </button>
           <button
             style={{ ...S.exportBtn, opacity: isExporting ? 0.5 : 1, cursor: isExporting ? 'not-allowed' : 'pointer' }}
-            onClick={onExport}
+            onClick={() => onExport(slides)}
             disabled={isExporting}
           >
             {isExporting ? 'Exporting…' : 'Export PowerPoint ↓'}
