@@ -117,9 +117,7 @@ export default function App() {
       const withData = contributions.map(d => {
         const fileData    = loadFiles(activeClientId, d.id)
         const fileSummary = buildAIContext(fileData, d.name, globalData).textSummary
-        const seedSlides  = selectedTemplate ? buildSeedSlides(selectedTemplate, d.name) : []
-        const slides      = [...seedSlides, ...(allSlides[d.id] || [])]
-        return { dept: d.name, slides, fileSummary }
+        return { dept: d.name, slides: allSlides[d.id] || [], fileSummary }
       })
       const result = await generateDeck(withData, activeClient.name)
 
@@ -249,7 +247,25 @@ export default function App() {
                 value={selectedTemplate?.id ?? ''}
                 onChange={e => {
                   const templates = loadTemplates()
-                  setSelectedTemplate(templates.find(t => t.id === e.target.value) ?? null)
+                  const tmpl = templates.find(t => t.id === e.target.value) ?? null
+                  setSelectedTemplate(tmpl)
+                  if (tmpl && activeClientId) {
+                    setAllSlidesMap(prev => {
+                      const current = prev[activeClientId] ?? {}
+                      const updated = { ...current }
+                      DEPARTMENTS.forEach(d => {
+                        const seeds = buildSeedSlides(tmpl, d.name).map(s => ({
+                          ...s,
+                          _id: `s${Date.now()}${Math.random().toString(36).slice(2)}`,
+                        }))
+                        if (seeds.length > 0) {
+                          updated[d.id] = [...(current[d.id] ?? []), ...seeds]
+                        }
+                      })
+                      saveSlides(activeClientId, updated)
+                      return { ...prev, [activeClientId]: updated }
+                    })
+                  }
                 }}
               >
                 <option value="">None</option>
