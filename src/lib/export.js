@@ -377,82 +377,55 @@ function patchClosingSlide(xml) {
 }
 
 // ── React component → PNG data URL ───────────────────────────────────────────
-// Renders a React element into a hidden off-screen div, serialises the DOM
-// into an SVG foreignObject, draws it on a canvas, and returns a PNG data URL.
-// Works for slide preview components because they use only inline styles and
-// data: URLs — no external resources that would taint the canvas.
+// Uses html2canvas to capture a rendered React component as a PNG.
+// html2canvas reads computed styles (resolving CSS variables and cqw units)
+// directly from the live DOM, which is far more reliable than SVG foreignObject.
 
 async function renderComponentToDataUrl(reactElement, width = 1280, height = 720) {
   const { createRoot } = await import('react-dom/client')
+  const html2canvas    = (await import('html2canvas')).default
 
+  // Place on-screen but invisible so container-query layout resolves correctly
   const container = document.createElement('div')
-  container.style.cssText = `position:fixed;left:-99999px;top:0;width:${width}px;height:${height}px;overflow:hidden;background:#fff`
+  container.style.cssText = [
+    `position:fixed`,
+    `left:0`,
+    `top:0`,
+    `width:${width}px`,
+    `height:${height}px`,
+    `overflow:hidden`,
+    `background:#fff`,
+    `pointer-events:none`,
+    `opacity:0.001`,
+    `z-index:-1`,
+  ].join(';')
   document.body.appendChild(container)
 
   const root = createRoot(container)
+  root.render(reactElement)
 
-  // Render and wait for two paint frames
-  await new Promise(resolve => {
-    root.render(reactElement)
-    requestAnimationFrame(() => requestAnimationFrame(resolve))
-  })
+  // Wait for React to paint + container queries to settle
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+  await new Promise(r => setTimeout(r, 300))
 
-  // Serialize the rendered HTML into an SVG foreignObject blob
-  const svgStr = [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">`,
-    `<foreignObject width="100%" height="100%">`,
-    `<html xmlns="http://www.w3.org/1999/xhtml"><body style="margin:0;padding:0">`,
-    container.innerHTML,
-    `</body></html></foreignObject></svg>`,
-  ].join('')
-
-  const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' })
-  const url  = URL.createObjectURL(blob)
-
-  // Draw to canvas — time-boxed so a taint/decode failure never hangs forever
-  const dataUrl = await new Promise((resolve) => {
-    const TIMEOUT_MS = 8000
-    let settled = false
-
-    function finish(result) {
-      if (settled) return
-      settled = true
-      URL.revokeObjectURL(url)
-      resolve(result)
-    }
-
-    // Fallback: white PNG if the image never loads or canvas is tainted
-    const fallback = () => {
-      const c = document.createElement('canvas')
-      c.width = width; c.height = height
-      const ctx = c.getContext('2d')
-      ctx.fillStyle = '#ffffff'
-      ctx.fillRect(0, 0, width, height)
-      finish(c.toDataURL('image/png'))
-    }
-
-    const timer = setTimeout(fallback, TIMEOUT_MS)
-
-    const img = new Image()
-    img.onload = () => {
-      clearTimeout(timer)
-      try {
-        const canvas = document.createElement('canvas')
-        canvas.width  = width
-        canvas.height = height
-        const ctx = canvas.getContext('2d')
-        ctx.fillStyle = '#ffffff'
-        ctx.fillRect(0, 0, width, height)
-        ctx.drawImage(img, 0, 0, width, height)
-        finish(canvas.toDataURL('image/png'))
-      } catch {
-        // Canvas tainted (cross-origin image data) — use white fallback
-        fallback()
-      }
-    }
-    img.onerror = () => { clearTimeout(timer); fallback() }
-    img.src = url
-  })
+  let dataUrl
+  try {
+    const canvas = await html2canvas(container, {
+      width,
+      height,
+      scale: 1,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      backgroundColor: '#ffffff',
+    })
+    dataUrl = canvas.toDataURL('image/png')
+  } catch {
+    const c = document.createElement('canvas')
+    c.width = width; c.height = height
+    c.getContext('2d').fillRect(0, 0, width, height)
+    dataUrl = c.toDataURL('image/png')
+  }
 
   root.unmount()
   document.body.removeChild(container)
@@ -497,11 +470,12 @@ function buildImageSlideXml(rId) {
 </p:sld>`
 }
 
-// Build rels XML for a blank image slide (layout rel inherited from slide2, image rel added).
-function buildImageSlideRels(layoutRId, imgRId, mediaName) {
+// Build rels XML for a blank image slide.
+// layoutRelXml: the <Relationship .../> string for the slideLayout copied from the template.
+function buildImageSlideRels(layoutRelXml, imgRId, mediaName) {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="${layoutRId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+  ${layoutRelXml}
   <Relationship Id="${imgRId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${mediaName}"/>
 </Relationships>`
 }
@@ -578,16 +552,20 @@ export async function exportToPptx(orderedSlides, deck) {
         ? createElement(FunnelSlidePreview, { config: item.funnelConfig })
         : createElement(TeamSlidePreview,   { config: item.teamConfig })
 
-      const dataUrl  = await renderComponentToDataUrl(element, 1280, 720)
-      const imgRId   = `rIdImg${_nextMediaId}`
+      const dataUrl   = await renderComponentToDataUrl(element, 1280, 720)
+      const imgRId    = `rIdImg${_nextMediaId}`
       const mediaName = embedPng(zip, dataUrl)
-      const layoutRId = `rIdLayout${idx}`
+
+      // Reuse the slideLayout relationship from the template's slide2 rels verbatim
+      const layoutRelXml = slide2Rels
+        ? (slide2Rels.match(/<Relationship[^>]*slideLayout[^>]*\/>/) || [])[0] || ''
+        : ''
 
       newSlides.push({
         filename:     `ppt/slides/slide${idx}.xml`,
         relsFilename: `ppt/slides/_rels/slide${idx}.xml.rels`,
         xml:          buildImageSlideXml(imgRId),
-        relsXml:      buildImageSlideRels(layoutRId, imgRId, mediaName),
+        relsXml:      buildImageSlideRels(layoutRelXml, imgRId, mediaName),
       })
       idx++
     }
@@ -607,8 +585,8 @@ export async function exportToPptx(orderedSlides, deck) {
   // ── Update [Content_Types].xml ───────────────────────────────────────────────
   let ctXml = await zip.file('[Content_Types].xml').async('string')
   ctXml = ctXml
-    .replace(/<Override[^/]*PartName="\/ppt\/slides\/slide2\.xml"[^/]*\/>/g, '')
-    .replace(/<Override[^/]*PartName="\/ppt\/slides\/slide3\.xml"[^/]*\/>/g, '')
+    .replace(/<Override[^>]*PartName="\/ppt\/slides\/slide2\.xml"[^>]*\/>/g, '')
+    .replace(/<Override[^>]*PartName="\/ppt\/slides\/slide3\.xml"[^>]*\/>/g, '')
   const ctOverrides = newSlides
     .map(s => `<Override PartName="/${s.filename}" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`)
     .join('\n')
