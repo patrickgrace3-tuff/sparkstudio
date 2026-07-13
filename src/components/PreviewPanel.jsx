@@ -42,7 +42,7 @@ function SectionSlidePreview({ dept }) {
 function ContentSlidePreview({ slide }) {
   const { title, bullets = [], style = {}, table, source } = slide
   const tc     = style.textCol || '#1A1A1A'
-  const accent = style.accent  || deptColor(slide.dept) || '#CD2F37'
+  const accent = style.accent  || '#CD2F37'
   const font   = style.font    || 'Arial, sans-serif'
   const bgImg  = style.bgImage || null
   const showContentImage = style.layout === 'image-right' && style.contentImage
