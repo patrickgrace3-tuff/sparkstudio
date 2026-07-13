@@ -11,7 +11,7 @@ function stateKey(val) {
   return 'on'
 }
 
-// ── Scaled funnel icon ────────────────────────────────────────────────────────────────────────────
+// ── Scaled funnel icon ────────────────────────────────────────────────────────
 function FunnelIconScaled() {
   return (
     <svg viewBox="0 0 48 48" fill="none"
@@ -26,7 +26,7 @@ function FunnelIconScaled() {
   )
 }
 
-// ── Slide-style preview of one funnel ─────────────────────────────────────────────────────────────────
+// ── Slide-style preview of one funnel ────────────────────────────────────────
 export function FunnelSlidePreview({ config, label }) {
   const funnelData = config && (config.current || config.target || config)
 
@@ -124,7 +124,7 @@ function LegendDot({ color, label }) {
   )
 }
 
-// ── Toggle switch component ───────────────────────────────────────────────────────────────────
+// ── Toggle switch component ───────────────────────────────────────────────────
 function Toggle({ checked, onChange, label }) {
   return (
     <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', userSelect: 'none' }}>
@@ -149,7 +149,7 @@ function Toggle({ checked, onChange, label }) {
   )
 }
 
-// ── State cycle pill (Off / On / In-House) ─────────────────────────────────────────────────────────────────
+// ── State cycle pill (Off / On / In-House) ───────────────────────────────────
 function StatePill({ value }) {
   const sk = stateKey(value)
   if (sk === 'off') return (
@@ -171,7 +171,7 @@ function pill(sk) {
   }
 }
 
-// ── Main FunnelBuilder modal ────────────────────────────────────────────────────────────────────────────
+// ── Main FunnelBuilder modal ──────────────────────────────────────────────────
 export default function FunnelBuilder({ onClose }) {
   const [config, setConfig] = useState(loadFunnelConfig)
   const [activeTab, setActiveTab] = useState('current')
@@ -308,15 +308,11 @@ export default function FunnelBuilder({ onClose }) {
             })}
           </div>
 
-          {/* Right — dual live preview */}
+          {/* Right — single live preview matching active tab */}
           <div style={S.preview}>
             <div style={S.previewBlock}>
-              <div style={S.previewLabel}>CURRENT STATE</div>
-              <FunnelSlidePreview config={config.current} label="CURRENT" />
-            </div>
-            <div style={S.previewBlock}>
-              <div style={S.previewLabel}>TARGET STATE</div>
-              <FunnelSlidePreview config={config.target} label="TARGET" />
+              <div style={S.previewLabel}>{activeTab === 'current' ? 'CURRENT STATE' : 'TARGET STATE'}</div>
+              <FunnelSlidePreview config={config[activeTab]} label={activeTab === 'current' ? 'CURRENT' : 'TARGET'} />
             </div>
             <div style={S.previewHint}>Both slides will appear in your generated deck</div>
           </div>
