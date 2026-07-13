@@ -390,12 +390,14 @@ async function renderComponentToDataUrl(reactElement, width = 1280, height = 720
   document.body.appendChild(container)
 
   const root = createRoot(container)
+
+  // Render and wait for two paint frames
   await new Promise(resolve => {
     root.render(reactElement)
-    // Two animation frames to ensure layout + paint complete
     requestAnimationFrame(() => requestAnimationFrame(resolve))
   })
 
+  // Serialize the rendered HTML into an SVG foreignObject blob
   const svgStr = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">`,
     `<foreignObject width="100%" height="100%">`,
@@ -407,20 +409,48 @@ async function renderComponentToDataUrl(reactElement, width = 1280, height = 720
   const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' })
   const url  = URL.createObjectURL(blob)
 
-  const dataUrl = await new Promise((resolve, reject) => {
-    const img = new Image()
-    img.onload = () => {
-      const canvas = document.createElement('canvas')
-      canvas.width  = width
-      canvas.height = height
-      const ctx = canvas.getContext('2d')
+  // Draw to canvas — time-boxed so a taint/decode failure never hangs forever
+  const dataUrl = await new Promise((resolve) => {
+    const TIMEOUT_MS = 8000
+    let settled = false
+
+    function finish(result) {
+      if (settled) return
+      settled = true
+      URL.revokeObjectURL(url)
+      resolve(result)
+    }
+
+    // Fallback: white PNG if the image never loads or canvas is tainted
+    const fallback = () => {
+      const c = document.createElement('canvas')
+      c.width = width; c.height = height
+      const ctx = c.getContext('2d')
       ctx.fillStyle = '#ffffff'
       ctx.fillRect(0, 0, width, height)
-      ctx.drawImage(img, 0, 0, width, height)
-      URL.revokeObjectURL(url)
-      resolve(canvas.toDataURL('image/png'))
+      finish(c.toDataURL('image/png'))
     }
-    img.onerror = reject
+
+    const timer = setTimeout(fallback, TIMEOUT_MS)
+
+    const img = new Image()
+    img.onload = () => {
+      clearTimeout(timer)
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width  = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(0, 0, width, height)
+        ctx.drawImage(img, 0, 0, width, height)
+        finish(canvas.toDataURL('image/png'))
+      } catch {
+        // Canvas tainted (cross-origin image data) — use white fallback
+        fallback()
+      }
+    }
+    img.onerror = () => { clearTimeout(timer); fallback() }
     img.src = url
   })
 
