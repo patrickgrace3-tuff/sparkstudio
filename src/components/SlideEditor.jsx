@@ -135,6 +135,8 @@ function FreeImageLayer({ images, onChange }) {
   )
 }
 
+// ── A single draggable/resizable box (PowerPoint-style) overlaid on the slide,
+// used to reposition the bullet-point content area ─────────────────────────────
 function DraggableBox({ box, onChange, children }) {
   const containerRef = useRef(null)
   const dragRef = useRef(null)
@@ -190,6 +192,10 @@ function DraggableBox({ box, onChange, children }) {
       <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
         {children}
       </div>
+      {/* Drag handle — kept separate from the editable content (and outside
+          the overflow:hidden content layer) so clicking into text doesn't
+          get swallowed by the box's move-drag, and the handle stays visible
+          even when the box sits at the canvas edge. */}
       <div
         onPointerDown={e => startDrag(e, 'move')}
         title="Drag to move"
@@ -212,10 +218,13 @@ function DraggableBox({ box, onChange, children }) {
   )
 }
 
+// Stops a click meant for placing a text cursor / selecting text from also
+// triggering the parent DraggableBox's move-drag.
 function stopForEdit(e) {
   e.stopPropagation()
 }
 
+// ── Live slide preview canvas ─────────────────────────────────────────────────
 function SlideCanvas({
   slide, bgImage, table, onImagesChange, onBodyBoxChange, onTableBoxChange,
   onTitleChange, onBulletChange, onTableHeaderChange, onTableCellChange, onSourceChange,
@@ -228,6 +237,13 @@ function SlideCanvas({
   const accent  = style.accent  ?? '#CD2F37'
   const contentImage = style.contentImage ?? null
 
+  // containerType: 'inline-size' + cqw (container-query width) units below tie
+  // every font size to this canvas's own rendered pixel width, instead of the
+  // ambient root font-size. That's what kept the preview, the fullscreen
+  // editor, and the deck grid/presenter views from matching each other —
+  // each rendered the slide at a different pixel width but text sizes were
+  // either fixed px or em (relative to the page's 16px root), so the same
+  // slide looked like a different scale everywhere it was shown.
   const canvasStyle = {
     width: '100%',
     aspectRatio: '16/9',
@@ -361,6 +377,7 @@ function SlideCanvas({
     )
   }
 
+  // Table preview component — headers/cells are directly editable in place.
   const TablePreview = ({ tbl }) => tbl ? (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '1.2cqw' }}>
@@ -397,6 +414,11 @@ function SlideCanvas({
     </div>
   ) : null
 
+  // Default: title-top — this is the only layout the pptx exporter actually
+  // produces (other layout choices only affect bgImage/contentImage
+  // compositing), so render it using the real template background image and
+  // the exact placeholder positions (lifted from the template's OOXML) so
+  // this preview matches the exported pptx, not a CSS approximation of it.
   return (
     <div style={{
       width: '100%',
@@ -453,6 +475,7 @@ function SlideCanvas({
   )
 }
 
+// ── Main editor modal ─────────────────────────────────────────────────────────
 export default function SlideEditor({ slide, onSave, onClose }) {
   const [draft,    setDraft]    = useState({
     title:   slide.title   ?? '',
@@ -474,7 +497,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
     },
   })
   const [bgImage,       setBgImage]       = useState(slide.style?.bgImage ?? null)
-  const [activePanel,   setActivePanel]   = useState('content')
+  const [activePanel,   setActivePanel]   = useState('content') // content | layout | style | notes
   const [fullscreen,    setFullscreen]    = useState(true)
   const [controlsWidth, setControlsWidth] = useState(300)
   const splitterDragRef = useRef(null)
@@ -493,7 +516,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
   }
-
+  // Table state — separate from draft so edits are granular
   const [table, setTable] = useState(
     slide.table
       ? { headers: [...slide.table.headers], rows: slide.table.rows.map(r => [...r]) }
@@ -532,6 +555,8 @@ export default function SlideEditor({ slide, onSave, onClose }) {
     update('bullets', b)
   }
 
+  // Wrap the selected text of bullet `i` in markdown-style markers (** for
+  // bold, * for italic), or wrap the whole bullet if nothing is selected.
   function toggleBulletFormat(i, marker) {
     const input = bulletInputRefs.current[i]
     const text = draft.bullets[i] ?? ''
@@ -552,6 +577,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
     requestAnimationFrame(() => input?.focus())
   }
 
+  // ── Table helpers ──────────────────────────────────────────────────────────
   function addTableRow() {
     if (!table) return
     const emptyRow = Array(table.headers.length).fill('')
@@ -586,6 +612,8 @@ export default function SlideEditor({ slide, onSave, onClose }) {
 
   function initTable() {
     setTable({ headers: ['Column 1', 'Column 2', 'Column 3'], rows: [['', '', ''], ['', '', '']] })
+    // Give bullets and table their own non-overlapping regions by default —
+    // both stay independently draggable/resizable after this.
     if (!draft.style.tableBox) {
       updateStyle('bodyBox', draft.style.bodyBox ?? { x: 0.045, y: 0.19, w: 0.829, h: 0.4 })
       updateStyle('tableBox', { x: 0.045, y: 0.6, w: 0.829, h: 0.32 })
@@ -657,7 +685,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
           <span style={styles.headerTitle}>Edit Slide</span>
           <div style={styles.headerBtns}>
             <button style={styles.btnFullscreen} onClick={() => setFullscreen(f => !f)}>
-              {fullscreen ? '⥡ Exit fullscreen' : '⥢ Fullscreen'}
+              {fullscreen ? '⤡ Exit fullscreen' : '⤢ Fullscreen'}
             </button>
             <button style={styles.btnSave} onClick={handleSave}>Save changes</button>
             <button style={styles.btnClose} onClick={onClose}>✕</button>
@@ -721,6 +749,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
                   <button style={styles.addBulletBtn} onClick={addBullet}>+ Add bullet</button>
                 </div>
 
+                {/* ── Table editor ── */}
                 <div style={styles.tableSectionHeader}>
                   <label style={styles.label}>Data table</label>
                   {!table ? (
@@ -1023,7 +1052,7 @@ const styles = {
   colorVal:         { fontSize: 12, color: 'var(--color-text-muted)', fontFamily: 'monospace' },
   select:           { background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 7, padding: '7px 10px', fontSize: 13, color: 'var(--color-text-primary)', width: '100%', outline: 'none' },
   preview:          { flex: 1, display: 'flex', flexDirection: 'column', padding: '20px 24px', gap: 12, background: 'var(--color-bg-secondary)', overflow: 'auto' },
-  previewInner:     { width: '100%' },
+  previewInner:     { width: '100%', maxWidth: 'calc((100vh - 260px) * 16 / 9)', margin: '0 auto' },
   previewLabel:     { fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' },
   previewHint:      { fontSize: 11, color: 'var(--color-text-muted)', textAlign: 'center' },
   notesStrip:       { marginTop: 12, border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 6 },
