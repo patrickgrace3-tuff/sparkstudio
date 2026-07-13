@@ -24,8 +24,8 @@ async function fetchTemplate() {
 
 function escapeXml(str) {
   return String(str)
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -50,7 +50,7 @@ function buildBulletParagraphs(bullets, accentHex) {
   const accent = accentHex || 'CD2F37'
   return bullets
     .map(b => {
-      const cleaned = b.replace(/^[-\u2013\u2022]\s*/, '').trim()
+      const cleaned = b.replace(/^[-–•]\s*/, '').trim()
       const runs = parseRichText(cleaned)
         .map(seg => {
           const boldAttr   = seg.bold   ? ' b="1"' : ''
@@ -498,7 +498,7 @@ function embedPng(zip, dataUrl) {
 let _nextNotesId = 4
 
 // Build a minimal notes slide XML containing the given plain text.
-function buildNotesSlideXml(notesText, slideRId) {
+function buildNotesSlideXml(notesText) {
   const id1 = _nextShapeId++
   const id2 = _nextShapeId++
   const id3 = _nextShapeId++
