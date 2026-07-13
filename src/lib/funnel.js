@@ -38,7 +38,7 @@ export const FUNNEL_STAGES = [
   },
 ]
 
-// Item states: 'on' = Spark manages (red), 'inhouse' = client manages (blue), false = off
+// Item states: 'on' = Conversion Managed (red), 'inhouse' = client manages (blue), false = off
 function defaultFunnel() {
   const cfg = {}
   for (const stage of FUNNEL_STAGES) {
@@ -88,9 +88,9 @@ export function saveFunnelConfig(cfg) {
   localStorage.setItem(KEY, JSON.stringify(cfg))
 }
 
-// Cycle an item's state: false → 'on' → 'inhouse' → false
+// Cycle an item's state: 'on' → 'inhouse' → false → 'on'
 export function cycleItemState(current) {
-  if (!current || current === false) return 'on'
   if (current === 'on') return 'inhouse'
-  return false
+  if (current === 'inhouse') return false
+  return 'on'
 }
