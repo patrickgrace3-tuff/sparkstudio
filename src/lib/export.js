@@ -491,6 +491,72 @@ function embedPng(zip, dataUrl) {
   return name
 }
 
+// ── Notes slides ──────────────────────────────────────────────────────────────
+
+let _nextNotesId = 1
+
+// Build a minimal notes slide XML containing the given plain text.
+function buildNotesSlideXml(notesText, slideRId) {
+  const id1 = _nextShapeId++
+  const id2 = _nextShapeId++
+  const id3 = _nextShapeId++
+  // Split text into paragraphs on newlines for better readability in PPT
+  const paragraphs = String(notesText || '').split('\n').map(line => {
+    const escaped = escapeXml(line || '')
+    return `<a:p><a:r><a:rPr lang="en-US" dirty="0"/><a:t>${escaped}</a:t></a:r></a:p>`
+  }).join('\n      ')
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:notes xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+         xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+         xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld>
+    <p:spTree>
+      <p:nvGrpSpPr>
+        <p:cNvPr id="${id1}" name=""/>
+        <p:cNvGrpSpPr/>
+        <p:nvPr/>
+      </p:nvGrpSpPr>
+      <p:grpSpPr>
+        <a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm>
+      </p:grpSpPr>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="${id2}" name="Slide Image 1"/>
+          <p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr>
+          <p:nvPr><p:ph type="sldImg"/></p:nvPr>
+        </p:nvSpPr>
+        <p:spPr/>
+      </p:sp>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="${id3}" name="Notes Placeholder 2"/>
+          <p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr>
+          <p:nvPr><p:ph type="body" idx="1"/></p:nvPr>
+        </p:nvSpPr>
+        <p:spPr/>
+        <p:txBody>
+          <a:bodyPr/>
+          <a:lstStyle/>
+      ${paragraphs}
+        </p:txBody>
+      </p:sp>
+    </p:spTree>
+  </p:cSld>
+  <p:clrMapOvr><a:masterClr/></p:clrMapOvr>
+</p:notes>`
+}
+
+// Build the rels file for a notes slide — points back to the parent slide and
+// to the notes master (slideLayout is not needed for notes slides).
+function buildNotesSlideRels(slideTarget) {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="${slideTarget}"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesMaster" Target="../notesMasters/notesMaster1.xml"/>
+</Relationships>`
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────────
 
 // orderedSlides: the slide descriptor array from PreviewPanel (may be reordered
@@ -513,6 +579,7 @@ export async function exportToPptx(orderedSlides, deck) {
   const slide3Rels = await getRels(3)
 
   const newSlides = []
+  const notesFiles = []   // tracks notesSlide filenames for Content_Types registration
   let idx = 4
 
   for (const item of orderedSlides) {
@@ -528,9 +595,30 @@ export async function exportToPptx(orderedSlides, deck) {
       idx++
 
     } else if (item.kind === 'content') {
-      const { xml: patchedXml, relsXml: patchedRels } = patchContentSlide(zip, slide3Xml, slide3Rels, item.slide, item.slide.table ?? null)
+      const notes = item.slide?.notes?.trim() || ''
+      const slideFilename = `ppt/slides/slide${idx}.xml`
+
+      let { xml: patchedXml, relsXml: patchedRels } = patchContentSlide(zip, slide3Xml, slide3Rels, item.slide, item.slide.table ?? null)
+
+      // If this slide has notes, create a notesSlide and link it from the slide rels
+      if (notes) {
+        const notesN = _nextNotesId++
+        const notesFilename = `ppt/notesSlides/notesSlide${notesN}.xml`
+        const notesRelsFilename = `ppt/notesSlides/_rels/notesSlide${notesN}.xml.rels`
+        const notesRId = `rIdNotes${notesN}`
+
+        // Link the notes slide from the slide's rels
+        patchedRels = patchedRels
+          ? patchedRels.replace('</Relationships>', `<Relationship Id="${notesRId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide" Target="../notesSlides/notesSlide${notesN}.xml"/>\n</Relationships>`)
+          : `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n<Relationship Id="${notesRId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide" Target="../notesSlides/notesSlide${notesN}.xml"/>\n</Relationships>`
+
+        zip.file(notesFilename, buildNotesSlideXml(notes))
+        zip.file(notesRelsFilename, buildNotesSlideRels(`../slides/slide${idx}.xml`))
+        notesFiles.push(notesFilename)
+      }
+
       newSlides.push({
-        filename:     `ppt/slides/slide${idx}.xml`,
+        filename:     slideFilename,
         relsFilename: `ppt/slides/_rels/slide${idx}.xml.rels`,
         xml:          rewriteShapeIds(patchedXml),
         relsXml:      patchedRels,
@@ -587,9 +675,10 @@ export async function exportToPptx(orderedSlides, deck) {
   ctXml = ctXml
     .replace(/<Override[^>]*PartName="\/ppt\/slides\/slide2\.xml"[^>]*\/>/g, '')
     .replace(/<Override[^>]*PartName="\/ppt\/slides\/slide3\.xml"[^>]*\/>/g, '')
-  const ctOverrides = newSlides
-    .map(s => `<Override PartName="/${s.filename}" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`)
-    .join('\n')
+  const ctOverrides = [
+    ...newSlides.map(s => `<Override PartName="/${s.filename}" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`),
+    ...notesFiles.map(f => `<Override PartName="/${f}" ContentType="application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml"/>`),
+  ].join('\n')
   // Ensure PNG type is registered
   if (!ctXml.includes('image/png')) {
     ctXml = ctXml.replace('</Types>', `<Default Extension="png" ContentType="image/png"/>\n</Types>`)

@@ -308,6 +308,12 @@ export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerat
           >
             <div style={S.slideLabel}>Slide {i + 1} · {item.label}</div>
             <div style={S.slideTile}>{renderSlide(item)}</div>
+            {item.kind === 'content' && item.slide?.notes?.trim() && (
+              <div style={S.notesStrip}>
+                <span style={S.notesIcon}>📝</span>
+                <span style={S.notesText}>{item.slide.notes.trim()}</span>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -337,4 +343,7 @@ const S = {
   presenterClose:   { position: 'fixed', top: 20, right: 24, background: 'transparent', color: '#fff', border: '0.5px solid rgba(255,255,255,0.3)', borderRadius: 'var(--radius-pill)', padding: '6px 14px', fontSize: 13, cursor: 'pointer' },
   presenterNav:     { position: 'fixed', top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', borderRadius: '50%', width: 44, height: 44, fontSize: 22, cursor: 'pointer' },
   presenterCounter: { position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', color: 'rgba(255,255,255,0.7)', fontSize: 13 },
+  notesStrip:       { display: 'flex', gap: 5, alignItems: 'flex-start', padding: '5px 8px', background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-sm)', marginTop: 2 },
+  notesIcon:        { fontSize: 10, flexShrink: 0, lineHeight: 1.6 },
+  notesText:        { fontSize: 10, color: 'var(--color-text-muted)', lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' },
 }

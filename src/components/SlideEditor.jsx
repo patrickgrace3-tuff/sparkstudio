@@ -481,6 +481,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
     title:   slide.title   ?? '',
     body:    slide.body    ?? '',
     source:  slide.source  ?? '',
+    notes:   slide.notes   ?? '',
     bullets: slide.bullets?.length
       ? [...slide.bullets]
       : (slide.body ?? '').split('\n').filter(Boolean),
@@ -496,7 +497,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
     },
   })
   const [bgImage,       setBgImage]       = useState(slide.style?.bgImage ?? null)
-  const [activePanel,   setActivePanel]   = useState('content') // content | layout | style
+  const [activePanel,   setActivePanel]   = useState('content') // content | layout | style | notes
   const [fullscreen,    setFullscreen]    = useState(false)
   const [controlsWidth, setControlsWidth] = useState(300)
   const splitterDragRef = useRef(null)
@@ -667,6 +668,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
       bullets: draft.bullets.filter(Boolean),
       body:    draft.bullets.filter(Boolean).join('\n'),
       source:  draft.source,
+      notes:   draft.notes,
       style:   draft.style,
       table:   table && table.headers.length > 0 ? table : null,
     }
@@ -696,13 +698,19 @@ export default function SlideEditor({ slide, onSave, onClose }) {
           <div style={{ ...styles.controls, width: controlsWidth }}>
             {/* Panel tabs */}
             <div style={styles.panelTabs}>
-              {['content', 'layout', 'style'].map(p => (
+              {[
+                { id: 'content', label: 'Content' },
+                { id: 'layout',  label: 'Layout' },
+                { id: 'style',   label: 'Style' },
+                { id: 'notes',   label: 'Notes', badge: draft.notes?.trim() ? '●' : null },
+              ].map(p => (
                 <button
-                  key={p}
-                  style={{ ...styles.panelTab, ...(activePanel === p ? styles.panelTabActive : {}) }}
-                  onClick={() => setActivePanel(p)}
+                  key={p.id}
+                  style={{ ...styles.panelTab, ...(activePanel === p.id ? styles.panelTabActive : {}) }}
+                  onClick={() => setActivePanel(p.id)}
                 >
-                  {p.charAt(0).toUpperCase() + p.slice(1)}
+                  {p.label}
+                  {p.badge && <span style={{ marginLeft: 4, fontSize: 8, color: 'var(--color-accent)' }}>{p.badge}</span>}
                 </button>
               ))}
             </div>
@@ -919,6 +927,32 @@ export default function SlideEditor({ slide, onSave, onClose }) {
                 </select>
               </div>
             )}
+
+            {/* Notes panel */}
+            {activePanel === 'notes' && (
+              <div style={styles.panel}>
+                <label style={styles.label}>Presenter notes</label>
+                <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: 0 }}>
+                  Notes appear below the slide in the preview and in the PowerPoint notes section when exported.
+                </p>
+                <textarea
+                  style={{
+                    ...styles.input,
+                    minHeight: 220,
+                    resize: 'vertical',
+                    fontFamily: 'inherit',
+                    fontSize: 13,
+                    lineHeight: 1.6,
+                  }}
+                  value={draft.notes}
+                  onChange={e => update('notes', e.target.value)}
+                  placeholder="Add presenter notes, talking points, or reminders for this slide…"
+                />
+                <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: 0 }}>
+                  {draft.notes?.trim().split(/\s+/).filter(Boolean).length || 0} words
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Drag splitter */}
@@ -943,6 +977,20 @@ export default function SlideEditor({ slide, onSave, onClose }) {
               />
               <div style={styles.previewHint}>
                 {draft.bullets.length} bullet{draft.bullets.length !== 1 ? 's' : ''} · {draft.style.layout.replace('-', ' ')} layout
+              </div>
+              {/* Notes strip below canvas */}
+              <div style={styles.notesStrip}>
+                <div style={styles.notesStripHeader}>
+                  <span style={styles.notesStripLabel}>Notes</span>
+                  <button
+                    style={styles.notesStripEdit}
+                    onClick={() => setActivePanel('notes')}
+                  >Edit</button>
+                </div>
+                {draft.notes?.trim()
+                  ? <p style={styles.notesStripText}>{draft.notes}</p>
+                  : <p style={{ ...styles.notesStripText, color: 'var(--color-text-muted)', fontStyle: 'italic' }}>No notes — click Edit to add presenter notes</p>
+                }
               </div>
             </div>
           </div>
@@ -1007,4 +1055,9 @@ const styles = {
   previewInner:     { width: '100%' },
   previewLabel:     { fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' },
   previewHint:      { fontSize: 11, color: 'var(--color-text-muted)', textAlign: 'center' },
+  notesStrip:       { marginTop: 12, border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 6 },
+  notesStripHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  notesStripLabel:  { fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' },
+  notesStripEdit:   { fontSize: 11, background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', color: 'var(--color-text-secondary)' },
+  notesStripText:   { margin: 0, fontSize: 13, color: 'var(--color-text-primary)', lineHeight: 1.6, whiteSpace: 'pre-wrap' },
 }
