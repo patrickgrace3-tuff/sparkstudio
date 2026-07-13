@@ -207,6 +207,7 @@ export default function FunnelBuilder({ onClose }) {
     setSaved(true)
   }
 
+  // Count per stage for the active funnel
   function stageCounts(stage) {
     const on      = stage.items.filter(i => activeFunnel[stage.id]?.[i] === 'on').length
     const inhouse = stage.items.filter(i => activeFunnel[stage.id]?.[i] === 'inhouse').length
@@ -263,6 +264,8 @@ export default function FunnelBuilder({ onClose }) {
           <div style={S.checklist}>
             {FUNNEL_STAGES.map(stage => {
               const counts = stageCounts(stage)
+              const allOff = counts.on + counts.inhouse === 0
+              const allOn  = counts.on === stage.items.length
 
               return (
                 <div key={stage.id} style={S.stageSection}>
@@ -270,7 +273,7 @@ export default function FunnelBuilder({ onClose }) {
                     <span style={S.stageLabel}>{stage.label}</span>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                       {counts.on > 0 && (
-                        <span style={{ fontSize: 10, color: '#CD2F37', fontWeight: 700 }}>{counts.on} On</span>
+                        <span style={{ fontSize: 10, color: '#CD2F37', fontWeight: 700 }}>{counts.on} Spark</span>
                       )}
                       {counts.inhouse > 0 && (
                         <span style={{ fontSize: 10, color: '#1A6FA8', fontWeight: 700 }}>{counts.inhouse} In-House</span>
@@ -278,8 +281,8 @@ export default function FunnelBuilder({ onClose }) {
                       <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>/ {counts.total}</span>
                     </div>
                     <div style={{ display: 'flex', gap: 4 }}>
-                      <button style={S.stageAction} onClick={() => setStageState(stage.id, stage.items, 'on')}>All On</button>
-                      <button style={S.stageAction} onClick={() => setStageState(stage.id, stage.items, false)}>All Off</button>
+                      <button style={S.stageAction} onClick={() => setStageState(stage.id, stage.items, 'on')} title="All Spark">All On</button>
+                      <button style={S.stageAction} onClick={() => setStageState(stage.id, stage.items, false)} title="All Off">All Off</button>
                     </div>
                   </div>
 
@@ -337,8 +340,8 @@ function LegendChip({ color, label, dim }) {
 }
 
 const S = {
-  overlay:     { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 },
-  modal:       { background: 'var(--color-bg)', borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: 1600, height: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' },
+  overlay:     { position: 'fixed', inset: 0, background: 'var(--color-bg)', zIndex: 1000, display: 'flex', alignItems: 'stretch', justifyContent: 'stretch', padding: 0 },
+  modal:       { background: 'var(--color-bg)', borderRadius: 0, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: 'none' },
   header:      { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 18px', borderBottom: '0.5px solid var(--color-border)', flexShrink: 0, gap: 12 },
   title:       { fontSize: 15, fontWeight: 700, color: 'var(--color-text-primary)' },
   sub:         { fontSize: 12, color: 'var(--color-text-muted)' },
