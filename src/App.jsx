@@ -117,13 +117,6 @@ export default function App() {
       })
       const result = await generateDeck(withData, activeClient.name)
 
-      // Re-attach table, style, and source data (images, colors, layout, fonts,
-      // citation) to generated slides — the AI only returns title/bullets/dept,
-      // it doesn't know about tables, visual styling, or sources set in the
-      // slide editor. Match on the stable _id we sent it (echoed back as
-      // sourceId) rather than title text, since the AI is free to reword
-      // titles and a text match would silently drop the original's data
-      // whenever it does.
       const allSlidesFlat = Object.values(allSlides).flat()
       result.slides = result.slides.map(genSlide => {
         const original = allSlidesFlat.find(s => s._id === genSlide.sourceId)
@@ -134,6 +127,7 @@ export default function App() {
           ...(original.table  ? { table:  original.table }  : {}),
           ...(original.style  ? { style:  original.style }  : {}),
           ...(original.source ? { source: original.source } : {}),
+          ...(original.notes  ? { notes:  original.notes }  : {}),
         }
       })
 
@@ -145,6 +139,25 @@ export default function App() {
     }
   }
 
+  function handleEditDeckSlide(slideItem) {
+    setEditingSlide({ deckSlide: true, slide: slideItem.slide, item: slideItem })
+  }
+
+  function saveDeckSlide(updated) {
+    if (!deck) return
+    setDeckMap(prev => {
+      const prevDeck = prev[activeClientId]
+      if (!prevDeck) return prev
+      return {
+        ...prev,
+        [activeClientId]: {
+          ...prevDeck,
+          slides: prevDeck.slides.map(s => s === editingSlide.slide ? updated : s),
+        },
+      }
+    })
+  }
+
   async function handleExport(orderedSlides) {
     if (!deck) return
     setIsExporting(true)
@@ -153,7 +166,6 @@ export default function App() {
     finally { setIsExporting(false) }
   }
 
-  // When switching dept, reset to slides sub-tab
   function handleSelectDept(id) {
     setActiveDeptId(id)
     setDeptTab('slides')
@@ -185,7 +197,6 @@ export default function App() {
         />
 
         <div style={styles.main}>
-          {/* Funnel Builder modal */}
           {showTeam && (
             <TeamBuilder onClose={() => setShowTeam(false)} />
           )}
@@ -193,11 +204,6 @@ export default function App() {
             <FunnelBuilder onClose={() => setShowFunnel(false)} />
           )}
 
-          {showTeam && (
-            <TeamBuilder onClose={() => setShowTeam(false)} />
-          )}
-
-          {/* Global Files overlay */}
           {showGlobal && activeClientId && (
             <div style={styles.globalOverlay}>
               <div style={styles.globalHeader}>
@@ -215,7 +221,7 @@ export default function App() {
               />
             </div>
           )}
-          {/* Top tab bar: Submit slides | Preview deck */}
+
           <div style={styles.tabBar}>
             {['input', 'preview'].map(tab => (
               <button
@@ -228,11 +234,8 @@ export default function App() {
             ))}
           </div>
 
-          {/* Input view: Slides / Files sub-tabs */}
           {activeTab === 'input' && (
             <div style={styles.inputPane}>
-
-              {/* Dept header + sub-tabs */}
               <div style={styles.deptHeader}>
                 <span style={{ ...styles.deptDot, background: activeDept?.color }} />
                 <span style={styles.deptLabel}>{activeDept?.name}</span>
@@ -253,7 +256,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Slides sub-tab */}
               {deptTab === 'slides' && (
                 <>
                   <div style={styles.slideList}>
@@ -267,7 +269,7 @@ export default function App() {
                           index={i}
                           deptColor={activeDept?.color}
                           onDelete={deleteSlide}
-                    onEdit={idx => setEditingSlide({ index: idx, slide: deptSlides[idx] })}
+                          onEdit={idx => setEditingSlide({ index: idx, slide: deptSlides[idx] })}
                         />
                       ))
                     )}
@@ -282,7 +284,6 @@ export default function App() {
                 </>
               )}
 
-              {/* Files sub-tab */}
               {deptTab === 'files' && (
                 <FileManager
                   clientId={activeClientId}
@@ -292,7 +293,6 @@ export default function App() {
                 />
               )}
 
-              {/* AI Assistant sub-tab */}
               {deptTab === 'ai' && (
                 <AIAssistant
                   clientId={activeClientId}
@@ -310,7 +310,6 @@ export default function App() {
             </div>
           )}
 
-          {/* Preview tab */}
           {activeTab === 'preview' && (
             <PreviewPanel
               deck={deck}
@@ -319,10 +318,10 @@ export default function App() {
               isGenerating={isGenerating}
               onExport={handleExport}
               isExporting={isExporting}
+              onEditSlide={handleEditDeckSlide}
             />
           )}
 
-          {/* Status bar */}
           <div style={styles.statusBar}>
             <span>
               <span style={styles.onlineDot} />
@@ -336,7 +335,10 @@ export default function App() {
       {editingSlide && (
         <SlideEditor
           slide={editingSlide.slide}
-          onSave={updated => saveEditedSlide(editingSlide.index, updated)}
+          onSave={updated => {
+            if (editingSlide.deckSlide) saveDeckSlide(updated)
+            else saveEditedSlide(editingSlide.index, updated)
+          }}
           onClose={() => setEditingSlide(null)}
         />
       )}

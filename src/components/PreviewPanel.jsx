@@ -39,11 +39,6 @@ function SectionSlidePreview({ dept }) {
   )
 }
 
-// Positions below are lifted directly from the real template's slide3.xml
-// placeholder coordinates (converted from EMU to % of slide), so this preview
-// renders the same layout the pptx export actually produces — the exporter
-// uses a single fixed content-slide template for every slide regardless of
-// the "layout" style choice (only bgImage/contentImage are composited on top).
 function ContentSlidePreview({ slide }) {
   const { title, bullets = [], style = {}, table, source } = slide
   const tc     = style.textCol || '#1A1A1A'
@@ -52,12 +47,6 @@ function ContentSlidePreview({ slide }) {
   const bgImg  = style.bgImage || null
   const showContentImage = style.layout === 'image-right' && style.contentImage
 
-  // containerType + cqw (container-query width) units tie every font size to
-  // this slide box's own rendered pixel width, so the grid thumbnail and the
-  // fullscreen presenter view — which render the same slide at very
-  // different pixel widths — stay visually identical. These ratios match
-  // SlideEditor's live-preview canvas exactly, so editor/grid/presenter all
-  // agree on how a slide looks.
   const wrap = {
     ...S.slide,
     background: bgImg ? `url(${bgImg}) center/cover no-repeat` : `url(/branding/content-bg.jpg) center/cover no-repeat`,
@@ -134,7 +123,6 @@ function ContentSlidePreview({ slide }) {
   )
 }
 
-// ── Group slides by department (one section per dept) ─────────────────────────
 function groupByDept(slides) {
   const groups = []
   let current  = null
@@ -148,7 +136,6 @@ function groupByDept(slides) {
   return groups
 }
 
-// ── Build a flat, ordered list of slide descriptors shared by grid + presenter view ──
 function buildSlideList(deck, funnelConfig, teamConfig) {
   const groups = groupByDept(deck.slides)
   const list = [{ kind: 'cover', label: 'Cover' }]
@@ -213,10 +200,10 @@ function PresenterView({ slides, startIndex, onClose }) {
   )
 }
 
-export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerating, onExport, isExporting }) {
+export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerating, onExport, isExporting, onEditSlide }) {
   const [presenting,  setPresenting]  = useState(false)
   const [startIndex,  setStartIndex]  = useState(0)
-  const [order,       setOrder]       = useState(null)   // null = use default order
+  const [order,       setOrder]       = useState(null)
   const dragIdx = useRef(null)
   const overIdx = useRef(null)
 
@@ -238,10 +225,8 @@ export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerat
   }
 
   const baseSlides = buildSlideList(deck, funnelConfig, teamConfig)
-  // Apply custom order if the user has reordered slides
   const slides = order ? order.map(i => baseSlides[i]) : baseSlides
 
-  // ── Drag-to-reorder handlers ──────────────────────────────────────────────
   function onDragStart(e, i) {
     dragIdx.current = i
     e.dataTransfer.effectAllowed = 'move'
@@ -308,10 +293,21 @@ export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerat
           >
             <div style={S.slideLabel}>Slide {i + 1} · {item.label}</div>
             <div style={S.slideTile}>{renderSlide(item)}</div>
-            {item.kind === 'content' && item.slide?.notes?.trim() && (
+            {item.kind === 'content' && (
               <div style={S.notesStrip}>
-                <span style={S.notesIcon}>📝</span>
-                <span style={S.notesText}>{item.slide.notes.trim()}</span>
+                {item.slide?.notes?.trim()
+                  ? <>
+                      <span style={S.notesIcon}>📝</span>
+                      <span style={S.notesText}>{item.slide.notes.trim()}</span>
+                    </>
+                  : <span style={{ ...S.notesText, color: 'var(--color-text-muted)', fontStyle: 'italic' }}>No notes</span>
+                }
+                {onEditSlide && (
+                  <button
+                    style={S.notesEditBtn}
+                    onClick={e => { e.stopPropagation(); onEditSlide(item) }}
+                  >Edit</button>
+                )}
               </div>
             )}
           </div>
@@ -333,7 +329,6 @@ const S = {
   grid:           { flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16, alignContent: 'start' },
   slideWrapper:   { display: 'flex', flexDirection: 'column', gap: 5, cursor: 'pointer' },
   slideLabel:     { fontSize: 11, color: 'var(--color-text-muted)', fontWeight: 500 },
-  // Fixed 16:9 box so every slide tile renders at the same size/shape regardless of content
   slideTile:      { width: '100%', aspectRatio: '16 / 9', borderRadius: 'var(--radius-sm)', overflow: 'hidden', border: '0.5px solid var(--color-border)' },
   slide:          { width: '100%', height: '100%', boxSizing: 'border-box' },
   center:         { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 },
@@ -345,5 +340,6 @@ const S = {
   presenterCounter: { position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', color: 'rgba(255,255,255,0.7)', fontSize: 13 },
   notesStrip:       { display: 'flex', gap: 5, alignItems: 'flex-start', padding: '5px 8px', background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-sm)', marginTop: 2 },
   notesIcon:        { fontSize: 10, flexShrink: 0, lineHeight: 1.6 },
-  notesText:        { fontSize: 10, color: 'var(--color-text-muted)', lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' },
+  notesText:        { fontSize: 10, color: 'var(--color-text-muted)', lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', flex: 1 },
+  notesEditBtn:     { flexShrink: 0, fontSize: 9, background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 3, padding: '1px 6px', cursor: 'pointer', color: 'var(--color-text-muted)' },
 }
