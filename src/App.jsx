@@ -9,9 +9,11 @@ import SlideEditor  from './components/SlideEditor.jsx'
 import AIAssistant  from './components/AIAssistant.jsx'
 import FunnelBuilder from './components/FunnelBuilder.jsx'
 import TeamBuilder   from './components/TeamBuilder.jsx'
+import AdminPanel    from './components/AdminPanel.jsx'
 import { DEPARTMENTS } from './lib/constants.js'
 import { loadFunnelConfig } from './lib/funnel.js'
 import { loadTeamConfig }  from './lib/team.js'
+import { loadTemplates, buildSeedSlides } from './lib/templates.js'
 import { loadClients, saveClients } from './lib/clients.js'
 import { loadSlides, saveSlides } from './lib/storage.js'
 import { loadFiles, buildAIContext, loadGlobalFiles, saveGlobalFiles } from './lib/files.js'
@@ -33,6 +35,8 @@ export default function App() {
   const [showGlobal,     setShowGlobal]     = useState(false)
   const [showFunnel,     setShowFunnel]     = useState(false)
   const [showTeam,       setShowTeam]       = useState(false)
+  const [showAdmin,      setShowAdmin]      = useState(false)
+  const [selectedTemplate, setSelectedTemplate] = useState(null) // template object | null
 
   useEffect(() => {
     if (!activeClientId) return
@@ -113,7 +117,9 @@ export default function App() {
       const withData = contributions.map(d => {
         const fileData    = loadFiles(activeClientId, d.id)
         const fileSummary = buildAIContext(fileData, d.name, globalData).textSummary
-        return { dept: d.name, slides: allSlides[d.id] || [], fileSummary }
+        const seedSlides  = selectedTemplate ? buildSeedSlides(selectedTemplate, d.name) : []
+        const slides      = [...seedSlides, ...(allSlides[d.id] || [])]
+        return { dept: d.name, slides, fileSummary }
       })
       const result = await generateDeck(withData, activeClient.name)
 
@@ -194,6 +200,7 @@ export default function App() {
           globalFileCount={loadGlobalFiles(activeClientId ?? '').files.length}
           onOpenFunnel={() => setShowFunnel(true)}
           onOpenTeam={() => setShowTeam(true)}
+          onOpenAdmin={() => setShowAdmin(true)}
         />
 
         <div style={styles.main}>
@@ -202,6 +209,9 @@ export default function App() {
           )}
           {showFunnel && (
             <FunnelBuilder onClose={() => setShowFunnel(false)} />
+          )}
+          {showAdmin && (
+            <AdminPanel onClose={() => setShowAdmin(false)} />
           )}
 
           {showGlobal && activeClientId && (
@@ -232,6 +242,22 @@ export default function App() {
                 {tab === 'input' ? 'Submit slides' : 'Preview deck'}
               </button>
             ))}
+            <div style={styles.templatePicker}>
+              <span style={styles.templateLabel}>Template:</span>
+              <select
+                style={styles.templateSelect}
+                value={selectedTemplate?.id ?? ''}
+                onChange={e => {
+                  const templates = loadTemplates()
+                  setSelectedTemplate(templates.find(t => t.id === e.target.value) ?? null)
+                }}
+              >
+                <option value="">None</option>
+                {loadTemplates().map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {activeTab === 'input' && (
@@ -380,4 +406,7 @@ const styles = {
   globalTitle:     { fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: '0.03em', color: 'var(--color-text-primary)' },
   globalSub:       { fontSize: 12, color: 'var(--color-text-muted)', flex: 1 },
   globalClose:     { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '5px 12px', fontSize: 12, cursor: 'pointer', color: 'var(--color-text-secondary)', flexShrink: 0 },
+  templatePicker:  { marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, paddingRight: 4 },
+  templateLabel:   { fontSize: 11, color: 'var(--color-text-muted)', fontWeight: 500 },
+  templateSelect:  { background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 6, padding: '4px 8px', fontSize: 11, color: 'var(--color-text-secondary)', cursor: 'pointer', outline: 'none' },
 }
