@@ -11,7 +11,7 @@ function stateKey(val) {
   return 'on'
 }
 
-// ── Scaled funnel icon ────────────────────────────────────────────────────────
+// ── Scaled funnel icon ────────────────────────────────────────────────────────────────────────────
 function FunnelIconScaled() {
   return (
     <svg viewBox="0 0 48 48" fill="none"
@@ -26,7 +26,7 @@ function FunnelIconScaled() {
   )
 }
 
-// ── Slide-style preview of one funnel ────────────────────────────────────────
+// ── Slide-style preview of one funnel ─────────────────────────────────────────────────────────────────
 export function FunnelSlidePreview({ config, label }) {
   const funnelData = config && (config.current || config.target || config)
 
@@ -85,16 +85,16 @@ export function FunnelSlidePreview({ config, label }) {
               {stage.items.map((item, i) => {
                 const val = funnelData?.[stage.id]?.[item]
                 const sk  = stateKey(val)
-                if (sk === 'off') return null
                 return (
                   <span key={i} style={{
-                    background: STATE_COLOR[sk],
-                    color: '#fff',
+                    background: sk === 'off' ? 'rgba(255,255,255,0.06)' : STATE_COLOR[sk],
+                    color: sk === 'off' ? 'rgba(255,255,255,0.3)' : '#fff',
                     fontSize: '0.85cqw',
                     fontWeight: 500,
                     padding: '0.25cqw 0.7cqw',
                     borderRadius: '0.35cqw',
                     whiteSpace: 'nowrap',
+                    border: sk === 'off' ? '1px solid rgba(255,255,255,0.1)' : 'none',
                   }}>{item}</span>
                 )
               })}
@@ -108,7 +108,7 @@ export function FunnelSlidePreview({ config, label }) {
         position: 'absolute', bottom: '1.5cqw', left: '2.5cqw',
         display: 'flex', gap: '1.5cqw', alignItems: 'center',
       }}>
-        <LegendDot color="#CD2F37" label="Spark Managed" />
+        <LegendDot color="#CD2F37" label="Conversion Managed" />
         <LegendDot color="#1A6FA8" label="In-House" />
       </div>
     </div>
@@ -124,7 +124,7 @@ function LegendDot({ color, label }) {
   )
 }
 
-// ── Toggle switch component ───────────────────────────────────────────────────
+// ── Toggle switch component ───────────────────────────────────────────────────────────────────
 function Toggle({ checked, onChange, label }) {
   return (
     <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', userSelect: 'none' }}>
@@ -149,7 +149,7 @@ function Toggle({ checked, onChange, label }) {
   )
 }
 
-// ── State cycle pill (Off / On / In-House) ───────────────────────────────────
+// ── State cycle pill (Off / On / In-House) ─────────────────────────────────────────────────────────────────
 function StatePill({ value }) {
   const sk = stateKey(value)
   if (sk === 'off') return (
@@ -171,7 +171,7 @@ function pill(sk) {
   }
 }
 
-// ── Main FunnelBuilder modal ──────────────────────────────────────────────────
+// ── Main FunnelBuilder modal ────────────────────────────────────────────────────────────────────────────
 export default function FunnelBuilder({ onClose }) {
   const [config, setConfig] = useState(loadFunnelConfig)
   const [activeTab, setActiveTab] = useState('current')
@@ -207,7 +207,6 @@ export default function FunnelBuilder({ onClose }) {
     setSaved(true)
   }
 
-  // Count per stage for the active funnel
   function stageCounts(stage) {
     const on      = stage.items.filter(i => activeFunnel[stage.id]?.[i] === 'on').length
     const inhouse = stage.items.filter(i => activeFunnel[stage.id]?.[i] === 'inhouse').length
@@ -226,7 +225,7 @@ export default function FunnelBuilder({ onClose }) {
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <div style={S.legend}>
-              <LegendChip color="#CD2F37" label="Spark Managed" />
+              <LegendChip color="#CD2F37" label="Conversion Managed" />
               <LegendChip color="#1A6FA8" label="In-House" />
               <LegendChip color="#555" label="Off" dim />
             </div>
@@ -254,7 +253,7 @@ export default function FunnelBuilder({ onClose }) {
             <span style={S.tabHint}>Where we want to go</span>
           </button>
           <div style={S.tabHintGlobal}>
-            Click an item to cycle: <strong>Off</strong> → <span style={{ color: '#CD2F37' }}>Spark</span> → <span style={{ color: '#1A6FA8' }}>In-House</span>
+            Click an item to cycle: <span style={{ color: '#CD2F37' }}>On</span> → <span style={{ color: '#1A6FA8' }}>In-House</span> → <strong>Off</strong>
           </div>
         </div>
 
@@ -264,8 +263,6 @@ export default function FunnelBuilder({ onClose }) {
           <div style={S.checklist}>
             {FUNNEL_STAGES.map(stage => {
               const counts = stageCounts(stage)
-              const allOff = counts.on + counts.inhouse === 0
-              const allOn  = counts.on === stage.items.length
 
               return (
                 <div key={stage.id} style={S.stageSection}>
@@ -273,7 +270,7 @@ export default function FunnelBuilder({ onClose }) {
                     <span style={S.stageLabel}>{stage.label}</span>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                       {counts.on > 0 && (
-                        <span style={{ fontSize: 10, color: '#CD2F37', fontWeight: 700 }}>{counts.on} Spark</span>
+                        <span style={{ fontSize: 10, color: '#CD2F37', fontWeight: 700 }}>{counts.on} On</span>
                       )}
                       {counts.inhouse > 0 && (
                         <span style={{ fontSize: 10, color: '#1A6FA8', fontWeight: 700 }}>{counts.inhouse} In-House</span>
@@ -281,8 +278,8 @@ export default function FunnelBuilder({ onClose }) {
                       <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>/ {counts.total}</span>
                     </div>
                     <div style={{ display: 'flex', gap: 4 }}>
-                      <button style={S.stageAction} onClick={() => setStageState(stage.id, stage.items, 'on')} title="All Spark">All On</button>
-                      <button style={S.stageAction} onClick={() => setStageState(stage.id, stage.items, false)} title="All Off">All Off</button>
+                      <button style={S.stageAction} onClick={() => setStageState(stage.id, stage.items, 'on')}>All On</button>
+                      <button style={S.stageAction} onClick={() => setStageState(stage.id, stage.items, false)}>All Off</button>
                     </div>
                   </div>
 
