@@ -38,16 +38,38 @@ export const FUNNEL_STAGES = [
   },
 ]
 
-// Default: everything checked
-function defaultConfig() {
+// Item states: 'on' = Spark manages (red), 'inhouse' = client manages (blue), false = off
+function defaultFunnel() {
   const cfg = {}
   for (const stage of FUNNEL_STAGES) {
     cfg[stage.id] = {}
     for (const item of stage.items) {
-      cfg[stage.id][item] = true
+      cfg[stage.id][item] = 'on'
     }
   }
   return cfg
+}
+
+function defaultConfig() {
+  return { current: defaultFunnel(), target: defaultFunnel() }
+}
+
+// Migrate old flat config (booleans) to new dual-funnel format
+function migrate(raw) {
+  if (!raw) return defaultConfig()
+  // Already new format
+  if (raw.current && raw.target) return raw
+  // Old format: flat { stageId: { item: bool } }
+  const migrated = defaultFunnel()
+  for (const stage of FUNNEL_STAGES) {
+    if (raw[stage.id]) {
+      migrated[stage.id] = {}
+      for (const item of stage.items) {
+        migrated[stage.id][item] = raw[stage.id][item] === false ? false : 'on'
+      }
+    }
+  }
+  return { current: migrated, target: defaultFunnel() }
 }
 
 const KEY = 'sparkstudio_funnel_config'
@@ -56,7 +78,7 @@ export function loadFunnelConfig() {
   try {
     const raw = localStorage.getItem(KEY)
     if (!raw) return defaultConfig()
-    return JSON.parse(raw)
+    return migrate(JSON.parse(raw))
   } catch {
     return defaultConfig()
   }
@@ -64,4 +86,11 @@ export function loadFunnelConfig() {
 
 export function saveFunnelConfig(cfg) {
   localStorage.setItem(KEY, JSON.stringify(cfg))
+}
+
+// Cycle an item's state: false → 'on' → 'inhouse' → false
+export function cycleItemState(current) {
+  if (!current || current === false) return 'on'
+  if (current === 'on') return 'inhouse'
+  return false
 }

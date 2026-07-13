@@ -158,7 +158,10 @@ function buildSlideList(deck, funnelConfig, teamConfig) {
       list.push({ kind: 'content', label: group.dept, slide })
     }
   }
-  if (funnelConfig) {
+  if (funnelConfig?.current) {
+    list.push({ kind: 'funnel', label: 'Current Funnel', funnelConfig: funnelConfig.current, funnelLabel: 'CURRENT' })
+    list.push({ kind: 'funnel', label: 'Target Funnel',  funnelConfig: funnelConfig.target,  funnelLabel: 'TARGET' })
+  } else if (funnelConfig) {
     list.push({ kind: 'funnel', label: 'Funnel', funnelConfig })
   }
   if (teamConfig) {
@@ -173,7 +176,7 @@ function renderSlide(item) {
     case 'cover':   return <CoverSlidePreview />
     case 'section': return <SectionSlidePreview dept={item.dept} />
     case 'closing': return <ClosingSlidePreview />
-    case 'funnel':  return <FunnelSlidePreview config={item.funnelConfig} />
+    case 'funnel':  return <FunnelSlidePreview config={item.funnelConfig} label={item.funnelLabel} />
     case 'team':    return <TeamSlidePreview config={item.teamConfig} />
     default:        return <ContentSlidePreview slide={item.slide} />
   }
