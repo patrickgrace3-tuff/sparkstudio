@@ -385,19 +385,19 @@ async function renderComponentToDataUrl(reactElement, width = 1280, height = 720
   const { createRoot } = await import('react-dom/client')
   const html2canvas    = (await import('html2canvas')).default
 
-  // Place on-screen but invisible so container-query layout resolves correctly
+  // Render off-screen (not invisible) so container queries resolve and
+  // html2canvas captures full-opacity pixels — opacity tricks make the PNG transparent.
   const container = document.createElement('div')
   container.style.cssText = [
     `position:fixed`,
-    `left:0`,
+    `left:-${width + 100}px`,
     `top:0`,
     `width:${width}px`,
     `height:${height}px`,
     `overflow:hidden`,
     `background:#fff`,
     `pointer-events:none`,
-    `opacity:0.001`,
-    `z-index:-1`,
+    `z-index:99999`,
   ].join(';')
   document.body.appendChild(container)
 
@@ -493,7 +493,9 @@ function embedPng(zip, dataUrl) {
 
 // ── Notes slides ──────────────────────────────────────────────────────────────
 
-let _nextNotesId = 1
+// Template has notesSlide1/2/3; slide1 is kept so notesSlide1 is preserved.
+// We remove slide2/3 and their notesSlides, so start our new ones at 4.
+let _nextNotesId = 4
 
 // Build a minimal notes slide XML containing the given plain text.
 function buildNotesSlideXml(notesText, slideRId) {
@@ -547,13 +549,12 @@ function buildNotesSlideXml(notesText, slideRId) {
 </p:notes>`
 }
 
-// Build the rels file for a notes slide — points back to the parent slide and
-// to the notes master (slideLayout is not needed for notes slides).
-function buildNotesSlideRels(slideTarget) {
+// Build the rels file for a notes slide — only references the notesMaster.
+// The slide-to-notesSlide link lives in the slide's own rels, not here.
+function buildNotesSlideRels() {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="${slideTarget}"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesMaster" Target="../notesMasters/notesMaster1.xml"/>
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesMaster" Target="../notesMasters/notesMaster1.xml"/>
 </Relationships>`
 }
 
@@ -575,8 +576,13 @@ export async function exportToPptx(orderedSlides, deck) {
     const f = zip.file(`ppt/slides/_rels/slide${n}.xml.rels`)
     return f ? f.async('string') : null
   }
-  const slide2Rels = await getRels(2)
-  const slide3Rels = await getRels(3)
+  // Strip template notesSlide refs — those point to notesSlide2/3 which we remove.
+  // New notesSlide relationships are added per-slide only when notes text exists.
+  const stripNotesRel = (rels) => rels
+    ? rels.replace(/<Relationship[^>]*\/officeDocument\/2006\/relationships\/notesSlide[^>]*\/>/g, '')
+    : rels
+  const slide2Rels = stripNotesRel(await getRels(2))
+  const slide3Rels = stripNotesRel(await getRels(3))
 
   const newSlides = []
   const notesFiles = []   // tracks notesSlide filenames for Content_Types registration
@@ -613,7 +619,7 @@ export async function exportToPptx(orderedSlides, deck) {
           : `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n<Relationship Id="${notesRId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide" Target="../notesSlides/notesSlide${notesN}.xml"/>\n</Relationships>`
 
         zip.file(notesFilename, buildNotesSlideXml(notes))
-        zip.file(notesRelsFilename, buildNotesSlideRels(`../slides/slide${idx}.xml`))
+        zip.file(notesRelsFilename, buildNotesSlideRels())
         notesFiles.push(notesFilename)
       }
 
@@ -659,11 +665,15 @@ export async function exportToPptx(orderedSlides, deck) {
     }
   }
 
-  // ── Remove template slides 2 & 3 from zip (only slide 1 cover is kept) ────
+  // ── Remove template slides 2 & 3 (and their notesSlides) from zip ──────────
   zip.remove('ppt/slides/slide2.xml')
   zip.remove('ppt/slides/slide3.xml')
   zip.remove('ppt/slides/_rels/slide2.xml.rels')
   zip.remove('ppt/slides/_rels/slide3.xml.rels')
+  zip.remove('ppt/notesSlides/notesSlide2.xml')
+  zip.remove('ppt/notesSlides/notesSlide3.xml')
+  zip.remove('ppt/notesSlides/_rels/notesSlide2.xml.rels')
+  zip.remove('ppt/notesSlides/_rels/notesSlide3.xml.rels')
 
   for (const s of newSlides) {
     zip.file(s.filename, s.xml)
@@ -675,6 +685,8 @@ export async function exportToPptx(orderedSlides, deck) {
   ctXml = ctXml
     .replace(/<Override[^>]*PartName="\/ppt\/slides\/slide2\.xml"[^>]*\/>/g, '')
     .replace(/<Override[^>]*PartName="\/ppt\/slides\/slide3\.xml"[^>]*\/>/g, '')
+    .replace(/<Override[^>]*PartName="\/ppt\/notesSlides\/notesSlide2\.xml"[^>]*\/>/g, '')
+    .replace(/<Override[^>]*PartName="\/ppt\/notesSlides\/notesSlide3\.xml"[^>]*\/>/g, '')
   const ctOverrides = [
     ...newSlides.map(s => `<Override PartName="/${s.filename}" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`),
     ...notesFiles.map(f => `<Override PartName="/${f}" ContentType="application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml"/>`),
