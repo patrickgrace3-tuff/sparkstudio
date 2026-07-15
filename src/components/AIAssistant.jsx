@@ -108,15 +108,22 @@ BULLETS:
 - Insight-driven point in plain English, specific to the client
 - Clear and punchy — no markdown, no fluff
 - Action-oriented or data-backed conclusion
+IMAGE: filename.png
+PLACEMENT: bottom
 TABLE (only include if the user asks for a table or data grid):
 Month | Metric | Value
 Jan 2026 | Assisted Hires | 3
 Jan 2026 | Total Hires | 14
 SLIDE_END
 
+IMAGE and PLACEMENT rules:
+- If an image was attached to this conversation and it is relevant to the slide, include IMAGE: <exact filename> and PLACEMENT: bottom or right
+- "bottom" = image spans full width below bullets (best for charts, graphs, data visuals — use by default)
+- "right" = image on right side, text on left (best for product photos or portraits)
+- Omit IMAGE and PLACEMENT lines entirely if no image was attached or if it doesn't fit the slide
 If the user asks for a table, replace the TABLE example rows with real data from the files.
 The first TABLE row is always headers. Use pipe | to separate columns.
-You can include both BULLETS and TABLE in the same slide, or just one.
+You can include BULLETS, IMAGE, and TABLE in the same slide, or just some of them.
 
 --- Files available (${fileData.files.length} total) ---
 ${fileInventory}
@@ -196,8 +203,11 @@ ${existingSlides || 'No slides added yet.'}
       const data  = await res.json()
       const reply = data.content?.map(b => b.text ?? '').join('') ?? ''
 
+      // Build image map so parseSlides can resolve base64
+      const imageMap = Object.fromEntries(attachedImages.map(i => [i.name, i]))
+
       // Parse out any slide blocks
-      let slides  = parseSlides(reply)
+      let slides  = parseSlides(reply, imageMap)
       const stripped = reply.replace(/SLIDE_START[\s\S]*?SLIDE_END/g, '').trim()
       // Strip any markdown the AI used despite instructions
       const cleaned = stripped
@@ -230,7 +240,7 @@ ${existingSlides || 'No slides added yet.'}
           })
           const reformatData = await reformatRes.json()
           const reformatText = reformatData.content?.map(b => b.text ?? '').join('') ?? ''
-          slides = parseSlides(reformatText)
+          slides = parseSlides(reformatText, imageMap)
         } catch { /* silent — original response still shown */ }
       }
 
@@ -267,23 +277,48 @@ ${existingSlides || 'No slides added yet.'}
     return { headers: rows[0], rows: rows.slice(1) }
   }
 
-  function parseSlides(text) {
+  function parseSlides(text, imageMap = {}) {
+    // Default bodyBox matches PreviewPanel default
+    const DEFAULT_BOX = { x: 0.045, y: 0.19, w: 0.829, h: 0.63 }
+    const GAP = 0.015
+
+    function applyImagePlacement(imgName, placement, imageMap) {
+      const img = imageMap[imgName]
+      if (!img) return {}
+      const src = `data:${img.mimeType};base64,${img.base64}`
+      let imgRect, adjustedBox
+      if (placement === 'bottom') {
+        imgRect      = { x: 0.045, y: 0.50, w: 0.78, h: 0.38 }
+        adjustedBox  = { ...DEFAULT_BOX, h: 0.28 }
+      } else {
+        imgRect      = { x: 0.575, y: 0.19, w: 0.35, h: 0.60 }
+        adjustedBox  = { ...DEFAULT_BOX, w: imgRect.x - DEFAULT_BOX.x - GAP }
+      }
+      return { style: { images: [{ src, ...imgRect }], bodyBox: adjustedBox } }
+    }
+
     // Primary parser — strict SLIDE_START/SLIDE_END blocks
     const blocks = [...text.matchAll(/SLIDE_START([\s\S]*?)SLIDE_END/g)]
-    
+
     if (blocks.length > 0) {
       return blocks.map(m => {
-        const block    = m[1]
-        const titleM   = block.match(/TITLE:\s*(.+)/)
-        // Bullets stop at TABLE line
-        const bulletSection = block.split(/^TABLE/m)[0]
-        const bulletsM = [...bulletSection.matchAll(/^[-•*]\s*(.+)/gm)]
-        const table    = parseTable(block)
+        const block     = m[1]
+        const titleM    = block.match(/TITLE:\s*(.+)/)
+        const imageM    = block.match(/^IMAGE:\s*(.+)/m)
+        const placementM= block.match(/^PLACEMENT:\s*(.+)/m)
+        // Bullets stop at TABLE or IMAGE line
+        const bulletSection = block.split(/^(?:TABLE|IMAGE)/m)[0]
+        const bulletsM  = [...bulletSection.matchAll(/^[-•*]\s*(.+)/gm)]
+        const table     = parseTable(block)
+        const imgName   = imageM?.[1]?.trim()
+        const placement = placementM?.[1]?.trim() ?? 'bottom'
+        const imgStyle  = imgName ? applyImagePlacement(imgName, placement, imageMap) : {}
         return {
           title:   stripMd(titleM?.[1]?.trim() ?? 'Untitled slide'),
           body:    bulletsM.map(b => stripMd(b[1].trim())).join('\n'),
           bullets: bulletsM.map(b => stripMd(b[1].trim())),
           table,
+          ...imgStyle,
         }
       })
     }
@@ -383,7 +418,7 @@ ${existingSlides || 'No slides added yet.'}
                       <button
                         style={styles.addSlideBtn}
                         onClick={() => {
-                          onAddSlide({ title: slide.title, body: slide.body, bullets: slide.bullets, table: slide.table ?? null, style: {} })
+                          onAddSlide({ title: slide.title, body: slide.body, bullets: slide.bullets, table: slide.table ?? null, style: slide.style ?? {} })
                         }}
                       >
                         + Add to deck
