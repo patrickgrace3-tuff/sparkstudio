@@ -10,28 +10,32 @@ import AIAssistant  from './components/AIAssistant.jsx'
 import FunnelBuilder from './components/FunnelBuilder.jsx'
 import TeamBuilder   from './components/TeamBuilder.jsx'
 import AdminPanel    from './components/AdminPanel.jsx'
+import LoginScreen   from './components/LoginScreen.jsx'
 import { DEPARTMENTS } from './lib/constants.js'
 import { loadFunnelConfig } from './lib/funnel.js'
 import { loadTeamConfig }  from './lib/team.js'
-import { loadTemplates, buildSeedSlides } from './lib/templates.js'
-import { loadClients, saveClients } from './lib/clients.js'
-import { loadSlides, saveSlides } from './lib/storage.js'
-import { loadFiles, buildAIContext, loadGlobalFiles, saveGlobalFiles } from './lib/files.js'
+import { buildSeedSlides } from './lib/templates.js'
+import { loadFiles, buildAIContext, loadGlobalFiles } from './lib/files.js'
 import { enhanceSlideBody, generateDeck } from './lib/api.js'
 import { exportToPptx } from './lib/export.js'
+import { api, setToken } from './lib/apiClient.js'
 
 export default function App() {
-  const [clients,        setClients]        = useState(loadClients)
-  const [activeClientId, setActiveClientId] = useState(() => loadClients()[0]?.id)
+  const [currentUser,    setCurrentUser]    = useState(null)
+  const [authChecked,    setAuthChecked]    = useState(false)
+  const [clients,        setClients]        = useState([])
+  const [activeClientId, setActiveClientId] = useState(null)
   const [allSlidesMap,   setAllSlidesMap]   = useState({})
   const [deckMap,        setDeckMap]        = useState({})
+  const [presentations,  setPresentations]  = useState([])  // version list for active client
+  const [templates,      setTemplates]      = useState([])
   const [activeDeptId,   setActiveDeptId]   = useState(DEPARTMENTS[0].id)
-  const [activeTab,      setActiveTab]      = useState('input')   // input | preview
-  const [deptTab,        setDeptTab]        = useState('slides')  // slides | files | ai
+  const [activeTab,      setActiveTab]      = useState('input')
+  const [deptTab,        setDeptTab]        = useState('slides')
   const [isGenerating,   setIsGenerating]   = useState(false)
   const [isEnhancing,    setIsEnhancing]    = useState(false)
   const [isExporting,    setIsExporting]    = useState(false)
-  const [editingSlide,   setEditingSlide]   = useState(null) // { index, slide }
+  const [editingSlide,   setEditingSlide]   = useState(null)
   const [showGlobal,     setShowGlobal]     = useState(false)
   const [showFunnel,     setShowFunnel]     = useState(false)
   const [showTeam,       setShowTeam]       = useState(false)
@@ -39,11 +43,38 @@ export default function App() {
   const [selectedTemplate,  setSelectedTemplate]  = useState(null)
   const [isApplyingTemplate, setIsApplyingTemplate] = useState(false)
 
+  // ── Auth bootstrap ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    api.me()
+      .then(res => setCurrentUser(res.user))
+      .catch(() => {})
+      .finally(() => setAuthChecked(true))
+  }, [])
+
+  // ── Load clients after login ───────────────────────────────────────────────
+  useEffect(() => {
+    if (!currentUser) return
+    api.getClients().then(rows => {
+      setClients(rows)
+      if (rows.length) setActiveClientId(rows[0].id)
+    }).catch(console.error)
+    api.getTemplates().then(setTemplates).catch(console.error)
+  }, [currentUser])
+
+  // ── Load slides when client changes ───────────────────────────────────────
   useEffect(() => {
     if (!activeClientId) return
     if (!allSlidesMap[activeClientId]) {
-      setAllSlidesMap(prev => ({ ...prev, [activeClientId]: loadSlides(activeClientId) }))
+      api.getSlides(activeClientId).then(map => {
+        // API returns rows; normalise to { [deptId]: [...slides with _id] }
+        const normalised = {}
+        for (const [deptId, slides] of Object.entries(map)) {
+          normalised[deptId] = slides.map(s => ({ ...s, _id: s.id }))
+        }
+        setAllSlidesMap(prev => ({ ...prev, [activeClientId]: normalised }))
+      }).catch(console.error)
     }
+    api.getPresentations(activeClientId).then(setPresentations).catch(console.error)
   }, [activeClientId])
 
   const activeClient = clients.find(c => c.id === activeClientId)
@@ -61,27 +92,30 @@ export default function App() {
     setActiveDeptId(DEPARTMENTS[0].id)
   }
 
-  function handleAddClient(client) {
-    const updated = [...clients, client]
-    setClients(updated)
-    saveClients(updated)
-    setActiveClientId(client.id)
-    setActiveTab('input')
-    setDeptTab('slides')
-    setActiveDeptId(DEPARTMENTS[0].id)
+  async function handleAddClient(client) {
+    try {
+      const created = await api.createClient(client.name)
+      setClients(prev => [...prev, created])
+      setActiveClientId(created.id)
+      setActiveTab('input')
+      setDeptTab('slides')
+      setActiveDeptId(DEPARTMENTS[0].id)
+    } catch (err) { alert('Failed to create client: ' + err.message) }
   }
 
-  function handleDeleteClient(clientId) {
-    const updated = clients.filter(c => c.id !== clientId)
-    setClients(updated)
-    saveClients(updated)
-    setActiveClientId(updated[0]?.id)
+  async function handleDeleteClient(clientId) {
+    try {
+      await api.deleteClient(clientId)
+      const updated = clients.filter(c => c.id !== clientId)
+      setClients(updated)
+      setActiveClientId(updated[0]?.id ?? null)
+    } catch (err) { alert('Failed to delete client: ' + err.message) }
   }
 
   // ── Slide mutations ────────────────────────────────────────────────────────
   function setSlides(updated) {
     setAllSlidesMap(prev => ({ ...prev, [activeClientId]: updated }))
-    saveSlides(activeClientId, updated)
+    api.bulkSaveSlides(activeClientId, updated).catch(console.error)
   }
 
   function addSlide(slide) {
@@ -138,6 +172,14 @@ export default function App() {
       })
 
       setDeckMap(prev => ({ ...prev, [activeClientId]: result }))
+
+      // Save as a new presentation version in the database
+      try {
+        const saved = await api.savePresentation(activeClientId, { title: result.title, deck: result })
+        setPresentations(prev => [saved, ...prev])
+      } catch (err) {
+        console.error('Failed to save presentation version:', err)
+      }
     } catch (err) {
       alert('Generation failed: ' + err.message)
     } finally {
@@ -178,6 +220,19 @@ export default function App() {
     setActiveTab('input')
   }
 
+  if (!authChecked) return <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', color:'var(--color-text-muted)', fontSize:14 }}>Loading…</div>
+  if (!currentUser)  return <LoginScreen onLogin={user => setCurrentUser(user)} />
+
+  function handleLogout() {
+    setToken(null)
+    setCurrentUser(null)
+    setClients([])
+    setActiveClientId(null)
+    setAllSlidesMap({})
+    setDeckMap({})
+    setPresentations([])
+  }
+
   return (
     <div style={styles.root}>
       <ClientBar
@@ -186,6 +241,8 @@ export default function App() {
         onSelect={handleSelectClient}
         onAdd={handleAddClient}
         onDelete={handleDeleteClient}
+        currentUser={currentUser}
+        onLogout={() => { setToken(null); setCurrentUser(null) }}
       />
 
       <div style={styles.body}>
@@ -256,7 +313,6 @@ export default function App() {
                 value={selectedTemplate?.id ?? ''}
                 disabled={isApplyingTemplate}
                 onChange={async e => {
-                  const templates = loadTemplates()
                   const tmpl = templates.find(t => t.id === e.target.value) ?? null
                   setSelectedTemplate(tmpl)
                   if (!tmpl || !activeClientId) return
@@ -266,8 +322,8 @@ export default function App() {
                     .filter(d => (tmpl.departments[d.name] || []).length > 0)
                     .map(d => {
                       const fileData = loadFiles(activeClientId, d.id)
-                      const ctx = buildAIContext(fileData, d.name, globalData)
-                      const seeds = buildSeedSlides(tmpl, d.name).map((s, idx) => ({
+                      const ctx      = buildAIContext(fileData, d.name, globalData)
+                      const seeds    = buildSeedSlides(tmpl, d.name).map((s, idx) => ({
                         ...s,
                         _id: `s${Date.now()}${idx}${Math.random().toString(36).slice(2)}`,
                       }))
@@ -296,7 +352,7 @@ export default function App() {
                         }
                         updated[dept.id] = [...(updated[dept.id] ?? []), slide]
                       })
-                      saveSlides(activeClientId, updated)
+                      api.bulkSaveSlides(activeClientId, updated).catch(console.error)
                       return { ...prev, [activeClientId]: updated }
                     })
                   } catch (err) {
@@ -307,7 +363,7 @@ export default function App() {
                 }}
               >
                 <option value="">None</option>
-                {loadTemplates().map(t => (
+                {templates.map(t => (
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>

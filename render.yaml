@@ -1,0 +1,31 @@
+services:
+  # ── Backend API ──────────────────────────────────────────────────────────────
+  - type: web
+    name: sparkstudio-api
+    runtime: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        sync: false   # set manually in Render dashboard — use the Internal Database URL
+      - key: JWT_SECRET
+        generateValue: true
+      - key: NODE_ENV
+        value: production
+      - key: FRONTEND_URL
+        value: https://sparkstudio.onrender.com  # update to your frontend URL after deploy
+
+  # ── Frontend static site ─────────────────────────────────────────────────────
+  - type: web
+    name: sparkstudio
+    runtime: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    plan: free
+    envVars:
+      - key: VITE_API_URL
+        value: https://sparkstudio-api.onrender.com  # update to match your API service URL
+      - key: VITE_ANTHROPIC_API_KEY
+        sync: false  # set manually in Render dashboard

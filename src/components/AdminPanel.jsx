@@ -1,6 +1,7 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { DEPARTMENTS } from '../lib/constants.js'
-import { loadTemplates, saveTemplates, createTemplate, createSlideShell } from '../lib/templates.js'
+import { createTemplate, createSlideShell } from '../lib/templates.js'
+import { api } from '../lib/apiClient.js'
 
 const LAYOUTS = [
   { id: 'title-top',   label: 'Title Top' },
@@ -128,7 +129,7 @@ function TemplateEditor({ template, onSave, onCancel }) {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <span style={S.totalCount}>{totalSlides} total slides</span>
-          <button style={S.saveBtn} onClick={handleSave} disabled={!draft.name.trim()}>Save template</button>
+          <button style={S.saveBtn} onClick={handleSave} disabled={!draft.name.trim() || saving}>{saving ? 'Saving…' : 'Save template'}</button>
           <button style={S.cancelBtn} onClick={onCancel}>Cancel</button>
         </div>
       </div>
@@ -181,13 +182,13 @@ function TemplateCard({ template, onEdit, onDelete, onDuplicate }) {
 
 // ── Main AdminPanel ───────────────────────────────────────────────────────────
 export default function AdminPanel({ onClose }) {
-  const [templates, setTemplates] = useState(loadTemplates)
-  const [editing, setEditing] = useState(null) // null | template object
+  const [templates, setTemplates] = useState([])
+  const [editing,   setEditing]   = useState(null)
+  const [saving,    setSaving]    = useState(false)
 
-  function persist(next) {
-    setTemplates(next)
-    saveTemplates(next)
-  }
+  useEffect(() => {
+    api.getTemplates().then(setTemplates).catch(console.error)
+  }, [])
 
   function handleNew() {
     setEditing(createTemplate('New Template'))
@@ -197,28 +198,37 @@ export default function AdminPanel({ onClose }) {
     setEditing({ ...template, departments: { ...template.departments } })
   }
 
-  function handleDuplicate(template) {
-    const copy = {
-      ...template,
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2),
-      name: `${template.name} (copy)`,
-      createdAt: Date.now(),
-      departments: JSON.parse(JSON.stringify(template.departments)),
-    }
-    persist([...templates, copy])
+  async function handleDuplicate(template) {
+    try {
+      const copy = await api.createTemplate({
+        name: `${template.name} (copy)`,
+        description: template.description,
+        departments: template.departments,
+      })
+      setTemplates(prev => [...prev, copy])
+    } catch (err) { alert('Failed to duplicate: ' + err.message) }
   }
 
-  function handleSave(draft) {
-    const exists = templates.find(t => t.id === draft.id)
-    const next = exists
-      ? templates.map(t => t.id === draft.id ? draft : t)
-      : [...templates, draft]
-    persist(next)
-    setEditing(null)
+  async function handleSave(draft) {
+    setSaving(true)
+    try {
+      if (templates.find(t => t.id === draft.id)) {
+        const updated = await api.updateTemplate(draft.id, draft)
+        setTemplates(prev => prev.map(t => t.id === draft.id ? updated : t))
+      } else {
+        const created = await api.createTemplate(draft)
+        setTemplates(prev => [...prev, created])
+      }
+      setEditing(null)
+    } catch (err) { alert('Failed to save template: ' + err.message) }
+    finally { setSaving(false) }
   }
 
-  function handleDelete(id) {
-    persist(templates.filter(t => t.id !== id))
+  async function handleDelete(id) {
+    try {
+      await api.deleteTemplate(id)
+      setTemplates(prev => prev.filter(t => t.id !== id))
+    } catch (err) { alert('Failed to delete: ' + err.message) }
   }
 
   return (
