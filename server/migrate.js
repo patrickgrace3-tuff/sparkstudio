@@ -7,7 +7,7 @@ try {
   await pool.query(sql)
   console.log('Migration complete.')
 } catch (err) {
-  console.error('Migration failed:', err.message)
+  console.error('Migration failed:', err)
 } finally {
   await pool.end()
 }
