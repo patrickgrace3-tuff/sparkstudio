@@ -5,8 +5,6 @@ export default function Sidebar({
   allSlides,
   activeDeptId,
   onSelectDept,
-  onGenerate,
-  isGenerating,
   presTitle,
   onOpenGlobal,
   globalFileCount,
@@ -70,17 +68,6 @@ export default function Sidebar({
 
       <div style={styles.footer}>
         <p style={styles.totalLabel}>{totalSlides} slide{totalSlides !== 1 ? 's' : ''} total</p>
-        <button
-          style={{
-            ...styles.generateBtn,
-            opacity: isGenerating || totalSlides === 0 ? 0.45 : 1,
-            cursor:  isGenerating || totalSlides === 0 ? 'not-allowed' : 'pointer',
-          }}
-          onClick={onGenerate}
-          disabled={isGenerating || totalSlides === 0}
-        >
-          {isGenerating ? 'Generating…' : 'Generate presentation →'}
-        </button>
       </div>
     </aside>
   )
@@ -97,9 +84,8 @@ const styles = {
   dot: { width: 8, height: 8, borderRadius: '50%', flexShrink: 0 },
   deptName: { fontSize: 14, flex: 1 },
   badge: { fontSize: 11, color: 'var(--color-text-muted)', background: 'var(--color-bg-tertiary)', border: '0.5px solid var(--color-border)', padding: '1px 7px', borderRadius: 'var(--radius-pill)' },
-  footer: { padding: '12px 10px', borderTop: '0.5px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 8 },
-  totalLabel: { fontSize: 12, color: 'var(--color-text-muted)', textAlign: 'center' },
-  generateBtn: { width: '100%', padding: '10px 0', borderRadius: 'var(--radius-pill)', border: 'none', background: 'var(--color-accent)', color: '#FFFFFF', fontSize: 14, fontWeight: 600, fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: '0.03em' },
+  footer: { padding: '10px', borderTop: '0.5px solid var(--color-border)' },
+  totalLabel: { fontSize: 12, color: 'var(--color-text-muted)', textAlign: 'center', margin: 0 },
   globalBtn:   { display: 'flex', alignItems: 'center', gap: 8, margin: '4px 6px 0', padding: '9px 8px', borderRadius: 'var(--radius-sm)', border: '0.5px solid var(--color-border)', background: 'var(--color-bg)', cursor: 'pointer', width: 'calc(100% - 12px)', textAlign: 'left' },
   funnelBtn:   { display: 'flex', alignItems: 'center', gap: 8, margin: '4px 6px 0', padding: '9px 8px', borderRadius: 'var(--radius-sm)', border: '0.5px solid var(--color-border)', background: 'var(--color-bg)', cursor: 'pointer', width: 'calc(100% - 12px)', textAlign: 'left' },
   globalIcon:  { fontSize: 14 },

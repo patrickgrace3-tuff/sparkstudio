@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import ClientBar    from './components/ClientBar.jsx'
 import Sidebar      from './components/Sidebar.jsx'
 import SlideCard    from './components/SlideCard.jsx'
@@ -47,6 +47,27 @@ export default function App() {
   const [isPulling,          setIsPulling]          = useState(false)
   const [pushMsg,            setPushMsg]            = useState('')
   const [hasChanges,         setHasChanges]         = useState(false)
+  const [elapsedTime,        setElapsedTime]        = useState('')
+  const changesStartedAt = useRef(null)
+  const timerRef         = useRef(null)
+
+  // ── Unsaved-changes timer ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (hasChanges) {
+      if (!changesStartedAt.current) changesStartedAt.current = Date.now()
+      timerRef.current = setInterval(() => {
+        const secs = Math.floor((Date.now() - changesStartedAt.current) / 1000)
+        const m = Math.floor(secs / 60)
+        const s = secs % 60
+        setElapsedTime(m > 0 ? `${m}m ${s}s` : `${s}s`)
+      }, 1000)
+    } else {
+      clearInterval(timerRef.current)
+      changesStartedAt.current = null
+      setElapsedTime('')
+    }
+    return () => clearInterval(timerRef.current)
+  }, [hasChanges])
 
   // ── Auth bootstrap ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -295,9 +316,6 @@ export default function App() {
         onDelete={handleDeleteClient}
         currentUser={currentUser}
         onLogout={() => { setToken(null); setCurrentUser(null) }}
-        hasChanges={hasChanges}
-        onPush={handlePushChanges}
-        isPushing={isPushing}
       />
 
       <div style={styles.body}>
@@ -305,8 +323,6 @@ export default function App() {
           allSlides={allSlides}
           activeDeptId={activeDeptId}
           onSelectDept={handleSelectDept}
-          onGenerate={handleGenerate}
-          isGenerating={isGenerating}
           presTitle={activeClient?.name ?? 'Presentation'}
           onOpenGlobal={() => setShowGlobal(true)}
           globalFileCount={loadGlobalFiles(activeClientId ?? '').files.length}
@@ -513,20 +529,39 @@ export default function App() {
             />
           )}
 
-          <div style={styles.statusBar}>
-            <span>
+          <div style={styles.actionBar}>
+            <span style={styles.actionStatus}>
               <span style={styles.onlineDot} />
               {activeClient?.name} · {totalSlides} slide{totalSlides !== 1 ? 's' : ''} saved
             </span>
-            {pushMsg === 'pushed' && <span style={styles.syncMsg}>✓ Changes pushed</span>}
-            {pushMsg === 'pulled' && <span style={styles.syncMsg}>✓ Latest pulled</span>}
-            <button style={styles.syncBtn} onClick={handlePullLatest} disabled={isPulling}>
+            {pushMsg === 'pushed' && <span style={styles.syncMsg}>✓ Pushed</span>}
+            {pushMsg === 'pulled' && <span style={styles.syncMsg}>✓ Pulled</span>}
+            <div style={{ flex: 1 }} />
+            <button style={styles.pullBtn} onClick={handlePullLatest} disabled={isPulling}>
               {isPulling ? 'Pulling…' : '↓ Pull Latest'}
             </button>
-            <button style={{ ...styles.syncBtn, ...styles.syncBtnPrimary }} onClick={handlePushChanges} disabled={isPushing}>
-              {isPushing ? 'Pushing…' : '↑ Push Changes'}
+            <button
+              style={hasChanges ? styles.pushBtnActive : styles.pushBtn}
+              onClick={handlePushChanges}
+              disabled={isPushing}
+            >
+              {isPushing
+                ? '↑ Pushing…'
+                : hasChanges
+                  ? `↑ Push Changes${elapsedTime ? `  ·  ${elapsedTime}` : ''}`
+                  : '↑ Push Changes'}
             </button>
-            {deck && <span style={styles.deckReady}>Deck ready to export</span>}
+            <button
+              style={{
+                ...styles.generateBtn,
+                opacity: (isGenerating || totalSlides === 0) ? 0.45 : 1,
+                cursor:  (isGenerating || totalSlides === 0) ? 'not-allowed' : 'pointer',
+              }}
+              onClick={handleGenerate}
+              disabled={isGenerating || totalSlides === 0}
+            >
+              {isGenerating ? 'Generating…' : 'Generate Presentation →'}
+            </button>
           </div>
         </div>
       </div>
@@ -572,12 +607,14 @@ const styles = {
   slideList:       { flex: 1, overflowY: 'auto', padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 8 },
   emptyMsg:        { fontSize: 14, color: 'var(--color-text-muted)', margin: 'auto', alignSelf: 'center', paddingTop: 40 },
   addArea:         { padding: '0 20px 18px' },
-  statusBar:       { padding: '7px 20px', background: 'var(--color-bg-secondary)', borderTop: '0.5px solid var(--color-border)', fontSize: 12, color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: 16 },
-  onlineDot:       { display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: 'var(--color-success)', marginRight: 6, verticalAlign: 'middle' },
-  deckReady:       { marginLeft: 'auto', color: 'var(--color-success)', fontWeight: 500 },
-  syncBtn:         { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '3px 10px', fontSize: 11, color: 'var(--color-text-secondary)', cursor: 'pointer' },
-  syncBtnPrimary:  { background: 'var(--color-accent)', border: 'none', color: '#fff', fontWeight: 500 },
+  actionBar:       { display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', background: 'var(--color-bg-secondary)', borderTop: '0.5px solid var(--color-border)', flexShrink: 0 },
+  actionStatus:    { fontSize: 12, color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: 0 },
+  onlineDot:       { display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: 'var(--color-success)', marginRight: 6 },
   syncMsg:         { fontSize: 11, color: 'var(--color-success)', fontWeight: 500 },
+  pullBtn:         { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '6px 14px', fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'pointer', flexShrink: 0 },
+  pushBtn:         { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '6px 14px', fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'pointer', flexShrink: 0 },
+  pushBtnActive:   { background: '#F59E0B', border: 'none', borderRadius: 'var(--radius-pill)', padding: '6px 16px', fontSize: 12, fontWeight: 700, color: '#fff', cursor: 'pointer', flexShrink: 0, letterSpacing: '0.01em', animation: 'pulse 2s ease-in-out infinite' },
+  generateBtn:     { background: 'var(--color-accent)', border: 'none', borderRadius: 'var(--radius-pill)', padding: '8px 20px', fontSize: 13, fontWeight: 700, color: '#fff', fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 },
   globalOverlay:   { position: 'absolute', inset: 0, zIndex: 10, background: 'var(--color-bg)', display: 'flex', flexDirection: 'column' },
   globalHeader:    { display: 'flex', alignItems: 'center', gap: 10, padding: '12px 20px', borderBottom: '0.5px solid var(--color-border)', background: 'var(--color-bg-secondary)', flexShrink: 0 },
   globalTitle:     { fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: '0.03em', color: 'var(--color-text-primary)' },
