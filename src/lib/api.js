@@ -129,7 +129,7 @@ RULES — follow exactly:
 - Each input slide has an "Id" — every output slide must include a "sourceId" field that exactly copies the Id of the input slide it was generated from (verbatim, unchanged).
 - Where "Guidance notes" are provided for a slide, use them as topical direction and source material — synthesise them with the supporting file context into polished executive bullet points. Never copy the guidance notes verbatim into the output.
 - Review all supporting file content (both global files shared across departments and department-specific files) when generating bullets for each slide.
-- Each slide must contain NO MORE than 5 bullet points. If a topic genuinely has more content than fits in 5 bullets, add a continuation slide immediately after with " (cont'd)" appended to the title. Continuation slides must share the same "sourceId".${allImageFiles.length ? `\n- If an image from the available images list is relevant or would enhance a slide, include an "imageFile" field with the exact filename and an "imagePlacement" field. Choose the placement that makes the image look most natural: "bottom" stretches the image across the full content width below the bullets (best for charts, graphs, tables, timelines — use this by default for data visuals), "right" places the image on the right side with text on the left (best for product shots, logos, or portrait images). Only use one image per slide. Omit both fields if no image fits.` : ''}
+- Each slide must contain NO MORE than 4 bullet points. If a topic genuinely has more content than fits in 4 bullets, add a continuation slide immediately after with " (cont'd)" appended to the title. Continuation slides must share the same "sourceId".${allImageFiles.length ? `\n- If an image from the available images list is relevant or would enhance a slide, include an "imageFile" field with the exact filename and an "imagePlacement" field. Choose the placement that makes the image look most natural: "bottom" stretches the image across the full content width below the bullets (best for charts, graphs, tables, timelines — use this by default for data visuals), "right" places the image on the right side with text on the left (best for product shots, logos, or portrait images). Only use one image per slide. Omit both fields if no image fits.` : ''}
 ${imageList}
 
 Return ONLY valid JSON, no markdown:
@@ -159,7 +159,7 @@ ${slideData}`.trim()
   })
 
   // Safety net: split any slide that still has more than 5 bullets into continuations
-  const MAX_BULLETS = 5
+  const MAX_BULLETS = 4
   const splitSlides = []
   for (const slide of deck.slides) {
     const bullets = slide.bullets ?? []
