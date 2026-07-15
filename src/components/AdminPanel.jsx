@@ -93,7 +93,7 @@ function DeptSection({ dept, shells, onChange }) {
 }
 
 // ── Template editor (create or edit a single template) ────────────────────────
-function TemplateEditor({ template, onSave, onCancel }) {
+function TemplateEditor({ template, onSave, onCancel, saving }) {
   const [draft, setDraft] = useState(() => ({
     ...template,
     departments: { ...template.departments },
@@ -181,7 +181,7 @@ function TemplateCard({ template, onEdit, onDelete, onDuplicate }) {
 }
 
 // ── Main AdminPanel ───────────────────────────────────────────────────────────
-export default function AdminPanel({ onClose }) {
+export default function AdminPanel({ onClose, onTemplatesChange }) {
   const [templates, setTemplates] = useState([])
   const [editing,   setEditing]   = useState(null)
   const [saving,    setSaving]    = useState(false)
@@ -212,13 +212,16 @@ export default function AdminPanel({ onClose }) {
   async function handleSave(draft) {
     setSaving(true)
     try {
+      let next
       if (templates.find(t => t.id === draft.id)) {
         const updated = await api.updateTemplate(draft.id, draft)
-        setTemplates(prev => prev.map(t => t.id === draft.id ? updated : t))
+        next = templates.map(t => t.id === draft.id ? updated : t)
       } else {
         const created = await api.createTemplate(draft)
-        setTemplates(prev => [...prev, created])
+        next = [...templates, created]
       }
+      setTemplates(next)
+      onTemplatesChange?.(next)
       setEditing(null)
     } catch (err) { alert('Failed to save template: ' + err.message) }
     finally { setSaving(false) }
@@ -227,7 +230,9 @@ export default function AdminPanel({ onClose }) {
   async function handleDelete(id) {
     try {
       await api.deleteTemplate(id)
-      setTemplates(prev => prev.filter(t => t.id !== id))
+      const next = templates.filter(t => t.id !== id)
+      setTemplates(next)
+      onTemplatesChange?.(next)
     } catch (err) { alert('Failed to delete: ' + err.message) }
   }
 
@@ -254,6 +259,7 @@ export default function AdminPanel({ onClose }) {
               template={editing}
               onSave={handleSave}
               onCancel={() => setEditing(null)}
+              saving={saving}
             />
           ) : (
             <div style={S.listArea}>
