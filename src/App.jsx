@@ -35,8 +35,9 @@ export default function App() {
   const [showGlobal,     setShowGlobal]     = useState(false)
   const [showFunnel,     setShowFunnel]     = useState(false)
   const [showTeam,       setShowTeam]       = useState(false)
-  const [showAdmin,      setShowAdmin]      = useState(false)
-  const [selectedTemplate, setSelectedTemplate] = useState(null) // template object | null
+  const [showAdmin,         setShowAdmin]         = useState(false)
+  const [selectedTemplate,  setSelectedTemplate]  = useState(null)
+  const [isApplyingTemplate, setIsApplyingTemplate] = useState(false)
 
   useEffect(() => {
     if (!activeClientId) return
@@ -212,6 +213,13 @@ export default function App() {
             <AdminPanel onClose={() => setShowAdmin(false)} />
           )}
 
+          {isApplyingTemplate && (
+            <div style={styles.templateOverlay}>
+              <div style={styles.templateSpinner} />
+              <div style={styles.templateSpinnerLabel}>Building slides from template…</div>
+            </div>
+          )}
+
           {showGlobal && activeClientId && (
             <div style={styles.globalOverlay}>
               <div style={styles.globalHeader}>
@@ -245,26 +253,54 @@ export default function App() {
               <select
                 style={styles.templateSelect}
                 value={selectedTemplate?.id ?? ''}
-                onChange={e => {
+                disabled={isApplyingTemplate}
+                onChange={async e => {
                   const templates = loadTemplates()
                   const tmpl = templates.find(t => t.id === e.target.value) ?? null
                   setSelectedTemplate(tmpl)
-                  if (tmpl && activeClientId) {
+                  if (!tmpl || !activeClientId) return
+
+                  const deptContributions = DEPARTMENTS
+                    .filter(d => (tmpl.departments[d.name] || []).length > 0)
+                    .map(d => {
+                      const fileData    = loadFiles(activeClientId, d.id)
+                      const globalData  = loadGlobalFiles(activeClientId)
+                      const fileSummary = buildAIContext(fileData, d.name, globalData).textSummary
+                      const seeds = buildSeedSlides(tmpl, d.name).map(s => ({
+                        ...s,
+                        _id: `s${Date.now()}${Math.random().toString(36).slice(2)}`,
+                      }))
+                      return { dept: d.name, slides: seeds, fileSummary }
+                    })
+
+                  if (!deptContributions.length) return
+
+                  setIsApplyingTemplate(true)
+                  try {
+                    const result = await generateDeck(deptContributions, activeClient?.name ?? '')
                     setAllSlidesMap(prev => {
                       const current = prev[activeClientId] ?? {}
                       const updated = { ...current }
-                      DEPARTMENTS.forEach(d => {
-                        const seeds = buildSeedSlides(tmpl, d.name).map(s => ({
-                          ...s,
+                      result.slides.forEach(gen => {
+                        const dept = DEPARTMENTS.find(d => d.name === gen.dept)
+                        if (!dept) return
+                        const slide = {
                           _id: `s${Date.now()}${Math.random().toString(36).slice(2)}`,
-                        }))
-                        if (seeds.length > 0) {
-                          updated[d.id] = [...(current[d.id] ?? []), ...seeds]
+                          title: gen.title,
+                          body: (gen.bullets ?? []).join('\n'),
+                          bullets: gen.bullets ?? [],
+                          dept: gen.dept,
+                          _fromTemplate: true,
                         }
+                        updated[dept.id] = [...(current[dept.id] ?? []), slide]
                       })
                       saveSlides(activeClientId, updated)
                       return { ...prev, [activeClientId]: updated }
                     })
+                  } catch (err) {
+                    alert('Template generation failed: ' + err.message)
+                  } finally {
+                    setIsApplyingTemplate(false)
                   }
                 }}
               >
@@ -422,7 +458,10 @@ const styles = {
   globalTitle:     { fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: '0.03em', color: 'var(--color-text-primary)' },
   globalSub:       { fontSize: 12, color: 'var(--color-text-muted)', flex: 1 },
   globalClose:     { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '5px 12px', fontSize: 12, cursor: 'pointer', color: 'var(--color-text-secondary)', flexShrink: 0 },
-  templatePicker:  { marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, paddingRight: 4 },
-  templateLabel:   { fontSize: 11, color: 'var(--color-text-muted)', fontWeight: 500 },
-  templateSelect:  { background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 6, padding: '4px 8px', fontSize: 11, color: 'var(--color-text-secondary)', cursor: 'pointer', outline: 'none' },
+  templatePicker:       { marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, paddingRight: 4 },
+  templateLabel:        { fontSize: 11, color: 'var(--color-text-muted)', fontWeight: 500 },
+  templateSelect:       { background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 6, padding: '4px 8px', fontSize: 11, color: 'var(--color-text-secondary)', cursor: 'pointer', outline: 'none' },
+  templateOverlay:      { position: 'absolute', inset: 0, zIndex: 20, background: 'var(--color-bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 },
+  templateSpinner:      { width: 36, height: 36, borderRadius: '50%', border: '3px solid var(--color-border)', borderTopColor: 'var(--color-accent)', animation: 'spin 0.8s linear infinite' },
+  templateSpinnerLabel: { fontSize: 14, color: 'var(--color-text-muted)', fontWeight: 500 },
 }
