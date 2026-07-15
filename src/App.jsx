@@ -118,7 +118,7 @@ export default function App() {
       const withData = contributions.map(d => {
         const fileData = loadFiles(activeClientId, d.id)
         const ctx = buildAIContext(fileData, d.name, globalData)
-        return { dept: d.name, slides: allSlides[d.id] || [], fileSummary: ctx.textSummary, imageFiles: ctx.imageFiles, pdfFiles: ctx.pdfFiles }
+        return { dept: d.name, slides: allSlides[d.id] || [], deptSummary: ctx.deptSummary, globalSummary: ctx.globalSummary, imageFiles: ctx.imageFiles, pdfFiles: ctx.pdfFiles }
       })
       const result = await generateDeck(withData, activeClient.name)
 
@@ -271,7 +271,7 @@ export default function App() {
                         ...s,
                         _id: `s${Date.now()}${idx}${Math.random().toString(36).slice(2)}`,
                       }))
-                      return { dept: d.name, slides: seeds, fileSummary: ctx.textSummary, imageFiles: ctx.imageFiles, pdfFiles: ctx.pdfFiles }
+                      return { dept: d.name, slides: seeds, deptSummary: ctx.deptSummary, globalSummary: ctx.globalSummary, imageFiles: ctx.imageFiles, pdfFiles: ctx.pdfFiles }
                     })
 
                   if (!deptContributions.length) return

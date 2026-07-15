@@ -197,78 +197,86 @@ export async function fetchLinkContent(url) {
  *   textSummary — plain text blob for text-based files
  *   pdfFiles    — array of { name, base64 } for PDFs (sent as document blocks)
  */
+function processFile(f, lines, pdfFiles, imageFiles) {
+  if (f.type === 'word') {
+    const text = (f.content ?? '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 3000)
+    lines.push(text || '(empty document)')
+
+  } else if (f.type === 'excel') {
+    const { headers = [], rows = [] } = f.content ?? {}
+    if (headers.length) {
+      lines.push(`Headers: ${headers.join(' | ')}`)
+      rows.slice(0, 50).forEach(r => lines.push(r.join(' | ')))
+      if (rows.length > 50) lines.push(`… and ${rows.length - 50} more rows`)
+    } else {
+      lines.push('(empty spreadsheet)')
+    }
+
+  } else if (f.type === 'upload') {
+    const ext  = f.name.split('.').pop().toLowerCase()
+    const mime = f.content?.mimeType ?? ''
+
+    if (ext === 'pdf' || mime.includes('pdf')) {
+      const base64 = f.content?.base64?.split(',')[1] ?? f.content?.base64
+      if (base64) {
+        if (pdfFiles) pdfFiles.push({ name: f.name, base64 })
+        lines.push(`[PDF — will be read directly by AI]`)
+      }
+    } else if (mime.startsWith('image/') || ['png','jpg','jpeg','gif','webp'].includes(ext)) {
+      const raw = f.content?.base64
+      if (raw) {
+        const b64 = raw.includes(',') ? raw.split(',')[1] : raw
+        const imageMime = mime || `image/${ext === 'jpg' ? 'jpeg' : ext}`
+        if (imageFiles) imageFiles.push({ name: f.name, base64: b64, mimeType: imageMime })
+        lines.push(`[Image file: "${f.name}" — will be viewed directly by AI]`)
+      }
+    } else {
+      const extracted = extractUploadedContent(f)
+      if (extracted && extracted !== '__PDF__') {
+        lines.push(extracted)
+      } else {
+        const kb = Math.round((f.content?.size ?? 0) / 1024)
+        lines.push(`[Binary file — ${mime || 'unknown'}, ${kb}KB — not readable as text]`)
+      }
+    }
+  } else if (f.type === 'link') {
+    const url = f.content?.url ?? ''
+    if (f.content?.fetchedText) {
+      lines.push(`[Linked file: "${f.name}" — ${url}]\n${f.content.fetchedText}`)
+    } else {
+      lines.push(`[Linked file: "${f.name}" — ${url} — content could not be auto-read (${f.content?.fetchError || 'sign-in required'}); treat as a named reference only]`)
+    }
+  }
+}
+
 export function buildAIContext(data, deptName, globalData = null) {
-  const lines      = [`=== ${deptName} department files ===`]
   const pdfFiles   = []
   const imageFiles = []
 
-  // Merge global files in first so they're always visible to the AI
-  const allFiles = [
-    ...(globalData?.files ?? []).map(f => ({ ...f, _global: true })),
-    ...data.files,
-  ]
+  const deptFiles   = data.files ?? []
+  const globalFiles = (globalData?.files ?? [])
 
-  for (const f of allFiles) {
-    if (f._global) lines.push(`\n--- Global File: "${f.name}" (shared across all departments) ---`)
-    if (f.type === 'word') {
-      const text = (f.content ?? '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 3000)
-      lines.push(text || '(empty document)')
+  // Dept-only summary
+  const deptLines = deptFiles.length ? [`=== ${deptName} department files ===`] : []
+  for (const f of deptFiles) processFile(f, deptLines, pdfFiles, imageFiles)
 
-    } else if (f.type === 'excel') {
-      const { headers = [], rows = [] } = f.content ?? {}
-      if (headers.length) {
-        lines.push(`Headers: ${headers.join(' | ')}`)
-        rows.slice(0, 50).forEach(r => lines.push(r.join(' | ')))
-        if (rows.length > 50) lines.push(`… and ${rows.length - 50} more rows`)
-      } else {
-        lines.push('(empty spreadsheet)')
-      }
+  // Global-only summary (sent once at top of prompt, not per-dept)
+  const globalLines = globalFiles.length ? ['=== Shared company files ==='] : []
+  for (const f of globalFiles) processFile(f, globalLines, pdfFiles, imageFiles)
 
-    } else if (f.type === 'upload') {
-      const ext  = f.name.split('.').pop().toLowerCase()
-      const mime = f.content?.mimeType ?? ''
-
-      if (ext === 'pdf' || mime.includes('pdf')) {
-        // PDF — collect for native Anthropic document block
-        const base64 = f.content?.base64?.split(',')[1] ?? f.content?.base64
-        if (base64) {
-          pdfFiles.push({ name: f.name, base64 })
-          lines.push(`[PDF — will be read directly by AI]`)
-        }
-      } else if (mime.startsWith('image/') || ['png','jpg','jpeg','gif','webp'].includes(ext)) {
-        // Image — collect for native vision block
-        const raw = f.content?.base64
-        if (raw) {
-          const b64 = raw.includes(',') ? raw.split(',')[1] : raw
-          const imageMime = mime || `image/${ext === 'jpg' ? 'jpeg' : ext}`
-          imageFiles.push({ name: f.name, base64: b64, mimeType: imageMime })
-          lines.push(`[Image file: "${f.name}" — will be viewed directly by AI]`)
-        }
-      } else {
-        const extracted = extractUploadedContent(f)
-        if (extracted && extracted !== '__PDF__') {
-          lines.push(extracted)
-        } else {
-          const kb = Math.round((f.content?.size ?? 0) / 1024)
-          lines.push(`[Binary file — ${mime || 'unknown'}, ${kb}KB — not readable as text]`)
-        }
-      }
-    } else if (f.type === 'link') {
-      const url = f.content?.url ?? ''
-      if (f.content?.fetchedText) {
-        lines.push(`[Linked file: "${f.name}" — ${url}]\n${f.content.fetchedText}`)
-      } else {
-        lines.push(`[Linked file: "${f.name}" — ${url} — content could not be auto-read (${f.content?.fetchError || 'sign-in required'}); treat as a named reference only]`)
-      }
-    }
-  }
+  // Combined summary (for single-dept use cases or backward compat)
+  const allLines = []
+  if (globalLines.length) allLines.push(...globalLines)
+  if (deptLines.length)   allLines.push(...deptLines)
 
   return {
-    textSummary: allFiles.length ? lines.join('\n') : '',
+    textSummary:   allLines.length    ? allLines.join('\n')    : '',
+    deptSummary:   deptLines.length   ? deptLines.join('\n')   : '',
+    globalSummary: globalLines.length ? globalLines.join('\n') : '',
     pdfFiles,
     imageFiles,
   }

@@ -61,6 +61,9 @@ export const DEPT_REQUIREMENTS = {
  
 export const ANTHROPIC_API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY ?? ''
 export const ANTHROPIC_MODEL = 'claude-sonnet-4-6'
+// Cheaper model used for bulk generation (template runs, deck generation)
+// Switch back to ANTHROPIC_MODEL if you need richer reasoning
+export const ANTHROPIC_MODEL_FAST = 'claude-haiku-4-5-20251001'
  
 // ─── Storage key ────────────────────────────────────────────────────────────
 // Key used in localStorage to persist slide data between sessions.
