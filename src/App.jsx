@@ -253,6 +253,7 @@ export default function App() {
               <select
                 style={styles.templateSelect}
                 value={selectedTemplate?.id ?? ''}
+                disabled={isApplyingTemplate}
                 onChange={async e => {
                   const templates = loadTemplates()
                   const tmpl = templates.find(t => t.id === e.target.value) ?? null
