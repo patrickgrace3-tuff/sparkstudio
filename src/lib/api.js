@@ -1,8 +1,8 @@
-import { ANTHROPIC_API_KEY, ANTHROPIC_MODEL } from './constants.js'
+import { ANTHROPIC_API_KEY, ANTHROPIC_MODEL, ANTHROPIC_MODEL_FAST } from './constants.js'
 
 const API_URL = 'https://api.anthropic.com/v1/messages'
 
-export async function callClaude(userPrompt, system = '', maxTokens = 1500, { imageFiles = [], pdfFiles = [] } = {}) {
+export async function callClaude(userPrompt, system = '', maxTokens = 1500, { imageFiles = [], pdfFiles = [], model = ANTHROPIC_MODEL } = {}) {
   if (!ANTHROPIC_API_KEY) {
     throw new Error('Missing VITE_ANTHROPIC_API_KEY. Add it to your .env file and restart the dev server.')
   }
@@ -29,7 +29,7 @@ export async function callClaude(userPrompt, system = '', maxTokens = 1500, { im
   content.push({ type: 'text', text: userPrompt })
 
   const body = {
-    model: ANTHROPIC_MODEL,
+    model,
     max_tokens: maxTokens,
     messages: [{ role: 'user', content }],
   }
@@ -98,13 +98,19 @@ export async function generateDeck(deptContributions, clientName = "") {
     }
   }
 
+  // Separate global file content (shared) from dept-specific content so global
+  // files are sent once instead of repeated for every department.
+  const globalSummary = deptContributions[0]?.globalSummary ?? ''
+
   const slideData = deptContributions
-    .map(({ dept, slides, fileSummary }) => {
+    .map(({ dept, slides, deptSummary, fileSummary }) => {
       const slideText = slides.map(s => {
         const guidance = s.body ? `\n  Guidance notes (use as source material, do NOT copy verbatim): ${s.body}` : ''
         return `  Id: ${s._id}\n  Title: ${s.title}${guidance}`
       }).join('\n')
-      const fileText  = fileSummary ? `\nSupporting files:\n${fileSummary}` : ''
+      // Use deptSummary (dept-only) if available, otherwise fall back to fileSummary
+      const summary  = deptSummary ?? fileSummary ?? ''
+      const fileText = summary ? `\nDepartment files:\n${summary}` : ''
       return `Department: ${dept}\nSlides:\n${slideText}${fileText}`
     })
     .join('\n\n')
@@ -117,8 +123,12 @@ export async function generateDeck(deptContributions, clientName = "") {
     ? `\nAvailable images (you may reference one per slide by exact filename):\n${allImageFiles.map(i => `- ${i.name}`).join('\n')}`
     : ''
 
-  const prompt = `Create a presentation for client: ${clientName}.
+  const globalSection = globalSummary
+    ? `\nShared company context (applies to all departments):\n${globalSummary}\n`
+    : ''
 
+  const prompt = `Create a presentation for client: ${clientName}.
+${globalSection}
 RULES — follow exactly:
 - Only create slides for these departments: ${deptList}
 - The "dept" field on every slide must exactly match one of: ${deptList}
@@ -143,7 +153,7 @@ Return ONLY valid JSON, no markdown:
 Department submissions:
 ${slideData}`.trim()
 
-  const raw   = await callClaude(prompt, system, 4000, { imageFiles: allImageFiles, pdfFiles: allPdfFiles })
+  const raw   = await callClaude(prompt, system, 4000, { imageFiles: allImageFiles, pdfFiles: allPdfFiles, model: ANTHROPIC_MODEL_FAST })
   const clean = raw.replace(/```json|```/g, '').trim()
   const deck  = JSON.parse(clean)
 
