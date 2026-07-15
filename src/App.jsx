@@ -46,6 +46,7 @@ export default function App() {
   const [isPushing,          setIsPushing]          = useState(false)
   const [isPulling,          setIsPulling]          = useState(false)
   const [pushMsg,            setPushMsg]            = useState('')
+  const [hasChanges,         setHasChanges]         = useState(false)
 
   // ── Auth bootstrap ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -126,6 +127,7 @@ export default function App() {
   function setSlides(updated) {
     setAllSlidesMap(prev => ({ ...prev, [activeClientId]: updated }))
     api.bulkSaveSlides(activeClientId, updated).catch(console.error)
+    setHasChanges(true)
   }
 
   function addSlide(slide) {
@@ -182,6 +184,7 @@ export default function App() {
       })
 
       setDeckMap(prev => ({ ...prev, [activeClientId]: result }))
+      setHasChanges(true)
 
       // Save as a new presentation version in the database
       try {
@@ -229,6 +232,7 @@ export default function App() {
     setIsPushing(true)
     try {
       await api.bulkSaveSlides(activeClientId, allSlides)
+      setHasChanges(false)
       setPushMsg('pushed')
       setTimeout(() => setPushMsg(''), 3000)
     } catch (err) {
@@ -291,6 +295,9 @@ export default function App() {
         onDelete={handleDeleteClient}
         currentUser={currentUser}
         onLogout={() => { setToken(null); setCurrentUser(null) }}
+        hasChanges={hasChanges}
+        onPush={handlePushChanges}
+        isPushing={isPushing}
       />
 
       <div style={styles.body}>

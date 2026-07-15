@@ -1,7 +1,7 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { nameToId } from '../lib/clients.js'
 
-export default function ClientBar({ clients, activeClientId, onSelect, onAdd, onDelete, currentUser, onLogout }) {
+export default function ClientBar({ clients, activeClientId, onSelect, onAdd, onDelete, currentUser, onLogout, hasChanges, onPush, isPushing }) {
   const [adding,     setAdding]     = useState(false)
   const [draft,      setDraft]      = useState('')
   const [confirmDel, setConfirmDel] = useState(false)
@@ -75,6 +75,13 @@ export default function ClientBar({ clients, activeClientId, onSelect, onAdd, on
       {/* Spacer */}
       <div style={{ flex: 1 }} />
 
+      {/* Unsaved changes indicator */}
+      {hasChanges && (
+        <button style={styles.changesBtn} onClick={onPush} disabled={isPushing}>
+          {isPushing ? '↑ Pushing…' : '↑ Push Changes'}
+        </button>
+      )}
+
       {/* User info + logout */}
       {currentUser && (
         <div style={styles.userArea}>
@@ -83,6 +90,7 @@ export default function ClientBar({ clients, activeClientId, onSelect, onAdd, on
         </div>
       )}
     </div>
+    <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.75} }`}</style>
   )
 }
 
@@ -165,6 +173,18 @@ const styles = {
   confirmText: {
     fontSize: 12,
     color: 'var(--color-text-secondary)',
+  },
+  changesBtn: {
+    background: '#F59E0B',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 'var(--radius-pill)',
+    padding: '6px 16px',
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: 'pointer',
+    letterSpacing: '0.02em',
+    animation: 'pulse 2s ease-in-out infinite',
   },
   userArea: {
     display: 'flex',
