@@ -42,6 +42,9 @@ export default function App() {
   const [showAdmin,         setShowAdmin]         = useState(false)
   const [selectedTemplate,  setSelectedTemplate]  = useState(null)
   const [isApplyingTemplate, setIsApplyingTemplate] = useState(false)
+  const [isPushing,          setIsPushing]          = useState(false)
+  const [isPulling,          setIsPulling]          = useState(false)
+  const [pushMsg,            setPushMsg]            = useState('')
 
   // ── Auth bootstrap ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -212,6 +215,39 @@ export default function App() {
     try { await exportToPptx(orderedSlides, deck) }
     catch (err) { alert('Export failed: ' + err.message) }
     finally { setIsExporting(false) }
+  }
+
+  async function handlePushChanges() {
+    if (!activeClientId) return
+    setIsPushing(true)
+    try {
+      await api.bulkSaveSlides(activeClientId, allSlides)
+      setPushMsg('pushed')
+      setTimeout(() => setPushMsg(''), 3000)
+    } catch (err) {
+      alert('Push failed: ' + err.message)
+    } finally {
+      setIsPushing(false)
+    }
+  }
+
+  async function handlePullLatest() {
+    if (!activeClientId) return
+    setIsPulling(true)
+    try {
+      const map = await api.getSlides(activeClientId)
+      const normalised = {}
+      for (const [deptId, slides] of Object.entries(map)) {
+        normalised[deptId] = slides.map(s => ({ ...s, _id: s.id }))
+      }
+      setAllSlidesMap(prev => ({ ...prev, [activeClientId]: normalised }))
+      setPushMsg('pulled')
+      setTimeout(() => setPushMsg(''), 3000)
+    } catch (err) {
+      alert('Pull failed: ' + err.message)
+    } finally {
+      setIsPulling(false)
+    }
   }
 
   function handleSelectDept(id) {
@@ -463,6 +499,14 @@ export default function App() {
               <span style={styles.onlineDot} />
               {activeClient?.name} · {totalSlides} slide{totalSlides !== 1 ? 's' : ''} saved
             </span>
+            {pushMsg === 'pushed' && <span style={styles.syncMsg}>✓ Changes pushed</span>}
+            {pushMsg === 'pulled' && <span style={styles.syncMsg}>✓ Latest pulled</span>}
+            <button style={styles.syncBtn} onClick={handlePullLatest} disabled={isPulling}>
+              {isPulling ? 'Pulling…' : '↓ Pull Latest'}
+            </button>
+            <button style={{ ...styles.syncBtn, ...styles.syncBtnPrimary }} onClick={handlePushChanges} disabled={isPushing}>
+              {isPushing ? 'Pushing…' : '↑ Push Changes'}
+            </button>
             {deck && <span style={styles.deckReady}>Deck ready to export</span>}
           </div>
         </div>
@@ -511,6 +555,9 @@ const styles = {
   statusBar:       { padding: '7px 20px', background: 'var(--color-bg-secondary)', borderTop: '0.5px solid var(--color-border)', fontSize: 12, color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: 16 },
   onlineDot:       { display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: 'var(--color-success)', marginRight: 6, verticalAlign: 'middle' },
   deckReady:       { marginLeft: 'auto', color: 'var(--color-success)', fontWeight: 500 },
+  syncBtn:         { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '3px 10px', fontSize: 11, color: 'var(--color-text-secondary)', cursor: 'pointer' },
+  syncBtnPrimary:  { background: 'var(--color-accent)', border: 'none', color: '#fff', fontWeight: 500 },
+  syncMsg:         { fontSize: 11, color: 'var(--color-success)', fontWeight: 500 },
   globalOverlay:   { position: 'absolute', inset: 0, zIndex: 10, background: 'var(--color-bg)', display: 'flex', flexDirection: 'column' },
   globalHeader:    { display: 'flex', alignItems: 'center', gap: 10, padding: '12px 20px', borderBottom: '0.5px solid var(--color-border)', background: 'var(--color-bg-secondary)', flexShrink: 0 },
   globalTitle:     { fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: '0.03em', color: 'var(--color-text-primary)' },
