@@ -544,6 +544,7 @@ export default function App() {
 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.75} }
         [contenteditable] h1 { font-size: 1.5em; font-weight: 700; margin: 0.5em 0; }
         [contenteditable] h2 { font-size: 1.25em; font-weight: 600; margin: 0.4em 0; }
         [contenteditable] ul, [contenteditable] ol { padding-left: 1.4em; margin: 0.3em 0; }
