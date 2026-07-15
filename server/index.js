@@ -1,7 +1,9 @@
 import 'dotenv/config'
+import { readFileSync } from 'fs'
 import express from 'express'
 import cors from 'cors'
 
+import { pool } from './db.js'
 import authRoutes         from './routes/auth.js'
 import clientRoutes       from './routes/clients.js'
 import slideRoutes        from './routes/slides.js'
@@ -27,4 +29,16 @@ app.use('/api/clientdata',    clientDataRoutes)
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }))
 
-app.listen(PORT, () => console.log(`SparkStudio API running on port ${PORT}`))
+// Run migrations on every startup (all statements use IF NOT EXISTS — safe to repeat)
+async function start() {
+  try {
+    const sql = readFileSync('./migrations/001_initial.sql', 'utf8')
+    await pool.query(sql)
+    console.log('Migrations up to date.')
+  } catch (err) {
+    console.error('Migration error:', err.message)
+  }
+  app.listen(PORT, () => console.log(`SparkStudio API running on port ${PORT}`))
+}
+
+start()
