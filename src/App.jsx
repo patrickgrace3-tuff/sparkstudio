@@ -316,7 +316,7 @@ export default function App() {
             <FunnelBuilder onClose={() => setShowFunnel(false)} clientId={activeClientId} />
           )}
           {showAdmin && (
-            <AdminPanel onClose={() => setShowAdmin(false)} />
+            <AdminPanel onClose={() => setShowAdmin(false)} onTemplatesChange={setTemplates} />
           )}
 
           {isApplyingTemplate && (
