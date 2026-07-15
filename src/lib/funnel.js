@@ -74,6 +74,8 @@ function migrate(raw) {
 
 const KEY = 'sparkstudio_funnel_config'
 
+import { api } from './apiClient.js'
+
 export function loadFunnelConfig() {
   try {
     const raw = localStorage.getItem(KEY)
@@ -84,8 +86,18 @@ export function loadFunnelConfig() {
   }
 }
 
-export function saveFunnelConfig(cfg) {
+export async function loadFunnelConfigRemote(clientId) {
+  try {
+    const res = await api.getClientData(clientId, 'funnel')
+    const cfg = res.value ?? defaultConfig()
+    localStorage.setItem(KEY, JSON.stringify(cfg))
+    return migrate(cfg)
+  } catch { return loadFunnelConfig() }
+}
+
+export function saveFunnelConfig(cfg, clientId) {
   localStorage.setItem(KEY, JSON.stringify(cfg))
+  if (clientId) api.setClientData(clientId, 'funnel', cfg).catch(console.error)
 }
 
 // Cycle an item's state: 'on' → 'inhouse' → false → 'on'

@@ -76,3 +76,13 @@ CREATE TABLE IF NOT EXISTS files (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS files_client_dept ON files(client_id, dept_id);
+
+-- ── Generic client data blobs (funnel, team, files, checklists) ───────────────
+CREATE TABLE IF NOT EXISTS client_data (
+  client_id  UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  data_key   TEXT NOT NULL,
+  value      JSONB NOT NULL DEFAULT '{}',
+  updated_by INTEGER REFERENCES users(id),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (client_id, data_key)
+);

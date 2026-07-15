@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { FUNNEL_STAGES, loadFunnelConfig, saveFunnelConfig, cycleItemState } from '../lib/funnel.js'
+import React, { useState, useEffect } from 'react'
+import { FUNNEL_STAGES, loadFunnelConfig, loadFunnelConfigRemote, saveFunnelConfig, cycleItemState } from '../lib/funnel.js'
 
 // Item state color map
 const STATE_COLOR   = { on: '#CD2F37', inhouse: '#1A6FA8', off: '#444' }
@@ -172,10 +172,14 @@ function pill(sk) {
 }
 
 // ── Main FunnelBuilder modal ──────────────────────────────────────────────────
-export default function FunnelBuilder({ onClose }) {
+export default function FunnelBuilder({ onClose, clientId }) {
   const [config, setConfig] = useState(loadFunnelConfig)
   const [activeTab, setActiveTab] = useState('current')
   const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    if (clientId) loadFunnelConfigRemote(clientId).then(setConfig)
+  }, [clientId])
 
   const activeFunnel = config[activeTab] || {}
 
@@ -203,7 +207,7 @@ export default function FunnelBuilder({ onClose }) {
   }
 
   function handleSave() {
-    saveFunnelConfig(config)
+    saveFunnelConfig(config, clientId)
     setSaved(true)
   }
 

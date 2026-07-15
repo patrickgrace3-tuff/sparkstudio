@@ -23,13 +23,25 @@ function defaultConfig() {
   return { members: [], groups: DEFAULT_GROUPS }
 }
 
+import { api } from './apiClient.js'
+
 export function loadTeamConfig() {
   try { return JSON.parse(localStorage.getItem(TEAM_KEY)) || defaultConfig() }
   catch { return defaultConfig() }
 }
 
-export function saveTeamConfig(cfg) {
+export async function loadTeamConfigRemote(clientId) {
+  try {
+    const res = await api.getClientData(clientId, 'team')
+    const cfg = res.value ?? defaultConfig()
+    localStorage.setItem(TEAM_KEY, JSON.stringify(cfg))
+    return cfg
+  } catch { return loadTeamConfig() }
+}
+
+export function saveTeamConfig(cfg, clientId) {
   localStorage.setItem(TEAM_KEY, JSON.stringify(cfg))
+  if (clientId) api.setClientData(clientId, 'team', cfg).catch(console.error)
 }
 
 export function uid() {
