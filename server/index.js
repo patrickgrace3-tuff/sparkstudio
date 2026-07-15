@@ -7,6 +7,7 @@ import clientRoutes       from './routes/clients.js'
 import slideRoutes        from './routes/slides.js'
 import presentationRoutes from './routes/presentations.js'
 import templateRoutes     from './routes/templates.js'
+import clientDataRoutes   from './routes/clientdata.js'
 
 const app  = express()
 const PORT = process.env.PORT || 3001
@@ -22,6 +23,7 @@ app.use('/api/clients',       clientRoutes)
 app.use('/api/slides',        slideRoutes)
 app.use('/api/presentations', presentationRoutes)
 app.use('/api/templates',     templateRoutes)
+app.use('/api/clientdata',    clientDataRoutes)
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }))
 

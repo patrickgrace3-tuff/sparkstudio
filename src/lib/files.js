@@ -1,44 +1,58 @@
 /**
- * files.js — per-client, per-dept file storage in localStorage
- *
- * Structure:
- *   pres-builder:files:<clientId>:<deptId>  →  { folders: [...], files: [...] }
- *
- * Folder: { id, name, parentId }
- * File:   { id, name, type ('word'|'excel'|'upload'), folderId, content, createdAt, updatedAt }
- *   - word:   content = HTML string
- *   - excel:  content = { headers: [], rows: [[]] }
- *   - upload: content = { base64, mimeType, size }
+ * files.js — per-client, per-dept file storage
+ * Reads/writes via the API (synced across users).
+ * Falls back to localStorage for immediate reads while API loads.
  */
 
-function key(clientId, deptId) {
+import { api } from './apiClient.js'
+
+function lsKey(clientId, deptId) {
   return `pres-builder:files:${clientId}:${deptId}`
 }
-
-function globalKey(clientId) {
+function globalLsKey(clientId) {
   return `pres-builder:files:${clientId}:__global__`
 }
 
 export function loadFiles(clientId, deptId) {
   try {
-    const raw = localStorage.getItem(key(clientId, deptId))
+    const raw = localStorage.getItem(lsKey(clientId, deptId))
     return raw ? JSON.parse(raw) : { folders: [], files: [] }
   } catch { return { folders: [], files: [] } }
 }
 
+export async function loadFilesRemote(clientId, deptId) {
+  try {
+    const res = await api.getClientData(clientId, `files:${deptId}`)
+    const data = res.value ?? { folders: [], files: [] }
+    localStorage.setItem(lsKey(clientId, deptId), JSON.stringify(data))
+    return data
+  } catch { return loadFiles(clientId, deptId) }
+}
+
 export function saveFiles(clientId, deptId, data) {
-  localStorage.setItem(key(clientId, deptId), JSON.stringify(data))
+  localStorage.setItem(lsKey(clientId, deptId), JSON.stringify(data))
+  api.setClientData(clientId, `files:${deptId}`, data).catch(console.error)
 }
 
 export function loadGlobalFiles(clientId) {
   try {
-    const raw = localStorage.getItem(globalKey(clientId))
+    const raw = localStorage.getItem(globalLsKey(clientId))
     return raw ? JSON.parse(raw) : { folders: [], files: [] }
   } catch { return { folders: [], files: [] } }
 }
 
+export async function loadGlobalFilesRemote(clientId) {
+  try {
+    const res = await api.getClientData(clientId, 'files:__global__')
+    const data = res.value ?? { folders: [], files: [] }
+    localStorage.setItem(globalLsKey(clientId), JSON.stringify(data))
+    return data
+  } catch { return loadGlobalFiles(clientId) }
+}
+
 export function saveGlobalFiles(clientId, data) {
-  localStorage.setItem(globalKey(clientId), JSON.stringify(data))
+  localStorage.setItem(globalLsKey(clientId), JSON.stringify(data))
+  api.setClientData(clientId, 'files:__global__', data).catch(console.error)
 }
 
 export function uid() {

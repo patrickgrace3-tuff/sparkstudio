@@ -1,5 +1,5 @@
-import React, { useState, useRef, useCallback } from 'react'
-import { WHEEL_DEPTS, DEFAULT_GROUPS, loadTeamConfig, saveTeamConfig, uid } from '../lib/team.js'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { WHEEL_DEPTS, DEFAULT_GROUPS, loadTeamConfig, loadTeamConfigRemote, saveTeamConfig, uid } from '../lib/team.js'
 
 // ── SVG helpers ───────────────────────────────────────────────────────────────
 const CX = 200, CY = 200
@@ -417,11 +417,15 @@ const F = {
 }
 
 // ── Main TeamBuilder modal ────────────────────────────────────────────────────
-export default function TeamBuilder({ onClose }) {
+export default function TeamBuilder({ onClose, clientId }) {
   const [config,  setConfig]  = useState(loadTeamConfig)
   const [saved,   setSaved]   = useState(false)
   const [editing, setEditing] = useState(null)
   const [tab,     setTab]     = useState('members')
+
+  useEffect(() => {
+    if (clientId) loadTeamConfigRemote(clientId).then(setConfig)
+  }, [clientId])
 
   const { members, groups } = config
 
@@ -446,7 +450,7 @@ export default function TeamBuilder({ onClose }) {
     setSaved(false)
   }
 
-  function handleSave() { saveTeamConfig(config); setSaved(true) }
+  function handleSave() { saveTeamConfig(config, clientId); setSaved(true) }
 
   function updateGroupLabel(groupId, label) {
     persist({ ...config, groups: groups.map(g => g.id === groupId ? { ...g, label } : g) })

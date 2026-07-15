@@ -61,6 +61,10 @@ export const api = {
   savePresentation: (clientId, data)  => apiFetch(`/api/presentations/${clientId}`, { method: 'POST', body: data }),
   deletePresentation:(clientId, vid)  => apiFetch(`/api/presentations/${clientId}/${vid}`, { method: 'DELETE' }),
 
+  // Client data blobs (funnel, team, files, checklists)
+  getClientData:  (clientId, key)        => apiFetch(`/api/clientdata/${clientId}/${key}`),
+  setClientData:  (clientId, key, value) => apiFetch(`/api/clientdata/${clientId}/${key}`, { method: 'PUT', body: { value } }),
+
   // Templates
   getTemplates:   ()          => apiFetch('/api/templates'),
   createTemplate: (t)         => apiFetch('/api/templates',       { method: 'POST', body: t }),

@@ -15,7 +15,7 @@ import { DEPARTMENTS } from './lib/constants.js'
 import { loadFunnelConfig } from './lib/funnel.js'
 import { loadTeamConfig }  from './lib/team.js'
 import { buildSeedSlides } from './lib/templates.js'
-import { loadFiles, buildAIContext, loadGlobalFiles } from './lib/files.js'
+import { loadFiles, loadFilesRemote, buildAIContext, loadGlobalFiles, loadGlobalFilesRemote } from './lib/files.js'
 import { enhanceSlideBody, generateDeck } from './lib/api.js'
 import { exportToPptx } from './lib/export.js'
 import { api, setToken } from './lib/apiClient.js'
@@ -42,6 +42,7 @@ export default function App() {
   const [showAdmin,         setShowAdmin]         = useState(false)
   const [selectedTemplate,  setSelectedTemplate]  = useState(null)
   const [isApplyingTemplate, setIsApplyingTemplate] = useState(false)
+  const [filesVersion,       setFilesVersion]       = useState(0)
   const [isPushing,          setIsPushing]          = useState(false)
   const [isPulling,          setIsPulling]          = useState(false)
   const [pushMsg,            setPushMsg]            = useState('')
@@ -78,6 +79,12 @@ export default function App() {
       }).catch(console.error)
     }
     api.getPresentations(activeClientId).then(setPresentations).catch(console.error)
+
+    // Load files for all departments and global from server
+    Promise.all([
+      loadGlobalFilesRemote(activeClientId),
+      ...DEPARTMENTS.map(d => loadFilesRemote(activeClientId, d.id)),
+    ]).then(() => setFilesVersion(v => v + 1)).catch(console.error)
   }, [activeClientId])
 
   const activeClient = clients.find(c => c.id === activeClientId)
@@ -235,12 +242,17 @@ export default function App() {
     if (!activeClientId) return
     setIsPulling(true)
     try {
-      const map = await api.getSlides(activeClientId)
+      const [map] = await Promise.all([
+        api.getSlides(activeClientId),
+        loadGlobalFilesRemote(activeClientId),
+        ...DEPARTMENTS.map(d => loadFilesRemote(activeClientId, d.id)),
+      ])
       const normalised = {}
       for (const [deptId, slides] of Object.entries(map)) {
         normalised[deptId] = slides.map(s => ({ ...s, _id: s.id }))
       }
       setAllSlidesMap(prev => ({ ...prev, [activeClientId]: normalised }))
+      setFilesVersion(v => v + 1)
       setPushMsg('pulled')
       setTimeout(() => setPushMsg(''), 3000)
     } catch (err) {
@@ -298,10 +310,10 @@ export default function App() {
 
         <div style={styles.main}>
           {showTeam && (
-            <TeamBuilder onClose={() => setShowTeam(false)} />
+            <TeamBuilder onClose={() => setShowTeam(false)} clientId={activeClientId} />
           )}
           {showFunnel && (
-            <FunnelBuilder onClose={() => setShowFunnel(false)} />
+            <FunnelBuilder onClose={() => setShowFunnel(false)} clientId={activeClientId} />
           )}
           {showAdmin && (
             <AdminPanel onClose={() => setShowAdmin(false)} />
