@@ -394,16 +394,7 @@ ${existingSlides || 'No slides added yet.'}
           return (
           <div style={styles.welcome}>
             <p style={styles.welcomeTitle}>Ready to build slides for {clientName || 'this client'}</p>
-            {allFileNames.length > 0 ? (
-              <div style={styles.fileList}>
-                <p style={styles.fileListLabel}>Files I can read:</p>
-                {allFileNames.map((f, i) => (
-                  <span key={i} style={{ ...styles.fileChip, ...(f.global ? styles.fileChipGlobal : {}) }}>
-                    {f.global ? '🌐 ' : ''}{f.name}
-                  </span>
-                ))}
-              </div>
-            ) : (
+            {allFileNames.length === 0 && (
               <p style={styles.welcomeSub}>
                 No files uploaded yet. Add files in the <strong>Files</strong> tab or
                 the <strong>Global Files</strong> section, then come back here.
