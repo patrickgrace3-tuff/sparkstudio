@@ -2,15 +2,36 @@ import { ANTHROPIC_API_KEY, ANTHROPIC_MODEL } from './constants.js'
 
 const API_URL = 'https://api.anthropic.com/v1/messages'
 
-export async function callClaude(userPrompt, system = '', maxTokens = 1500) {
+export async function callClaude(userPrompt, system = '', maxTokens = 1500, { imageFiles = [], pdfFiles = [] } = {}) {
   if (!ANTHROPIC_API_KEY) {
     throw new Error('Missing VITE_ANTHROPIC_API_KEY. Add it to your .env file and restart the dev server.')
   }
 
+  // Build multimodal content: images first, then PDFs, then the text prompt
+  const content = []
+
+  for (const img of imageFiles) {
+    content.push({
+      type: 'image',
+      source: { type: 'base64', media_type: img.mimeType, data: img.base64 },
+    })
+    content.push({ type: 'text', text: `[Image: ${img.name}]` })
+  }
+
+  for (const pdf of pdfFiles) {
+    content.push({
+      type: 'document',
+      source: { type: 'base64', media_type: 'application/pdf', data: pdf.base64 },
+    })
+    content.push({ type: 'text', text: `[Document: ${pdf.name}]` })
+  }
+
+  content.push({ type: 'text', text: userPrompt })
+
   const body = {
     model: ANTHROPIC_MODEL,
     max_tokens: maxTokens,
-    messages: [{ role: 'user', content: userPrompt }],
+    messages: [{ role: 'user', content }],
   }
   if (system) body.system = system
 
@@ -53,6 +74,30 @@ No preamble, no markdown fences.
 export async function generateDeck(deptContributions, clientName = "") {
   const allowedDepts = deptContributions.map(d => d.dept)
 
+  // Collect all image files across departments (deduplicated by name)
+  const allImageFiles = []
+  const seenImageNames = new Set()
+  for (const contrib of deptContributions) {
+    for (const img of (contrib.imageFiles ?? [])) {
+      if (!seenImageNames.has(img.name)) {
+        seenImageNames.add(img.name)
+        allImageFiles.push(img)
+      }
+    }
+  }
+
+  // Collect all PDF files across departments (deduplicated by name)
+  const allPdfFiles = []
+  const seenPdfNames = new Set()
+  for (const contrib of deptContributions) {
+    for (const pdf of (contrib.pdfFiles ?? [])) {
+      if (!seenPdfNames.has(pdf.name)) {
+        seenPdfNames.add(pdf.name)
+        allPdfFiles.push(pdf)
+      }
+    }
+  }
+
   const slideData = deptContributions
     .map(({ dept, slides, fileSummary }) => {
       const slideText = slides.map(s => {
@@ -68,6 +113,10 @@ export async function generateDeck(deptContributions, clientName = "") {
 
   const deptList = allowedDepts.join(', ')
 
+  const imageList = allImageFiles.length
+    ? `\nAvailable images (you may reference one per slide by exact filename):\n${allImageFiles.map(i => `- ${i.name}`).join('\n')}`
+    : ''
+
   const prompt = `Create a presentation for client: ${clientName}.
 
 RULES — follow exactly:
@@ -78,19 +127,21 @@ RULES — follow exactly:
 - Only output content slides for the listed departments
 - Each input slide has an "Id" — every output slide must include a "sourceId" field that exactly copies the Id of the input slide it was generated from (verbatim, unchanged). If you split or merge slides, pick the most relevant input Id.
 - Where "Guidance notes" are provided for a slide, use them as topical direction and source material — synthesise them with the supporting file context into polished executive bullet points. Never copy the guidance notes verbatim into the output.
+- Review all supporting file content (both global files shared across departments and department-specific files) when generating bullets for each slide.${allImageFiles.length ? `\n- If an image from the available images list is relevant or would enhance a slide, include an "imageFile" field with the exact filename. Only use one image per slide. Omit "imageFile" if no image fits.` : ''}
+${imageList}
 
 Return ONLY valid JSON, no markdown:
 {
   "title": "Presentation title including client name",
   "slides": [
-    { "num": 1, "title": "Slide title", "dept": "Exact department name", "bullets": ["bullet 1", "bullet 2"], "sourceId": "the input slide's exact Id" }
+    { "num": 1, "title": "Slide title", "dept": "Exact department name", "bullets": ["bullet 1", "bullet 2"], "sourceId": "the input slide's exact Id"${allImageFiles.length ? ', "imageFile": "optional-filename.png (omit if no image)"' : ''} }
   ]
 }
 
 Department submissions:
 ${slideData}`.trim()
 
-  const raw   = await callClaude(prompt, system, 2000)
+  const raw   = await callClaude(prompt, system, 2000, { imageFiles: allImageFiles, pdfFiles: allPdfFiles })
   const clean = raw.replace(/```json|```/g, '').trim()
   const deck  = JSON.parse(clean)
 
@@ -104,6 +155,24 @@ ${slideData}`.trim()
     if (!allowed.includes(d)) return false
     return true
   })
+
+  // Attach any AI-selected images to slides
+  if (allImageFiles.length) {
+    const imageMap = Object.fromEntries(allImageFiles.map(img => [img.name, img]))
+    deck.slides.forEach(s => {
+      const imgName = s.imageFile
+      if (imgName && imageMap[imgName]) {
+        const img = imageMap[imgName]
+        s.style = {
+          ...(s.style ?? {}),
+          layout: 'image-right',
+          contentImage: `data:${img.mimeType};base64,${img.base64}`,
+          images: [{ src: `data:${img.mimeType};base64,${img.base64}`, x: 0.55, y: 0.1, w: 0.4, h: 0.75 }],
+        }
+      }
+      delete s.imageFile
+    })
+  }
 
   deck.slides.forEach((s, i) => { s.num = i + 1 })
 

@@ -198,8 +198,9 @@ export async function fetchLinkContent(url) {
  *   pdfFiles    — array of { name, base64 } for PDFs (sent as document blocks)
  */
 export function buildAIContext(data, deptName, globalData = null) {
-  const lines    = [`=== ${deptName} department files ===`]
-  const pdfFiles = []
+  const lines      = [`=== ${deptName} department files ===`]
+  const pdfFiles   = []
+  const imageFiles = []
 
   // Merge global files in first so they're always visible to the AI
   const allFiles = [
@@ -238,6 +239,15 @@ export function buildAIContext(data, deptName, globalData = null) {
           pdfFiles.push({ name: f.name, base64 })
           lines.push(`[PDF — will be read directly by AI]`)
         }
+      } else if (mime.startsWith('image/') || ['png','jpg','jpeg','gif','webp'].includes(ext)) {
+        // Image — collect for native vision block
+        const raw = f.content?.base64
+        if (raw) {
+          const b64 = raw.includes(',') ? raw.split(',')[1] : raw
+          const imageMime = mime || `image/${ext === 'jpg' ? 'jpeg' : ext}`
+          imageFiles.push({ name: f.name, base64: b64, mimeType: imageMime })
+          lines.push(`[Image file: "${f.name}" — will be viewed directly by AI]`)
+        }
       } else {
         const extracted = extractUploadedContent(f)
         if (extracted && extracted !== '__PDF__') {
@@ -260,5 +270,6 @@ export function buildAIContext(data, deptName, globalData = null) {
   return {
     textSummary: allFiles.length ? lines.join('\n') : '',
     pdfFiles,
+    imageFiles,
   }
 }

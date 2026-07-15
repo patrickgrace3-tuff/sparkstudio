@@ -116,9 +116,9 @@ export default function App() {
     try {
       const globalData = loadGlobalFiles(activeClientId)
       const withData = contributions.map(d => {
-        const fileData    = loadFiles(activeClientId, d.id)
-        const fileSummary = buildAIContext(fileData, d.name, globalData).textSummary
-        return { dept: d.name, slides: allSlides[d.id] || [], fileSummary }
+        const fileData = loadFiles(activeClientId, d.id)
+        const ctx = buildAIContext(fileData, d.name, globalData)
+        return { dept: d.name, slides: allSlides[d.id] || [], fileSummary: ctx.textSummary, imageFiles: ctx.imageFiles, pdfFiles: ctx.pdfFiles }
       })
       const result = await generateDeck(withData, activeClient.name)
 
@@ -130,7 +130,8 @@ export default function App() {
         return {
           ...genSlide,
           ...(original.table  ? { table:  original.table }  : {}),
-          ...(original.style  ? { style:  original.style }  : {}),
+          // Merge styles: AI-assigned images/layout take priority, then original style fills gaps
+          style: { ...(original.style ?? {}), ...(genSlide.style ?? {}) },
           ...(original.source ? { source: original.source } : {}),
           ...(original.notes  ? { notes:  original.notes }  : {}),
         }
@@ -260,17 +261,17 @@ export default function App() {
                   setSelectedTemplate(tmpl)
                   if (!tmpl || !activeClientId) return
 
+                  const globalData = loadGlobalFiles(activeClientId)
                   const deptContributions = DEPARTMENTS
                     .filter(d => (tmpl.departments[d.name] || []).length > 0)
                     .map(d => {
-                      const fileData    = loadFiles(activeClientId, d.id)
-                      const globalData  = loadGlobalFiles(activeClientId)
-                      const fileSummary = buildAIContext(fileData, d.name, globalData).textSummary
+                      const fileData = loadFiles(activeClientId, d.id)
+                      const ctx = buildAIContext(fileData, d.name, globalData)
                       const seeds = buildSeedSlides(tmpl, d.name).map(s => ({
                         ...s,
                         _id: `s${Date.now()}${Math.random().toString(36).slice(2)}`,
                       }))
-                      return { dept: d.name, slides: seeds, fileSummary }
+                      return { dept: d.name, slides: seeds, fileSummary: ctx.textSummary, imageFiles: ctx.imageFiles, pdfFiles: ctx.pdfFiles }
                     })
 
                   if (!deptContributions.length) return
@@ -290,6 +291,7 @@ export default function App() {
                           body: (gen.bullets ?? []).join('\n'),
                           bullets: gen.bullets ?? [],
                           dept: gen.dept,
+                          style: gen.style ?? {},
                           _fromTemplate: true,
                         }
                         updated[dept.id] = [...(current[dept.id] ?? []), slide]
