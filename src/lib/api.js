@@ -127,14 +127,14 @@ RULES — follow exactly:
 - Only output content slides for the listed departments
 - Each input slide has an "Id" — every output slide must include a "sourceId" field that exactly copies the Id of the input slide it was generated from (verbatim, unchanged). If you split or merge slides, pick the most relevant input Id.
 - Where "Guidance notes" are provided for a slide, use them as topical direction and source material — synthesise them with the supporting file context into polished executive bullet points. Never copy the guidance notes verbatim into the output.
-- Review all supporting file content (both global files shared across departments and department-specific files) when generating bullets for each slide.${allImageFiles.length ? `\n- If an image from the available images list is relevant or would enhance a slide, include an "imageFile" field with the exact filename. Only use one image per slide. Omit "imageFile" if no image fits.` : ''}
+- Review all supporting file content (both global files shared across departments and department-specific files) when generating bullets for each slide.${allImageFiles.length ? `\n- If an image from the available images list is relevant or would enhance a slide, include an "imageFile" field with the exact filename and an "imagePlacement" field: "right" places the image on the right third of the slide (text fills the left), "bottom-right" places it in the lower-right corner (text fills top and left). Only use one image per slide. Omit both fields if no image fits.` : ''}
 ${imageList}
 
 Return ONLY valid JSON, no markdown:
 {
   "title": "Presentation title including client name",
   "slides": [
-    { "num": 1, "title": "Slide title", "dept": "Exact department name", "bullets": ["bullet 1", "bullet 2"], "sourceId": "the input slide's exact Id"${allImageFiles.length ? ', "imageFile": "optional-filename.png (omit if no image)"' : ''} }
+    { "num": 1, "title": "Slide title", "dept": "Exact department name", "bullets": ["bullet 1", "bullet 2"], "sourceId": "the input slide's exact Id"${allImageFiles.length ? ', "imageFile": "optional-filename.png (omit if no image)", "imagePlacement": "right or bottom-right (omit if no image)"' : ''} }
   ]
 }
 
@@ -156,21 +156,44 @@ ${slideData}`.trim()
     return true
   })
 
-  // Attach any AI-selected images to slides
+  // Attach any AI-selected images without overriding the slide's chosen layout.
+  // Instead, shrink the bullet bodyBox to make room and place the image in the freed space.
   if (allImageFiles.length) {
     const imageMap = Object.fromEntries(allImageFiles.map(img => [img.name, img]))
     deck.slides.forEach(s => {
-      const imgName = s.imageFile
-      if (imgName && imageMap[imgName]) {
-        const img = imageMap[imgName]
-        s.style = {
-          ...(s.style ?? {}),
-          layout: 'image-right',
-          contentImage: `data:${img.mimeType};base64,${img.base64}`,
-          images: [{ src: `data:${img.mimeType};base64,${img.base64}`, x: 0.55, y: 0.1, w: 0.4, h: 0.75 }],
-        }
-      }
+      const imgName    = s.imageFile
+      const placement  = s.imagePlacement ?? 'right'
       delete s.imageFile
+      delete s.imagePlacement
+
+      if (!imgName || !imageMap[imgName]) return
+
+      const img    = imageMap[imgName]
+      const src    = `data:${img.mimeType};base64,${img.base64}`
+      const GAP    = 0.015  // gap between text and image (fraction of slide width)
+
+      // Default bodyBox matches PreviewPanel default: x=0.045, y=0.19, w=0.829, h=0.63
+      const DEFAULT_BOX = { x: 0.045, y: 0.19, w: 0.829, h: 0.63 }
+
+      let imgRect, adjustedBox
+
+      if (placement === 'bottom-right') {
+        // Image: bottom-right quarter
+        imgRect     = { x: 0.53, y: 0.56, w: 0.36, h: 0.35 }
+        // Text: full width at top, but height stops before image
+        adjustedBox = { ...DEFAULT_BOX, h: 0.34 }
+      } else {
+        // "right" (default): image fills right ~38%, text fills left ~52%
+        imgRect     = { x: 0.575, y: 0.19, w: 0.38, h: 0.63 }
+        adjustedBox = { ...DEFAULT_BOX, w: imgRect.x - DEFAULT_BOX.x - GAP }
+      }
+
+      s.style = {
+        ...(s.style ?? {}),
+        // layout is intentionally NOT changed
+        images:  [{ src, x: imgRect.x, y: imgRect.y, w: imgRect.w, h: imgRect.h }],
+        bodyBox: adjustedBox,
+      }
     })
   }
 
