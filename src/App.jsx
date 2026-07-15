@@ -267,9 +267,9 @@ export default function App() {
                     .map(d => {
                       const fileData = loadFiles(activeClientId, d.id)
                       const ctx = buildAIContext(fileData, d.name, globalData)
-                      const seeds = buildSeedSlides(tmpl, d.name).map(s => ({
+                      const seeds = buildSeedSlides(tmpl, d.name).map((s, idx) => ({
                         ...s,
-                        _id: `s${Date.now()}${Math.random().toString(36).slice(2)}`,
+                        _id: `s${Date.now()}${idx}${Math.random().toString(36).slice(2)}`,
                       }))
                       return { dept: d.name, slides: seeds, fileSummary: ctx.textSummary, imageFiles: ctx.imageFiles, pdfFiles: ctx.pdfFiles }
                     })

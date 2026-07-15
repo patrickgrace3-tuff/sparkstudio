@@ -125,10 +125,11 @@ RULES — follow exactly:
 - Do NOT create any slide with dept "All", "Overview", "Introduction", "Closing", "Conclusion", or "Summary"
 - Do NOT create intro slides or closing slides — those are added automatically
 - Only output content slides for the listed departments
-- Each input slide has an "Id" — every output slide must include a "sourceId" field that exactly copies the Id of the input slide it was generated from (verbatim, unchanged). If you split or merge slides, pick the most relevant input Id.
+- CRITICAL: You must generate exactly one output slide for EVERY input slide listed under each department. Do NOT merge multiple input slides into one. Do NOT skip any input slide. Each input slide gets its own output slide.
+- Each input slide has an "Id" — every output slide must include a "sourceId" field that exactly copies the Id of the input slide it was generated from (verbatim, unchanged).
 - Where "Guidance notes" are provided for a slide, use them as topical direction and source material — synthesise them with the supporting file context into polished executive bullet points. Never copy the guidance notes verbatim into the output.
 - Review all supporting file content (both global files shared across departments and department-specific files) when generating bullets for each slide.
-- Each slide must contain NO MORE than 5 bullet points. If a topic has more content than fits in 5 bullets, split it across multiple slides. Name the first slide normally and subsequent ones with " (cont'd)" appended to the title. All continuation slides must share the same "sourceId" as the first.${allImageFiles.length ? `\n- If an image from the available images list is relevant or would enhance a slide, include an "imageFile" field with the exact filename and an "imagePlacement" field. Choose the placement that makes the image look most natural: "bottom" stretches the image across the full content width below the bullets (best for charts, graphs, tables, timelines — use this by default for data visuals), "right" places the image on the right side with text on the left (best for product shots, logos, or portrait images). Only use one image per slide. Omit both fields if no image fits.` : ''}
+- Each slide must contain NO MORE than 5 bullet points. If a topic genuinely has more content than fits in 5 bullets, add a continuation slide immediately after with " (cont'd)" appended to the title. Continuation slides must share the same "sourceId".${allImageFiles.length ? `\n- If an image from the available images list is relevant or would enhance a slide, include an "imageFile" field with the exact filename and an "imagePlacement" field. Choose the placement that makes the image look most natural: "bottom" stretches the image across the full content width below the bullets (best for charts, graphs, tables, timelines — use this by default for data visuals), "right" places the image on the right side with text on the left (best for product shots, logos, or portrait images). Only use one image per slide. Omit both fields if no image fits.` : ''}
 ${imageList}
 
 Return ONLY valid JSON, no markdown:
@@ -142,7 +143,7 @@ Return ONLY valid JSON, no markdown:
 Department submissions:
 ${slideData}`.trim()
 
-  const raw   = await callClaude(prompt, system, 3000, { imageFiles: allImageFiles, pdfFiles: allPdfFiles })
+  const raw   = await callClaude(prompt, system, 4000, { imageFiles: allImageFiles, pdfFiles: allPdfFiles })
   const clean = raw.replace(/```json|```/g, '').trim()
   const deck  = JSON.parse(clean)
 
