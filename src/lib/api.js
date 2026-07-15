@@ -127,14 +127,14 @@ RULES — follow exactly:
 - Only output content slides for the listed departments
 - Each input slide has an "Id" — every output slide must include a "sourceId" field that exactly copies the Id of the input slide it was generated from (verbatim, unchanged). If you split or merge slides, pick the most relevant input Id.
 - Where "Guidance notes" are provided for a slide, use them as topical direction and source material — synthesise them with the supporting file context into polished executive bullet points. Never copy the guidance notes verbatim into the output.
-- Review all supporting file content (both global files shared across departments and department-specific files) when generating bullets for each slide.${allImageFiles.length ? `\n- If an image from the available images list is relevant or would enhance a slide, include an "imageFile" field with the exact filename and an "imagePlacement" field: "right" places the image on the right third of the slide (text fills the left), "bottom-right" places it in the lower-right corner (text fills top and left). Only use one image per slide. Omit both fields if no image fits.` : ''}
+- Review all supporting file content (both global files shared across departments and department-specific files) when generating bullets for each slide.${allImageFiles.length ? `\n- If an image from the available images list is relevant or would enhance a slide, include an "imageFile" field with the exact filename and an "imagePlacement" field. Choose the placement that makes the image look most natural: "bottom" stretches the image across the full content width below the bullets (best for charts, graphs, tables, timelines — use this by default for data visuals), "right" places the image on the right side with text on the left (best for product shots, logos, or portrait images). Only use one image per slide. Omit both fields if no image fits.` : ''}
 ${imageList}
 
 Return ONLY valid JSON, no markdown:
 {
   "title": "Presentation title including client name",
   "slides": [
-    { "num": 1, "title": "Slide title", "dept": "Exact department name", "bullets": ["bullet 1", "bullet 2"], "sourceId": "the input slide's exact Id"${allImageFiles.length ? ', "imageFile": "optional-filename.png (omit if no image)", "imagePlacement": "right or bottom-right (omit if no image)"' : ''} }
+    { "num": 1, "title": "Slide title", "dept": "Exact department name", "bullets": ["bullet 1", "bullet 2"], "sourceId": "the input slide's exact Id"${allImageFiles.length ? ', "imageFile": "optional-filename.png (omit if no image)", "imagePlacement": "bottom or right (omit if no image)"' : ''} }
   ]
 }
 
@@ -177,14 +177,14 @@ ${slideData}`.trim()
 
       let imgRect, adjustedBox
 
-      if (placement === 'bottom-right') {
-        // Image: bottom-right quarter
-        imgRect     = { x: 0.53, y: 0.56, w: 0.36, h: 0.35 }
-        // Text: full width at top, but height stops before image
-        adjustedBox = { ...DEFAULT_BOX, h: 0.34 }
+      if (placement === 'bottom') {
+        // Image spans full content width below the bullets — natural for charts/graphs
+        imgRect     = { x: 0.045, y: 0.50, w: 0.78, h: 0.38 }
+        // Bullets take the top portion only
+        adjustedBox = { ...DEFAULT_BOX, h: 0.28 }
       } else {
-        // "right" (default): image fills right ~38%, text fills left ~52%
-        imgRect     = { x: 0.575, y: 0.19, w: 0.38, h: 0.63 }
+        // "right": image on the right ~35%, text on the left ~52%
+        imgRect     = { x: 0.575, y: 0.19, w: 0.35, h: 0.60 }
         adjustedBox = { ...DEFAULT_BOX, w: imgRect.x - DEFAULT_BOX.x - GAP }
       }
 
