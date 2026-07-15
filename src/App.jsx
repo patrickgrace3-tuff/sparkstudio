@@ -368,15 +368,20 @@ export default function App() {
           )}
 
           <div style={styles.tabBar}>
-            {['input', 'preview'].map(tab => (
+            <button
+              style={{ ...styles.tab, ...(activeTab === 'input' ? styles.tabActive : {}) }}
+              onClick={() => setActiveTab('input')}
+            >
+              Submit slides
+            </button>
+            {deck && (
               <button
-                key={tab}
-                style={{ ...styles.tab, ...(activeTab === tab ? styles.tabActive : {}) }}
-                onClick={() => setActiveTab(tab)}
+                style={{ ...styles.tab, ...(activeTab === 'preview' ? styles.tabActive : {}) }}
+                onClick={() => setActiveTab('preview')}
               >
-                {tab === 'input' ? 'Submit slides' : 'Preview deck'}
+                Preview deck
               </button>
-            ))}
+            )}
             <div style={styles.templatePicker}>
               <span style={styles.templateLabel}>Template:</span>
               <select
