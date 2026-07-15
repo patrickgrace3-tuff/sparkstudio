@@ -1,9 +1,3 @@
-databases:
-  - name: sparkstudio-db
-    databaseName: sparkstudio
-    user: sparkstudio
-    plan: free
-
 services:
   # ── Backend API ──────────────────────────────────────────────────────────────
   - type: web
@@ -15,15 +9,13 @@ services:
     plan: free
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: sparkstudio-db
-          property: connectionString
+        sync: false   # set manually in Render dashboard — use the Internal Database URL
       - key: JWT_SECRET
         generateValue: true
       - key: NODE_ENV
         value: production
       - key: FRONTEND_URL
-        value: https://sparkstudio.onrender.com  # update to your frontend URL
+        value: https://sparkstudio.onrender.com  # update to your frontend URL after deploy
 
   # ── Frontend static site ─────────────────────────────────────────────────────
   - type: web
@@ -34,6 +26,6 @@ services:
     plan: free
     envVars:
       - key: VITE_API_URL
-        value: https://sparkstudio-api.onrender.com  # update to your API URL
+        value: https://sparkstudio-api.onrender.com  # update to match your API service URL
       - key: VITE_ANTHROPIC_API_KEY
         sync: false  # set manually in Render dashboard
