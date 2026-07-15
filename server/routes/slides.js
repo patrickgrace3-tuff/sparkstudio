@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { randomUUID } from 'crypto'
 import { query } from '../db.js'
 import { requireAuth } from '../auth.js'
 
@@ -94,7 +95,7 @@ router.put('/:clientId/bulk', async (req, res) => {
         `INSERT INTO slides (id, client_id, dept_id, title, body, bullets, style, sort_order, created_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
          ON CONFLICT (id) DO UPDATE SET title=$4, body=$5, bullets=$6, style=$7, sort_order=$8, updated_at=NOW()`,
-        [s.id ?? s._id, req.params.clientId, s.dept_id, s.title ?? '', s.body ?? '',
+        [s.id ?? (s._id?.match(/^[0-9a-f-]{36}$/) ? s._id : randomUUID()), req.params.clientId, s.dept_id, s.title ?? '', s.body ?? '',
          JSON.stringify(s.bullets ?? []), JSON.stringify(s.style ?? {}),
          s.sort_order, req.user.id]
       )
