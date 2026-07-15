@@ -294,7 +294,7 @@ export default function App() {
                           style: gen.style ?? {},
                           _fromTemplate: true,
                         }
-                        updated[dept.id] = [...(current[dept.id] ?? []), slide]
+                        updated[dept.id] = [...(updated[dept.id] ?? []), slide]
                       })
                       saveSlides(activeClientId, updated)
                       return { ...prev, [activeClientId]: updated }
