@@ -14,21 +14,33 @@ const LAYOUTS = [
 function SlideShellRow({ shell, onChange, onRemove, index }) {
   return (
     <div style={S.shellRow}>
-      <span style={S.shellIdx}>{index + 1}</span>
-      <input
-        style={S.shellInput}
-        value={shell.title}
-        onChange={e => onChange({ ...shell, title: e.target.value })}
-        placeholder="Slide title (AI will fill bullets)"
-      />
-      <select
-        style={S.shellSelect}
-        value={shell.layout}
-        onChange={e => onChange({ ...shell, layout: e.target.value })}
-      >
-        {LAYOUTS.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}
-      </select>
-      <button style={S.removeBtn} onClick={onRemove}>✕</button>
+      <div style={S.shellTop}>
+        <span style={S.shellIdx}>{index + 1}</span>
+        <input
+          style={S.shellInput}
+          value={shell.title}
+          onChange={e => onChange({ ...shell, title: e.target.value })}
+          placeholder="Slide title"
+        />
+        <select
+          style={S.shellSelect}
+          value={shell.layout}
+          onChange={e => onChange({ ...shell, layout: e.target.value })}
+        >
+          {LAYOUTS.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}
+        </select>
+        <button style={S.removeBtn} onClick={onRemove}>✕</button>
+      </div>
+      <div style={S.shellBottom}>
+        <span style={S.shellIdx} />
+        <textarea
+          style={S.shellTextarea}
+          value={shell.content || ''}
+          onChange={e => onChange({ ...shell, content: e.target.value })}
+          placeholder="Content for this slide — AI will use this along with company files to generate bullets"
+          rows={2}
+        />
+      </div>
     </div>
   )
 }
@@ -303,9 +315,12 @@ const S = {
   deptCount:    { fontSize: 10, color: 'var(--color-text-muted)', background: 'var(--color-bg-tertiary)', borderRadius: 8, padding: '1px 6px' },
   addShellBtn:  { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: 'var(--color-text-secondary)' },
   shellList:    { display: 'flex', flexDirection: 'column', gap: 0 },
-  shellRow:     { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderBottom: '0.5px solid var(--color-border)' },
-  shellIdx:     { fontSize: 10, color: 'var(--color-text-muted)', width: 18, flexShrink: 0, textAlign: 'center' },
+  shellRow:     { display: 'flex', flexDirection: 'column', padding: '8px 14px', borderBottom: '0.5px solid var(--color-border)', gap: 6 },
+  shellTop:     { display: 'flex', alignItems: 'center', gap: 8 },
+  shellBottom:  { display: 'flex', alignItems: 'flex-start', gap: 8 },
+  shellIdx:     { fontSize: 10, color: 'var(--color-text-muted)', width: 18, flexShrink: 0, textAlign: 'center', paddingTop: 2 },
   shellInput:   { flex: 1, background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 6, padding: '5px 8px', fontSize: 12, color: 'var(--color-text-primary)', outline: 'none' },
+  shellTextarea:{ flex: 1, background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 6, padding: '5px 8px', fontSize: 11, color: 'var(--color-text-secondary)', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 },
   shellSelect:  { background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 6, padding: '5px 8px', fontSize: 11, color: 'var(--color-text-muted)', outline: 'none', cursor: 'pointer' },
   removeBtn:    { background: 'none', border: 'none', color: 'var(--color-text-muted)', fontSize: 12, cursor: 'pointer', padding: '2px 4px', flexShrink: 0 },
   emptyHint:    { fontSize: 11, color: 'var(--color-text-muted)', padding: '10px 14px', margin: 0, fontStyle: 'italic' },

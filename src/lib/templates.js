@@ -25,9 +25,9 @@ export function createTemplate(name, description = '') {
   }
 }
 
-// A template slide shell: title + layout, no bullets (AI fills those in)
-export function createSlideShell(title = '', layout = 'title-top') {
-  return { title, layout }
+// A template slide shell: title + layout + content guidance (AI fills bullets)
+export function createSlideShell(title = '', layout = 'title-top', content = '') {
+  return { title, layout, content }
 }
 
 // Build seed slides from a template for a given dept name
@@ -36,6 +36,7 @@ export function buildSeedSlides(template, deptName) {
   const shells = template.departments[deptName] || []
   return shells.map(shell => ({
     title: shell.title || `${deptName} Overview`,
+    body: shell.content || '',
     bullets: [],
     layout: shell.layout || 'title-top',
     style: { layout: shell.layout || 'title-top' },
