@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { nameToId } from '../lib/clients.js'
 
 export default function ClientBar({ clients, activeClientId, onSelect, onAdd, onDelete, currentUser, onLogout, hasChanges, onPush, isPushing }) {
@@ -90,7 +90,6 @@ export default function ClientBar({ clients, activeClientId, onSelect, onAdd, on
         </div>
       )}
     </div>
-    <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.75} }`}</style>
   )
 }
 
