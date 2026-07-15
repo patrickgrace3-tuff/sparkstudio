@@ -16,9 +16,30 @@ export default function AIAssistant({ clientId, clientName, deptId, deptName, de
   const [messages,       setMessages]       = useState([])
   const [input,          setInput]          = useState('')
   const [loading,        setLoading]        = useState(false)
-  const [selectedImages, setSelectedImages] = useState([])  // [{ name, base64, mimeType }]
+  const [selectedImages, setSelectedImages] = useState([])
+  const [showFiles,      setShowFiles]      = useState(false)
+  const [excludedFiles,  setExcludedFiles]  = useState(new Set())  // filenames to exclude
   const bottomRef  = useRef(null)
   const inputRef   = useRef(null)
+
+  // All available files (dept + global) for the checkbox panel
+  function getAllFiles() {
+    const fileData   = loadFiles(clientId, deptId)
+    const globalData = loadGlobalFiles(clientId)
+    return [
+      ...globalData.files.map(f => ({ ...f, _global: true })),
+      ...fileData.files.map(f => ({ ...f, _global: false })),
+    ]
+  }
+
+  function toggleFile(name) {
+    setExcludedFiles(prev => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
 
   // Collect image files from dept + global
   function getAvailableImages() {
@@ -56,14 +77,19 @@ export default function AIAssistant({ clientId, clientName, deptId, deptName, de
   function buildContext() {
     const fileData   = loadFiles(clientId, deptId)
     const globalData = loadGlobalFiles(clientId)
-    const { textSummary, pdfFiles } = buildAIContext(fileData, deptName, globalData)
+
+    // Filter out excluded files before building AI context
+    const filteredFileData   = { ...fileData,   files: fileData.files.filter(f   => !excludedFiles.has(f.name)) }
+    const filteredGlobalData = { ...globalData, files: globalData.files.filter(f => !excludedFiles.has(f.name)) }
+
+    const { textSummary, pdfFiles } = buildAIContext(filteredFileData, deptName, filteredGlobalData)
     pdfFilesRef.current = pdfFiles
 
-    const globalFiles = globalData.files.map(f => {
+    const globalFiles = filteredGlobalData.files.map(f => {
       const isPdf = f.name.toLowerCase().endsWith('.pdf') || (f.content?.mimeType ?? '').includes('pdf')
       return `  - "${f.name}" [GLOBAL]${isPdf ? ' (PDF, read natively)' : ''}${f.type === 'link' ? ' (linked file)' : ''}`
     })
-    const deptFiles = fileData.files.map(f => {
+    const deptFiles = filteredFileData.files.map(f => {
       const isPdf = f.name.toLowerCase().endsWith('.pdf') || (f.content?.mimeType ?? '').includes('pdf')
       return `  - "${f.name}"${isPdf ? ' (PDF, read natively)' : ''}${f.type === 'link' ? ' (linked file)' : ''}`
     })
@@ -471,6 +497,41 @@ ${existingSlides || 'No slides added yet.'}
         <div ref={bottomRef} />
       </div>
 
+      {/* File selector panel */}
+      {(() => {
+        const allFiles = getAllFiles()
+        if (!allFiles.length) return null
+        const activeCount = allFiles.length - excludedFiles.size
+        return (
+          <div style={styles.fileSelector}>
+            <button style={styles.fileSelectorToggle} onClick={() => setShowFiles(v => !v)}>
+              <span style={styles.fileSelectorIcon}>{showFiles ? '▾' : '▸'}</span>
+              <span>Context files</span>
+              <span style={styles.fileSelectorCount}>{activeCount}/{allFiles.length} active</span>
+            </button>
+            {showFiles && (
+              <div style={styles.fileSelectorList}>
+                {allFiles.map(f => {
+                  const checked = !excludedFiles.has(f.name)
+                  return (
+                    <label key={f.name} style={styles.fileRow}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleFile(f.name)}
+                        style={{ flexShrink: 0 }}
+                      />
+                      {f._global && <span style={styles.globalBadge}>Global</span>}
+                      <span style={{ ...styles.fileRowName, opacity: checked ? 1 : 0.4 }}>{f.name}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
       {/* Image selector */}
       {(() => {
         const availableImages = getAvailableImages()
@@ -564,6 +625,14 @@ const styles = {
   dot1:           { width: 6, height: 6, borderRadius: '50%', background: 'var(--color-text-muted)', animation: 'bounce 1.2s ease infinite 0s' },
   dot2:           { width: 6, height: 6, borderRadius: '50%', background: 'var(--color-text-muted)', animation: 'bounce 1.2s ease infinite 0.2s' },
   dot3:           { width: 6, height: 6, borderRadius: '50%', background: 'var(--color-text-muted)', animation: 'bounce 1.2s ease infinite 0.4s' },
+  fileSelector:       { borderTop: '0.5px solid var(--color-border)', background: 'var(--color-bg)', flexShrink: 0 },
+  fileSelectorToggle: { display: 'flex', alignItems: 'center', gap: 6, width: '100%', background: 'none', border: 'none', padding: '6px 12px', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'left' },
+  fileSelectorIcon:   { fontSize: 10, flexShrink: 0 },
+  fileSelectorCount:  { marginLeft: 'auto', fontSize: 10, fontWeight: 500, color: 'var(--color-text-muted)', background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 99, padding: '1px 7px' },
+  fileSelectorList:   { display: 'flex', flexDirection: 'column', gap: 1, padding: '4px 12px 8px', maxHeight: 140, overflowY: 'auto' },
+  fileRow:            { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', padding: '2px 0' },
+  fileRowName:        { fontSize: 12, color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, transition: 'opacity 0.15s' },
+  globalBadge:        { fontSize: 9, fontWeight: 700, color: '#7F77DD', background: '#7F77DD18', border: '0.5px solid #7F77DD44', borderRadius: 99, padding: '1px 5px', flexShrink: 0, textTransform: 'uppercase', letterSpacing: '0.05em' },
   imageSelector:      { display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderTop: '0.5px solid var(--color-border)', background: 'var(--color-bg)', flexShrink: 0, flexWrap: 'wrap' },
   imageSelectorLabel: { fontSize: 10, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', flexShrink: 0 },
   imageChip:          { display: 'flex', alignItems: 'center', gap: 4, background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 6, padding: '3px 7px', cursor: 'pointer', fontSize: 11, color: 'var(--color-text-secondary)', maxWidth: 140 },
