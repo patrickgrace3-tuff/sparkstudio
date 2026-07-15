@@ -28,8 +28,7 @@ export async function apiFetch(path, options = {}) {
 
   if (res.status === 401) {
     setToken(null)
-    window.location.reload()
-    return
+    throw new Error('Unauthorized')
   }
 
   const data = await res.json().catch(() => ({}))
