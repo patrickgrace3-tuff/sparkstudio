@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { nameToId } from '../lib/clients.js'
 
-export default function ClientBar({ clients, activeClientId, onSelect, onAdd, onDelete }) {
+export default function ClientBar({ clients, activeClientId, onSelect, onAdd, onDelete, currentUser, onLogout }) {
   const [adding,     setAdding]     = useState(false)
   const [draft,      setDraft]      = useState('')
   const [confirmDel, setConfirmDel] = useState(false)
@@ -70,6 +70,17 @@ export default function ClientBar({ clients, activeClientId, onSelect, onAdd, on
         ) : (
           <button style={styles.btnDanger} onClick={() => setConfirmDel(true)}>Remove client</button>
         )
+      )}
+
+      {/* Spacer */}
+      <div style={{ flex: 1 }} />
+
+      {/* User info + logout */}
+      {currentUser && (
+        <div style={styles.userArea}>
+          <span style={styles.userName}>{currentUser.name || currentUser.email}</span>
+          <button style={styles.btnGhost} onClick={onLogout}>Sign out</button>
+        </div>
       )}
     </div>
   )
@@ -154,5 +165,19 @@ const styles = {
   confirmText: {
     fontSize: 12,
     color: 'var(--color-text-secondary)',
+  },
+  userArea: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 0,
+  },
+  userName: {
+    fontSize: 12,
+    color: 'var(--color-text-muted)',
+    maxWidth: 160,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
 }
