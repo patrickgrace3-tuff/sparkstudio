@@ -55,7 +55,10 @@ export async function generateDeck(deptContributions, clientName = "") {
 
   const slideData = deptContributions
     .map(({ dept, slides, fileSummary }) => {
-      const slideText = slides.map(s => `  Id: ${s._id}\n  Title: ${s.title}\n  Content: ${s.body}`).join('\n')
+      const slideText = slides.map(s => {
+        const guidance = s.body ? `\n  Guidance notes (use as source material, do NOT copy verbatim): ${s.body}` : ''
+        return `  Id: ${s._id}\n  Title: ${s.title}${guidance}`
+      }).join('\n')
       const fileText  = fileSummary ? `\nSupporting files:\n${fileSummary}` : ''
       return `Department: ${dept}\nSlides:\n${slideText}${fileText}`
     })
@@ -74,6 +77,7 @@ RULES — follow exactly:
 - Do NOT create intro slides or closing slides — those are added automatically
 - Only output content slides for the listed departments
 - Each input slide has an "Id" — every output slide must include a "sourceId" field that exactly copies the Id of the input slide it was generated from (verbatim, unchanged). If you split or merge slides, pick the most relevant input Id.
+- Where "Guidance notes" are provided for a slide, use them as topical direction and source material — synthesise them with the supporting file context into polished executive bullet points. Never copy the guidance notes verbatim into the output.
 
 Return ONLY valid JSON, no markdown:
 {
