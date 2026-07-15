@@ -105,8 +105,12 @@ export async function generateDeck(deptContributions, clientName = "") {
   const slideData = deptContributions
     .map(({ dept, slides, deptSummary, fileSummary }) => {
       const slideText = slides.map(s => {
-        const guidance = s.body ? `\n  Guidance notes (use as source material, do NOT copy verbatim): ${s.body}` : ''
-        return `  Id: ${s._id}\n  Title: ${s.title}${guidance}`
+        const rawBody   = s.body ?? ''
+        const wantsImg  = rawBody.includes('[images]')
+        const cleanBody = rawBody.replace(/\[images\]/gi, '').trim()
+        const guidance  = cleanBody ? `\n  Guidance notes (use as source material, do NOT copy verbatim): ${cleanBody}` : ''
+        const imgHint   = wantsImg && allImageFiles.length ? `\n  IMAGE REQUIRED: You MUST include an "imageFile" field for this slide — pick the most relevant image from the available images list.` : ''
+        return `  Id: ${s._id}\n  Title: ${s.title}${guidance}${imgHint}`
       }).join('\n')
       // Use deptSummary (dept-only) if available, otherwise fall back to fileSummary
       const summary  = deptSummary ?? fileSummary ?? ''

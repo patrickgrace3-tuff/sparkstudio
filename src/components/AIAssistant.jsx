@@ -13,11 +13,38 @@ function getSuggestions(clientName) {
 }
 
 export default function AIAssistant({ clientId, clientName, deptId, deptName, deptColor, allSlides, onAddSlide }) {
-  const [messages,  setMessages]  = useState([])
-  const [input,     setInput]     = useState('')
-  const [loading,   setLoading]   = useState(false)
+  const [messages,       setMessages]       = useState([])
+  const [input,          setInput]          = useState('')
+  const [loading,        setLoading]        = useState(false)
+  const [selectedImages, setSelectedImages] = useState([])  // [{ name, base64, mimeType }]
   const bottomRef  = useRef(null)
   const inputRef   = useRef(null)
+
+  // Collect image files from dept + global
+  function getAvailableImages() {
+    const fileData   = loadFiles(clientId, deptId)
+    const globalData = loadGlobalFiles(clientId)
+    const all = [...(globalData.files ?? []), ...(fileData.files ?? [])]
+    return all.filter(f => {
+      const ext  = f.name.split('.').pop().toLowerCase()
+      const mime = f.content?.mimeType ?? ''
+      return mime.startsWith('image/') || ['png','jpg','jpeg','gif','webp'].includes(ext)
+    }).map(f => {
+      const raw  = f.content?.base64 ?? ''
+      const b64  = raw.includes(',') ? raw.split(',')[1] : raw
+      const ext  = f.name.split('.').pop().toLowerCase()
+      const mime = f.content?.mimeType || `image/${ext === 'jpg' ? 'jpeg' : ext}`
+      return { name: f.name, base64: b64, mimeType: mime, dataUrl: raw.startsWith('data:') ? raw : `data:${mime};base64,${b64}` }
+    })
+  }
+
+  function toggleImage(img) {
+    setSelectedImages(prev =>
+      prev.find(i => i.name === img.name)
+        ? prev.filter(i => i.name !== img.name)
+        : [...prev, img]
+    )
+  }
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -106,8 +133,10 @@ ${existingSlides || 'No slides added yet.'}
     const userText = text ?? input.trim()
     if (!userText || loading) return
     setInput('')
+    const attachedImages = [...selectedImages]
+    setSelectedImages([])
 
-    const userMsg = { role: 'user', text: userText }
+    const userMsg = { role: 'user', text: userText, images: attachedImages.map(i => i.name) }
     const history = [...messages, userMsg]
     setMessages(history)
     setLoading(true)
@@ -117,23 +146,32 @@ ${existingSlides || 'No slides added yet.'}
       const system = buildContext()
       const pdfs   = pdfFilesRef.current
 
-      // Build conversation — inject PDF document blocks into the FIRST user message
+      // Build conversation — inject PDF + image blocks into the FIRST user message
       const convo = history.map((m, idx) => {
         if (m.role !== 'user') return { role: 'assistant', content: m.text }
 
-        // Attach PDFs only on the first user message so we don't repeat them
+        const extraBlocks = []
+
+        // Attach PDFs only on the first user message
         if (idx === 0 && pdfs.length > 0) {
-          const docBlocks = pdfs.map(pdf => ({
+          pdfs.forEach(pdf => extraBlocks.push({
             type:   'document',
             source: { type: 'base64', media_type: 'application/pdf', data: pdf.base64 },
             title:  pdf.name,
           }))
-          return {
-            role:    'user',
-            content: [...docBlocks, { type: 'text', text: m.text }],
-          }
         }
 
+        // Attach selected images on this specific message
+        if (idx === history.length - 1 && attachedImages.length > 0) {
+          attachedImages.forEach(img => extraBlocks.push({
+            type:   'image',
+            source: { type: 'base64', media_type: img.mimeType, data: img.base64 },
+          }))
+        }
+
+        if (extraBlocks.length > 0) {
+          return { role: 'user', content: [...extraBlocks, { type: 'text', text: m.text }] }
+        }
         return { role: 'user', content: m.text }
       })
 
@@ -325,7 +363,14 @@ ${existingSlides || 'No slides added yet.'}
         {messages.map((msg, i) => (
           <div key={i} style={msg.role === 'user' ? styles.userBubbleWrap : styles.aiBubbleWrap}>
             {msg.role === 'user' ? (
-              <div style={styles.userBubble}>{msg.text}</div>
+              <div style={styles.userBubble}>
+                {msg.text}
+                {msg.images?.length > 0 && (
+                  <div style={styles.userBubbleImages}>
+                    {msg.images.map(n => <span key={n} style={styles.userBubbleImg}>🖼 {n}</span>)}
+                  </div>
+                )}
+              </div>
             ) : (
               <div style={styles.aiBubble}>
                 {msg.text && <p style={styles.aiText}>{msg.text}</p>}
@@ -390,6 +435,32 @@ ${existingSlides || 'No slides added yet.'}
 
         <div ref={bottomRef} />
       </div>
+
+      {/* Image selector */}
+      {(() => {
+        const availableImages = getAvailableImages()
+        if (!availableImages.length) return null
+        return (
+          <div style={styles.imageSelector}>
+            <span style={styles.imageSelectorLabel}>Attach image:</span>
+            {availableImages.map(img => {
+              const selected = selectedImages.find(i => i.name === img.name)
+              return (
+                <button
+                  key={img.name}
+                  style={{ ...styles.imageChip, ...(selected ? styles.imageChipSelected : {}) }}
+                  onClick={() => toggleImage(img)}
+                  title={img.name}
+                >
+                  <img src={img.dataUrl} style={styles.imageThumb} alt={img.name} />
+                  <span style={styles.imageChipName}>{img.name}</span>
+                  {selected && <span style={styles.imageChipCheck}>✓</span>}
+                </button>
+              )
+            })}
+          </div>
+        )
+      })()}
 
       {/* Input */}
       <div style={styles.inputArea}>
@@ -458,6 +529,15 @@ const styles = {
   dot1:           { width: 6, height: 6, borderRadius: '50%', background: 'var(--color-text-muted)', animation: 'bounce 1.2s ease infinite 0s' },
   dot2:           { width: 6, height: 6, borderRadius: '50%', background: 'var(--color-text-muted)', animation: 'bounce 1.2s ease infinite 0.2s' },
   dot3:           { width: 6, height: 6, borderRadius: '50%', background: 'var(--color-text-muted)', animation: 'bounce 1.2s ease infinite 0.4s' },
+  imageSelector:      { display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderTop: '0.5px solid var(--color-border)', background: 'var(--color-bg)', flexShrink: 0, flexWrap: 'wrap' },
+  imageSelectorLabel: { fontSize: 10, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', flexShrink: 0 },
+  imageChip:          { display: 'flex', alignItems: 'center', gap: 4, background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 6, padding: '3px 7px', cursor: 'pointer', fontSize: 11, color: 'var(--color-text-secondary)', maxWidth: 140 },
+  imageChipSelected:  { background: '#1D9E7518', borderColor: '#1D9E75', color: '#1D9E75' },
+  imageThumb:         { width: 20, height: 20, objectFit: 'cover', borderRadius: 3, flexShrink: 0 },
+  imageChipName:      { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 },
+  imageChipCheck:     { flexShrink: 0, fontWeight: 700 },
+  userBubbleImages:   { marginTop: 5, display: 'flex', flexWrap: 'wrap', gap: 4 },
+  userBubbleImg:      { fontSize: 10, background: 'rgba(255,255,255,0.2)', borderRadius: 4, padding: '2px 6px' },
   inputArea:      { display: 'flex', gap: 8, padding: '10px 12px', borderTop: '0.5px solid var(--color-border)', background: 'var(--color-bg)', flexShrink: 0, alignItems: 'flex-end' },
   textarea:       { flex: 1, background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '8px 10px', fontSize: 13, color: 'var(--color-text-primary)', resize: 'none', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5 },
   sendBtn:        { background: 'var(--color-accent)', color: '#FFFFFF', border: 'none', borderRadius: 'var(--radius-pill)', padding: '8px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer', flexShrink: 0 },
