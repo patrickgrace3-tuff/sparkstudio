@@ -265,8 +265,6 @@ ${slideData}`.trim()
   const clean = raw.replace(/```json|```/g, '').trim()
   const deck  = JSON.parse(clean)
 
-  console.log('[generateDeck] preGenMap keys:', Object.keys(preGenMap))
-  console.log('[generateDeck] deck sourceIds:', deck.slides.map(s => s.sourceId))
 
   // Filter out any slides the AI sneaked in with non-dept values
   const forbidden = ['all', 'overview', 'introduction', 'intro', 'closing', 'conclusion', 'summary', 'general']
@@ -351,18 +349,12 @@ ${slideData}`.trim()
       match = deck.slides.find(s => s.title?.toLowerCase().includes(preGen.title.toLowerCase().slice(0, 20)))
     }
     if (match) {
-      console.log('[generateDeck] preGen content:', JSON.stringify(preGen))
       if (preGen.table) match.table = preGen.table
       if (preGen.bullets?.length) match.bullets = preGen.bullets
-      console.log('[generateDeck] Injected pre-gen into slide:', match.title, '| table:', !!match.table, '| bullets:', match.bullets?.length)
-    } else {
-      console.warn('[generateDeck] Could not find slide to inject preGen for slideId:', slideId)
     }
   }
 
   deck.slides.forEach((s, i) => { s.num = i + 1 })
-
-  console.log('[generateDeck] FINAL slides:', deck.slides.map(s => ({ title: s.title, hasTable: !!s.table, bullets: s.bullets?.length })))
 
   return deck
 }
