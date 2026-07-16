@@ -115,30 +115,10 @@ export async function generateDeck(deptContributions, clientName = "", clientId 
       const slideText = slides.map(s => {
         const rawBody   = s.body ?? ''
         const wantsImg  = rawBody.includes('[images]')
-        const wantsTable = rawBody.includes('[table]')
         const cleanBody = rawBody.replace(/\[images\]/gi, '').replace(/\[table\]/gi, '').trim()
-        // Parse pipe-structured table in guidance notes into a JSON skeleton for the AI
-        let tableHint = ''
-        let guidance = ''
-        if (wantsTable && cleanBody) {
-          const pipeLines = cleanBody.split('\n').map(l => l.trim()).filter(l => l.includes('|'))
-          if (pipeLines.length >= 2) {
-            const headers = pipeLines[0].split('|').map(c => c.trim())
-            const rows    = pipeLines.slice(1).map(l => l.split('|').map(c => c.trim()))
-            const skeleton = JSON.stringify({ headers, rows }, null, 2)
-            tableHint = `\n  TABLE REQUIRED: Your output for this slide MUST include a "table" field. Start from this JSON skeleton and replace every "[from file]" cell with the actual value found in the department files, and every "[calculate]" cell with the computed numeric result. Do NOT add bullets for this data — omit the bullets field or use at most 1 short sentence.\n  Table skeleton:\n${skeleton}`
-            // Any non-pipe lines become narrative guidance
-            const narrative = cleanBody.split('\n').filter(l => !l.includes('|')).join(' ').trim()
-            guidance = narrative ? `\n  Guidance notes: ${narrative}` : ''
-          } else {
-            guidance = `\n  Guidance notes (use as source material, do NOT copy verbatim): ${cleanBody}`
-            tableHint = `\n  TABLE REQUIRED: Output a "table" field with "headers" and "rows" arrays. Extract tabular data from the department files.`
-          }
-        } else {
-          guidance = cleanBody ? `\n  Guidance notes (use as source material, do NOT copy verbatim): ${cleanBody}` : ''
-        }
-        const imgHint = wantsImg && allImageFiles.length ? `\n  IMAGE REQUIRED: You MUST include an "imageFile" field for this slide — pick the most relevant image from the available images list.` : ''
-        return `  Id: ${s._id}\n  Title: ${s.title}${guidance}${imgHint}${tableHint}`
+        const guidance  = cleanBody ? `\n  Guidance notes (use as source material, do NOT copy verbatim): ${cleanBody}` : ''
+        const imgHint   = wantsImg && allImageFiles.length ? `\n  IMAGE REQUIRED: You MUST include an "imageFile" field for this slide — pick the most relevant image from the available images list.` : ''
+        return `  Id: ${s._id}\n  Title: ${s.title}${guidance}${imgHint}`
       }).join('\n')
       // Use deptSummary (dept-only) if available, otherwise fall back to fileSummary
       const summary  = deptSummary ?? fileSummary ?? ''
@@ -169,10 +149,9 @@ RULES — follow exactly:
 - Only output content slides for the listed departments
 - CRITICAL: You must generate exactly one output slide for EVERY input slide listed under each department. Do NOT merge multiple input slides into one. Do NOT skip any input slide. Each input slide gets its own output slide.
 - Each input slide has an "Id" — every output slide must include a "sourceId" field that exactly copies the Id of the input slide it was generated from (verbatim, unchanged).
-- Where "Guidance notes" are provided for a slide, use them as topical direction and source material. Never copy the guidance notes verbatim into the output.
+- Where "Guidance notes" are provided for a slide, use them as topical direction and source material — synthesise them with the supporting file context into polished executive bullet points. Never copy the guidance notes verbatim into the output.
 - Review ALL supporting file content (both global shared files and department-specific files) carefully when generating content for each slide. Extract specific data, numbers, and facts from the files — do not rely on generic statements.
-- Each slide must contain NO MORE than 4 bullet points. If a topic genuinely has more content than fits in 4 bullets, add a continuation slide immediately after with " (cont'd)" appended to the title. Continuation slides must share the same "sourceId".
-- TABLE RULE — MANDATORY: If the guidance notes contain a pipe-separated table structure (rows with "|" separators), you MUST reproduce that as a "table" field, filling in any "[from file]" placeholders with real values extracted from the attached files. Do NOT convert table data into bullet points — output it as a table every time. More broadly, whenever data is naturally tabular (ratings comparisons, competitor matrices, metric breakdowns by row, before/after data), always use a "table" field. When a slide has a table, keep bullets to 1–2 high-level narrative sentences at most, or omit bullets entirely if the table is self-explanatory.${allImageFiles.length ? `\n- If an image from the available images list is relevant or would enhance a slide, include an "imageFile" field with the exact filename and an "imagePlacement" field. Choose the placement that makes the image look most natural: "bottom" stretches the image across the full content width below the bullets (best for charts, graphs, tables, timelines — use this by default for data visuals), "right" places the image on the right side with text on the left (best for product shots, logos, or portrait images). Only use one image per slide. Omit both fields if no image fits.` : ''}
+- Each slide must contain NO MORE than 4 bullet points. If a topic genuinely has more content than fits in 4 bullets, add a continuation slide immediately after with " (cont'd)" appended to the title. Continuation slides must share the same "sourceId".${allImageFiles.length ? `\n- If an image from the available images list is relevant or would enhance a slide, include an "imageFile" field with the exact filename and an "imagePlacement" field. Choose the placement that makes the image look most natural: "bottom" stretches the image across the full content width below the bullets (best for charts, graphs, tables, timelines — use this by default for data visuals), "right" places the image on the right side with text on the left (best for product shots, logos, or portrait images). Only use one image per slide. Omit both fields if no image fits.` : ''}
 ${imageList}
 
 Return ONLY valid JSON, no markdown:
@@ -184,17 +163,10 @@ Return ONLY valid JSON, no markdown:
       "title": "Slide title",
       "dept": "Exact department name",
       "bullets": ["bullet 1", "bullet 2"],
-      "table": { "headers": ["Column A", "Column B"], "rows": [["row1col1", "row1col2"], ["row2col1", "row2col2"]] },
       "sourceId": "the input slide's exact Id"${allImageFiles.length ? ',\n      "imageFile": "optional-filename.png (omit if no image)",\n      "imagePlacement": "bottom or right (omit if no image)"' : ''}
     }
   ]
 }
-
-Notes on the table field:
-- "headers" is an array of column header strings
-- "rows" is an array of rows; each row is an array of cell values (strings or numbers) matching the header count
-- Include "table" only when the data genuinely calls for it; omit the field entirely for narrative slides
-- A slide may have both "bullets" (for context/narrative) AND a "table" (for the data itself), or just one of them
 
 Department submissions:
 ${slideData}`.trim()
@@ -202,6 +174,50 @@ ${slideData}`.trim()
   const raw   = await callClaude(prompt, system, 4000, { imageFiles: allImageFiles, pdfFiles: allPdfFiles, model: ANTHROPIC_MODEL_DECK, clientId })
   const clean = raw.replace(/```json|```/g, '').trim()
   const deck  = JSON.parse(clean)
+
+  // For slides marked [table], make a separate focused call to fill in the table.
+  // This mirrors what the AI Assistant chat does — a single focused task per slide.
+  const tableSlides = []
+  for (const contrib of deptContributions) {
+    for (const s of contrib.slides) {
+      if ((s.body ?? '').includes('[table]')) {
+        const cleanBody = s.body.replace(/\[table\]/gi, '').replace(/\[images\]/gi, '').trim()
+        const pipeLines = cleanBody.split('\n').map(l => l.trim()).filter(l => l.includes('|'))
+        if (pipeLines.length >= 2) {
+          const headers = pipeLines[0].split('|').map(c => c.trim())
+          const rows    = pipeLines.slice(1).map(l => l.split('|').map(c => c.trim()))
+          const fileSummary = contrib.deptSummary ?? contrib.fileSummary ?? ''
+          const globalCtx   = globalSummary ? `Shared context:\n${globalSummary}\n\n` : ''
+          const fileCtx     = fileSummary ? `Department files:\n${fileSummary}\n\n` : ''
+          tableSlides.push({ sourceId: s._id, headers, rows, fileCtx: globalCtx + fileCtx, pdfFiles: contrib.pdfFiles ?? [], imageFiles: contrib.imageFiles ?? [] })
+        }
+      }
+    }
+  }
+
+  await Promise.all(tableSlides.map(async ({ sourceId, headers, rows, fileCtx, pdfFiles, imageFiles }) => {
+    const skeleton = JSON.stringify({ headers, rows }, null, 2)
+    const tablePrompt = `You are filling in a data table for a slide in an executive presentation.
+
+${fileCtx}Table skeleton (fill in every cell that contains "[from file]" or "[calculate]" with the real value from the files above. Keep all other cells exactly as-is):
+${skeleton}
+
+Rules:
+- Return ONLY valid JSON — the completed table object, nothing else.
+- Replace "[from file]" with the exact numeric value found in the files.
+- Replace "[calculate]" with the calculated numeric result (e.g. how many 5-star reviews needed to raise the current rating to the target rating).
+- Do not add or remove rows or columns.
+- Do not include any explanation or markdown.`
+
+    try {
+      const tableRaw   = await callClaude(tablePrompt, '', 800, { pdfFiles, imageFiles, model: ANTHROPIC_MODEL_DECK, clientId })
+      const tableClean = tableRaw.replace(/```json|```/g, '').trim()
+      const tableData  = JSON.parse(tableClean)
+      // Find the matching output slide by sourceId and attach the table
+      const match = deck.slides.find(s => s.sourceId === sourceId)
+      if (match) match.table = tableData
+    } catch { /* leave slide without table if this fails */ }
+  }))
 
   // Filter out any slides the AI sneaked in with non-dept values
   const forbidden = ['all', 'overview', 'introduction', 'intro', 'closing', 'conclusion', 'summary', 'general']
