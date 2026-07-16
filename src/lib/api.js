@@ -362,5 +362,7 @@ ${slideData}`.trim()
 
   deck.slides.forEach((s, i) => { s.num = i + 1 })
 
+  console.log('[generateDeck] FINAL slides:', deck.slides.map(s => ({ title: s.title, hasTable: !!s.table, bullets: s.bullets?.length })))
+
   return deck
 }
