@@ -115,10 +115,12 @@ export async function generateDeck(deptContributions, clientName = "", clientId 
       const slideText = slides.map(s => {
         const rawBody   = s.body ?? ''
         const wantsImg  = rawBody.includes('[images]')
-        const cleanBody = rawBody.replace(/\[images\]/gi, '').trim()
+        const wantsTable = rawBody.includes('[table]')
+        const cleanBody = rawBody.replace(/\[images\]/gi, '').replace(/\[table\]/gi, '').trim()
         const guidance  = cleanBody ? `\n  Guidance notes (use as source material, do NOT copy verbatim): ${cleanBody}` : ''
         const imgHint   = wantsImg && allImageFiles.length ? `\n  IMAGE REQUIRED: You MUST include an "imageFile" field for this slide — pick the most relevant image from the available images list.` : ''
-        return `  Id: ${s._id}\n  Title: ${s.title}${guidance}${imgHint}`
+        const tableHint = wantsTable ? `\n  TABLE REQUIRED: You MUST output a "table" field for this slide. Extract all numeric values marked [from file] from the department files. Do NOT output bullets — the table IS the content. If you include bullets at all, limit to 1 short sentence maximum.` : ''
+        return `  Id: ${s._id}\n  Title: ${s.title}${guidance}${imgHint}${tableHint}`
       }).join('\n')
       // Use deptSummary (dept-only) if available, otherwise fall back to fileSummary
       const summary  = deptSummary ?? fileSummary ?? ''
@@ -149,10 +151,10 @@ RULES — follow exactly:
 - Only output content slides for the listed departments
 - CRITICAL: You must generate exactly one output slide for EVERY input slide listed under each department. Do NOT merge multiple input slides into one. Do NOT skip any input slide. Each input slide gets its own output slide.
 - Each input slide has an "Id" — every output slide must include a "sourceId" field that exactly copies the Id of the input slide it was generated from (verbatim, unchanged).
-- Where "Guidance notes" are provided for a slide, use them as topical direction and source material — synthesise them with the supporting file context into polished executive bullet points. Never copy the guidance notes verbatim into the output.
+- Where "Guidance notes" are provided for a slide, use them as topical direction and source material. Never copy the guidance notes verbatim into the output.
 - Review ALL supporting file content (both global shared files and department-specific files) carefully when generating content for each slide. Extract specific data, numbers, and facts from the files — do not rely on generic statements.
 - Each slide must contain NO MORE than 4 bullet points. If a topic genuinely has more content than fits in 4 bullets, add a continuation slide immediately after with " (cont'd)" appended to the title. Continuation slides must share the same "sourceId".
-- TABLE RULE: When guidance notes or file data describe information that is naturally tabular (comparisons across platforms/competitors/categories, rating tables, metric breakdowns by row, before/after data, side-by-side comparisons), you MUST output a "table" field instead of or in addition to bullets. A table makes the data far more readable than bullet points. Use your judgment: if it looks like a spreadsheet or comparison matrix, use a table.${allImageFiles.length ? `\n- If an image from the available images list is relevant or would enhance a slide, include an "imageFile" field with the exact filename and an "imagePlacement" field. Choose the placement that makes the image look most natural: "bottom" stretches the image across the full content width below the bullets (best for charts, graphs, tables, timelines — use this by default for data visuals), "right" places the image on the right side with text on the left (best for product shots, logos, or portrait images). Only use one image per slide. Omit both fields if no image fits.` : ''}
+- TABLE RULE — MANDATORY: If the guidance notes contain a pipe-separated table structure (rows with "|" separators), you MUST reproduce that as a "table" field, filling in any "[from file]" placeholders with real values extracted from the attached files. Do NOT convert table data into bullet points — output it as a table every time. More broadly, whenever data is naturally tabular (ratings comparisons, competitor matrices, metric breakdowns by row, before/after data), always use a "table" field. When a slide has a table, keep bullets to 1–2 high-level narrative sentences at most, or omit bullets entirely if the table is self-explanatory.${allImageFiles.length ? `\n- If an image from the available images list is relevant or would enhance a slide, include an "imageFile" field with the exact filename and an "imagePlacement" field. Choose the placement that makes the image look most natural: "bottom" stretches the image across the full content width below the bullets (best for charts, graphs, tables, timelines — use this by default for data visuals), "right" places the image on the right side with text on the left (best for product shots, logos, or portrait images). Only use one image per slide. Omit both fields if no image fits.` : ''}
 ${imageList}
 
 Return ONLY valid JSON, no markdown:
