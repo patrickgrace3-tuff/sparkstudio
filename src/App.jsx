@@ -449,6 +449,7 @@ export default function App() {
                           title: gen.title,
                           body: (gen.bullets ?? []).join('\n'),
                           bullets: gen.bullets ?? [],
+                          table: gen.table ?? null,
                           dept: gen.dept,
                           style: gen.style ?? {},
                           _fromTemplate: true,
