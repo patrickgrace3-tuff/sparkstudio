@@ -1,10 +1,10 @@
 import { Router } from 'express'
 import bcrypt from 'bcryptjs'
 import { query } from '../db.js'
-import { requireAdmin } from '../auth.js'
+import { requireAuth } from '../auth.js'
 
 const router = Router()
-router.use(requireAdmin)
+router.use(requireAuth)
 
 // GET /api/admin/users
 router.get('/users', async (req, res) => {
