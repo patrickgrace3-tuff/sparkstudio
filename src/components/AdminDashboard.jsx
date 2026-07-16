@@ -207,6 +207,8 @@ function OverviewTab() {
 export default function AdminDashboard({ onClose, currentUser }) {
   const [tab, setTab] = useState('overview')
 
+  const isAdmin = currentUser?.role === 'admin'
+
   const tabs = [
     { id: 'overview', label: 'Overview' },
     { id: 'users',    label: 'Users' },
@@ -221,26 +223,45 @@ export default function AdminDashboard({ onClose, currentUser }) {
             <span style={S.title}>Admin Dashboard</span>
             <span style={S.sub}>User, client, and system management</span>
           </div>
-          <button style={S.closeBtn} onClick={onClose}>✕ Close</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ ...S.rolePill, ...(isAdmin ? S.rolePillAdmin : S.rolePillUser) }}>
+              {currentUser?.role ?? 'unknown'}
+            </span>
+            <button style={S.closeBtn} onClick={onClose}>✕ Close</button>
+          </div>
         </div>
 
-        <div style={S.tabBar}>
-          {tabs.map(t => (
-            <button
-              key={t.id}
-              style={{ ...S.tabBtn, ...(tab === t.id ? S.tabBtnActive : {}) }}
-              onClick={() => setTab(t.id)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+        {!isAdmin ? (
+          <div style={S.accessDenied}>
+            <div style={S.accessDeniedIcon}>🔒</div>
+            <div style={S.accessDeniedTitle}>Admin access required</div>
+            <div style={S.accessDeniedText}>
+              Your account role is <strong>{currentUser?.role ?? 'unknown'}</strong>. Only admins can view this dashboard.
+              <br />
+              If you should have admin access, sign out and back in to refresh your session — or ask an existing admin to update your role.
+            </div>
+          </div>
+        ) : (
+          <>
+            <div style={S.tabBar}>
+              {tabs.map(t => (
+                <button
+                  key={t.id}
+                  style={{ ...S.tabBtn, ...(tab === t.id ? S.tabBtnActive : {}) }}
+                  onClick={() => setTab(t.id)}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
 
-        <div style={S.body}>
-          {tab === 'overview' && <OverviewTab />}
-          {tab === 'users'    && <UsersTab currentUserId={currentUser?.id} />}
-          {tab === 'clients'  && <ClientsTab />}
-        </div>
+            <div style={S.body}>
+              {tab === 'overview' && <OverviewTab />}
+              {tab === 'users'    && <UsersTab currentUserId={currentUser?.id} />}
+              {tab === 'clients'  && <ClientsTab />}
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
@@ -259,7 +280,14 @@ const S = {
   body:          { flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' },
   tabContent:    { flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 },
   loading:       { padding: 24, fontSize: 13, color: 'var(--color-text-muted)' },
-  error:         { fontSize: 12, color: '#ef4444', background: '#ef444412', border: '0.5px solid #ef444430', borderRadius: 6, padding: '8px 12px' },
+  error:         { fontSize: 13, color: '#ef4444', background: '#ef444412', border: '0.5px solid #ef444430', borderRadius: 6, padding: '12px 16px', fontWeight: 500 },
+  accessDenied:      { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, padding: 40 },
+  accessDeniedIcon:  { fontSize: 40 },
+  accessDeniedTitle: { fontSize: 18, fontWeight: 700, color: 'var(--color-text-primary)' },
+  accessDeniedText:  { fontSize: 13, color: 'var(--color-text-muted)', maxWidth: 460, textAlign: 'center', lineHeight: 1.7 },
+  rolePill:      { fontSize: 11, fontWeight: 700, borderRadius: 99, padding: '3px 10px', border: '0.5px solid', textTransform: 'uppercase', letterSpacing: '0.05em' },
+  rolePillAdmin: { color: '#6366F1', background: '#6366F112', borderColor: '#6366F144' },
+  rolePillUser:  { color: 'var(--color-text-muted)', background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' },
   sectionHeader: { display: 'flex', alignItems: 'center', gap: 12 },
   sectionTitle:  { fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)' },
   sectionSub:    { fontSize: 12, color: 'var(--color-text-muted)' },
