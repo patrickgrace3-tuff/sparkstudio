@@ -334,84 +334,7 @@ function StylesTab() {
 
   return (
     <div style={S.tabContent}>
-      {err && <div style={S.error}>{err}</div>}
-
-      <div style={S.sectionHeader}>
-        <span style={S.sectionTitle}>Color Presets</span>
-        <button style={S.ghostBtn} onClick={() => setShowAdd(v => !v)}>{showAdd ? 'Cancel' : '+ Add preset'}</button>
-      </div>
-      <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: 0 }}>
-        These presets appear in the slide style picker for all users.
-      </p>
-
-      {showAdd && (
-        <div style={{ background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 8, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>New preset</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 12, color: 'var(--color-text-muted)', width: 80, flexShrink: 0 }}>Name</span>
-            <input style={{ ...SLocal.input, flex: 1 }} value={newPreset.label} onChange={e => setNewPreset(p => ({ ...p, label: e.target.value }))} placeholder="Preset name" />
-          </div>
-          <ColorField label="Background" value={newPreset.bg}     onChange={v => setNewPreset(p => ({ ...p, bg: v }))} />
-          <ColorField label="Text"       value={newPreset.text}   onChange={v => setNewPreset(p => ({ ...p, text: v }))} />
-          <ColorField label="Accent"     value={newPreset.accent} onChange={v => setNewPreset(p => ({ ...p, accent: v }))} />
-          <button style={S.primaryBtn} onClick={addPreset} disabled={!newPreset.label.trim()}>Add preset</button>
-        </div>
-      )}
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
-        {styles.colorPresets.map((p, i) => (
-          <div key={i} style={{ background: p.bg, border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 8, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <input
-                value={p.label}
-                onChange={e => updatePreset(i, 'label', e.target.value)}
-                style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: 13, fontWeight: 700, color: p.text, flex: 1 }}
-              />
-              <button onClick={() => removePreset(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: p.text, opacity: 0.6 }}>✕</button>
-            </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {['bg', 'text', 'accent'].map(k => (
-                <div key={k} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, flex: 1 }}>
-                  <input type="color" value={p[k]} onChange={e => updatePreset(i, k, e.target.value)}
-                    style={{ width: '100%', height: 24, border: 'none', cursor: 'pointer', borderRadius: 4, padding: 0 }} />
-                  <span style={{ fontSize: 9, color: p.text, opacity: 0.7, textTransform: 'uppercase' }}>{k}</span>
-                </div>
-              ))}
-            </div>
-            <div style={{ height: 3, background: p.accent, borderRadius: 2 }} />
-          </div>
-        ))}
-      </div>
-
-      <div style={S.sectionHeader}>
-        <span style={S.sectionTitle}>Slide Defaults</span>
-      </div>
-      <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: 0 }}>
-        Default colors and fonts applied when generating new presentations.
-      </p>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <SlideDefaults
-          title="Title Slide"
-          value={styles.titleSlide}
-          onChange={v => setStylesCfg(s => ({ ...s, titleSlide: v }))}
-        />
-        <SlideDefaults
-          title="Content Slide"
-          value={styles.contentSlide}
-          onChange={v => setStylesCfg(s => ({ ...s, contentSlide: v }))}
-        />
-      </div>
-
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', paddingTop: 4 }}>
-        <button style={S.primaryBtn} onClick={handleSave} disabled={saving}>
-          {saving ? 'Saving…' : 'Save styles'}
-        </button>
-        {saved && <span style={{ fontSize: 12, color: '#1D9E75' }}>Saved!</span>}
-      </div>
-
-      <div style={{ borderTop: '0.5px solid var(--color-border)', paddingTop: 20, marginTop: 4 }}>
-        <SlideTemplatesSection />
-      </div>
+      <SlideTemplatesSection />
     </div>
   )
 }
@@ -626,7 +549,7 @@ export default function AdminDashboard({ onClose, currentUser, onClientsChange }
     { id: 'overview', label: 'Overview' },
     { id: 'users',    label: 'Users' },
     { id: 'clients',  label: 'Clients' },
-    { id: 'styles',   label: 'Styles & Templates' },
+    { id: 'styles',   label: 'PowerPoint Template' },
   ]
 
   return (
