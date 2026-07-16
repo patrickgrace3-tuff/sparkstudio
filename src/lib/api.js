@@ -115,10 +115,12 @@ export async function generateDeck(deptContributions, clientName = "", clientId 
       const slideText = slides.map(s => {
         const rawBody   = s.body ?? ''
         const wantsImg  = rawBody.includes('[images]')
-        const cleanBody = rawBody.replace(/\[images\]/gi, '').trim()
+        const wantsTable = rawBody.includes('[table]')
+        const cleanBody = rawBody.replace(/\[images\]/gi, '').replace(/\[table\]/gi, '').trim()
         const guidance  = cleanBody ? `\n  Guidance notes (use as source material, do NOT copy verbatim): ${cleanBody}` : ''
         const imgHint   = wantsImg && allImageFiles.length ? `\n  IMAGE REQUIRED: You MUST include an "imageFile" field for this slide — pick the most relevant image from the available images list.` : ''
-        return `  Id: ${s._id}\n  Title: ${s.title}${guidance}${imgHint}`
+        const tableHint = wantsTable ? `\n  TABLE REQUIRED: You MUST output a "table" field for this slide. Extract all numeric values marked [from file] from the department files. Do NOT output bullets — the table IS the content. If you include bullets at all, limit to 1 short sentence maximum.` : ''
+        return `  Id: ${s._id}\n  Title: ${s.title}${guidance}${imgHint}${tableHint}`
       }).join('\n')
       // Use deptSummary (dept-only) if available, otherwise fall back to fileSummary
       const summary  = deptSummary ?? fileSummary ?? ''
