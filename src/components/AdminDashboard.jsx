@@ -233,6 +233,185 @@ function ClientsTab({ onClientsChange }) {
   )
 }
 
+// ── Styles tab ────────────────────────────────────────────────────────────────
+const DEFAULT_STYLES = {
+  colorPresets: [
+    { label: 'White',     bg: '#FFFFFF', text: '#1a1a1a', accent: '#CD2F37' },
+    { label: 'Dark',      bg: '#1E2761', text: '#FFFFFF', accent: '#CADCFC' },
+    { label: 'Spark Red', bg: '#CD2F37', text: '#FFFFFF', accent: '#FFFFFF' },
+    { label: 'Charcoal',  bg: '#36454F', text: '#F2F2F2', accent: '#ef4444' },
+    { label: 'Slate',     bg: '#2C3E50', text: '#ECF0F1', accent: '#3498db' },
+    { label: 'Forest',    bg: '#2C5F2D', text: '#F5F5F5', accent: '#97BC62' },
+  ],
+  titleSlide: { bg: '#1E2761', textCol: '#FFFFFF', accent: '#CADCFC', font: 'Arial, sans-serif' },
+  contentSlide: { bg: '#FFFFFF', textCol: '#1a1a1a', accent: '#CD2F37', font: 'Arial, sans-serif' },
+}
+
+function ColorField({ label, value, onChange }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ fontSize: 12, color: 'var(--color-text-muted)', width: 80, flexShrink: 0 }}>{label}</span>
+      <input type="color" value={value} onChange={e => onChange(e.target.value)}
+        style={{ width: 32, height: 32, border: '0.5px solid var(--color-border)', borderRadius: 4, cursor: 'pointer', padding: 1 }} />
+      <span style={{ fontSize: 11, color: 'var(--color-text-muted)', fontFamily: 'monospace' }}>{value}</span>
+    </div>
+  )
+}
+
+function SlideDefaults({ title, value, onChange }) {
+  function set(key, val) { onChange({ ...value, [key]: val }) }
+  return (
+    <div style={{ background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 8, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)' }}>{title}</span>
+      <ColorField label="Background" value={value.bg}      onChange={v => set('bg', v)} />
+      <ColorField label="Text"       value={value.textCol} onChange={v => set('textCol', v)} />
+      <ColorField label="Accent"     value={value.accent}  onChange={v => set('accent', v)} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 12, color: 'var(--color-text-muted)', width: 80, flexShrink: 0 }}>Font</span>
+        <input
+          style={{ ...SLocal.input, flex: 1 }}
+          value={value.font}
+          onChange={e => set('font', e.target.value)}
+          placeholder="e.g. Arial, sans-serif"
+        />
+      </div>
+    </div>
+  )
+}
+
+const SLocal = {
+  input: { background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 6, padding: '6px 10px', fontSize: 12, color: 'var(--color-text-primary)', outline: 'none' },
+}
+
+function StylesTab() {
+  const [styles,   setStylesCfg] = useState(null)
+  const [loading,  setLoading]   = useState(true)
+  const [saving,   setSaving]    = useState(false)
+  const [saved,    setSaved]     = useState(false)
+  const [err,      setErr]       = useState('')
+
+  // New preset form
+  const [newPreset, setNewPreset] = useState({ label: '', bg: '#FFFFFF', text: '#1a1a1a', accent: '#CD2F37' })
+  const [showAdd,   setShowAdd]   = useState(false)
+
+  useEffect(() => {
+    api.adminGetSetting('slide_styles')
+      .then(data => setStylesCfg(data ?? DEFAULT_STYLES))
+      .catch(() => setStylesCfg(DEFAULT_STYLES))
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function handleSave() {
+    setSaving(true); setSaved(false); setErr('')
+    try {
+      await api.adminPutSetting('slide_styles', styles)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch (e) { setErr(e.message) }
+    finally { setSaving(false) }
+  }
+
+  function removePreset(i) {
+    setStylesCfg(s => ({ ...s, colorPresets: s.colorPresets.filter((_, idx) => idx !== i) }))
+  }
+
+  function updatePreset(i, key, val) {
+    setStylesCfg(s => {
+      const next = [...s.colorPresets]
+      next[i] = { ...next[i], [key]: val }
+      return { ...s, colorPresets: next }
+    })
+  }
+
+  function addPreset() {
+    if (!newPreset.label.trim()) return
+    setStylesCfg(s => ({ ...s, colorPresets: [...s.colorPresets, { ...newPreset }] }))
+    setNewPreset({ label: '', bg: '#FFFFFF', text: '#1a1a1a', accent: '#CD2F37' })
+    setShowAdd(false)
+  }
+
+  if (loading) return <div style={S.loading}>Loading styles…</div>
+
+  return (
+    <div style={S.tabContent}>
+      {err && <div style={S.error}>{err}</div>}
+
+      <div style={S.sectionHeader}>
+        <span style={S.sectionTitle}>Color Presets</span>
+        <button style={S.ghostBtn} onClick={() => setShowAdd(v => !v)}>{showAdd ? 'Cancel' : '+ Add preset'}</button>
+      </div>
+      <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: 0 }}>
+        These presets appear in the slide style picker for all users.
+      </p>
+
+      {showAdd && (
+        <div style={{ background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 8, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>New preset</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 12, color: 'var(--color-text-muted)', width: 80, flexShrink: 0 }}>Name</span>
+            <input style={{ ...SLocal.input, flex: 1 }} value={newPreset.label} onChange={e => setNewPreset(p => ({ ...p, label: e.target.value }))} placeholder="Preset name" />
+          </div>
+          <ColorField label="Background" value={newPreset.bg}     onChange={v => setNewPreset(p => ({ ...p, bg: v }))} />
+          <ColorField label="Text"       value={newPreset.text}   onChange={v => setNewPreset(p => ({ ...p, text: v }))} />
+          <ColorField label="Accent"     value={newPreset.accent} onChange={v => setNewPreset(p => ({ ...p, accent: v }))} />
+          <button style={S.primaryBtn} onClick={addPreset} disabled={!newPreset.label.trim()}>Add preset</button>
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
+        {styles.colorPresets.map((p, i) => (
+          <div key={i} style={{ background: p.bg, border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 8, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <input
+                value={p.label}
+                onChange={e => updatePreset(i, 'label', e.target.value)}
+                style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: 13, fontWeight: 700, color: p.text, flex: 1 }}
+              />
+              <button onClick={() => removePreset(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: p.text, opacity: 0.6 }}>✕</button>
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {['bg', 'text', 'accent'].map(k => (
+                <div key={k} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, flex: 1 }}>
+                  <input type="color" value={p[k]} onChange={e => updatePreset(i, k, e.target.value)}
+                    style={{ width: '100%', height: 24, border: 'none', cursor: 'pointer', borderRadius: 4, padding: 0 }} />
+                  <span style={{ fontSize: 9, color: p.text, opacity: 0.7, textTransform: 'uppercase' }}>{k}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ height: 3, background: p.accent, borderRadius: 2 }} />
+          </div>
+        ))}
+      </div>
+
+      <div style={S.sectionHeader}>
+        <span style={S.sectionTitle}>Slide Defaults</span>
+      </div>
+      <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: 0 }}>
+        Default colors and fonts applied when generating new presentations.
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <SlideDefaults
+          title="Title Slide"
+          value={styles.titleSlide}
+          onChange={v => setStylesCfg(s => ({ ...s, titleSlide: v }))}
+        />
+        <SlideDefaults
+          title="Content Slide"
+          value={styles.contentSlide}
+          onChange={v => setStylesCfg(s => ({ ...s, contentSlide: v }))}
+        />
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', paddingTop: 4 }}>
+        <button style={S.primaryBtn} onClick={handleSave} disabled={saving}>
+          {saving ? 'Saving…' : 'Save styles'}
+        </button>
+        {saved && <span style={{ fontSize: 12, color: '#1D9E75' }}>Saved!</span>}
+      </div>
+    </div>
+  )
+}
+
 function fmtTokens(n) {
   if (n == null) return '—'
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
@@ -288,6 +467,7 @@ export default function AdminDashboard({ onClose, currentUser, onClientsChange }
     { id: 'overview', label: 'Overview' },
     { id: 'users',    label: 'Users' },
     { id: 'clients',  label: 'Clients' },
+    { id: 'styles',   label: 'Styles & Templates' },
   ]
 
   return (
@@ -334,6 +514,7 @@ export default function AdminDashboard({ onClose, currentUser, onClientsChange }
               {tab === 'overview' && <OverviewTab />}
               {tab === 'users'    && <UsersTab currentUserId={currentUser?.id} />}
               {tab === 'clients'  && <ClientsTab onClientsChange={onClientsChange} />}
+              {tab === 'styles'   && <StylesTab />}
             </div>
           </>
         )}

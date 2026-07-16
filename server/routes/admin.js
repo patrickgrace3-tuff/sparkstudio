@@ -123,6 +123,32 @@ router.get('/clients', async (req, res) => {
   }
 })
 
+// GET /api/admin/settings/:key
+router.get('/settings/:key', async (req, res) => {
+  try {
+    const result = await query('SELECT value FROM admin_settings WHERE key = $1', [req.params.key])
+    res.json(result.rows.length ? result.rows[0].value : null)
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// PUT /api/admin/settings/:key
+router.put('/settings/:key', async (req, res) => {
+  try {
+    await query(
+      `INSERT INTO admin_settings (key, value, updated_at) VALUES ($1, $2, NOW())
+       ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()`,
+      [req.params.key, JSON.stringify(req.body)]
+    )
+    res.json({ ok: true })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
 // Pricing helper — blended rate across sonnet + haiku mix
 // Sonnet 4.6: $3/M input, $15/M output
 // Haiku 4.5:  $0.80/M input, $4/M output
