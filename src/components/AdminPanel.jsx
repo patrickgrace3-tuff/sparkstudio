@@ -242,7 +242,7 @@ export default function AdminPanel({ onClose, onTemplatesChange }) {
 
         <div style={S.header}>
           <div>
-            <span style={S.title}>Admin — Presentation Templates</span>
+            <span style={S.title}>Presentation Templates</span>
             <span style={S.sub}>Define reusable slide structures that seed AI-generated decks</span>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

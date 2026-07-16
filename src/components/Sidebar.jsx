@@ -11,6 +11,7 @@ export default function Sidebar({
   onOpenFunnel,
   onOpenTeam,
   onOpenAdmin,
+  onOpenAdminDashboard,
 }) {
   const totalSlides = Object.values(allSlides).reduce((a, b) => a + b.length, 0)
 
@@ -60,8 +61,14 @@ export default function Sidebar({
         <span style={styles.globalLabel}>My Team</span>
       </button>
 
-      {/* Admin Panel */}
+      {/* Templates */}
       <button style={styles.funnelBtn} onClick={onOpenAdmin}>
+        <span style={styles.globalIcon}>📋</span>
+        <span style={styles.globalLabel}>Templates</span>
+      </button>
+
+      {/* Admin Dashboard */}
+      <button style={styles.funnelBtn} onClick={onOpenAdminDashboard}>
         <span style={styles.globalIcon}>⚙️</span>
         <span style={styles.globalLabel}>Admin</span>
       </button>
