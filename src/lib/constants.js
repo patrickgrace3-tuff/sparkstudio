@@ -64,6 +64,7 @@ export const ANTHROPIC_MODEL = 'claude-sonnet-4-6'
 // Cheaper model used for bulk generation (template runs, deck generation)
 // Switch back to ANTHROPIC_MODEL if you need richer reasoning
 export const ANTHROPIC_MODEL_FAST = 'claude-haiku-4-5-20251001'
+export const ANTHROPIC_MODEL_DECK = 'claude-sonnet-4-6'
  
 // ─── Storage key ────────────────────────────────────────────────────────────
 // Key used in localStorage to persist slide data between sessions.
