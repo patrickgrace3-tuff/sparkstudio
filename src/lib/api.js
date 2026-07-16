@@ -117,9 +117,11 @@ export async function generateDeck(deptContributions, clientName = "", clientId 
         const wantsImg  = rawBody.includes('[images]')
         const wantsTable = rawBody.includes('[table]')
         const cleanBody = rawBody.replace(/\[images\]/gi, '').replace(/\[table\]/gi, '').trim()
-        const guidance  = cleanBody ? `\n  Guidance notes (use as source material, do NOT copy verbatim): ${cleanBody}` : ''
+        const guidance  = wantsTable && cleanBody
+          ? `\n  Table structure to reproduce (use this as the exact table layout — fill in [from file] values from department files, calculate [calculate] values):\n${cleanBody}`
+          : cleanBody ? `\n  Guidance notes (use as source material, do NOT copy verbatim): ${cleanBody}` : ''
         const imgHint   = wantsImg && allImageFiles.length ? `\n  IMAGE REQUIRED: You MUST include an "imageFile" field for this slide — pick the most relevant image from the available images list.` : ''
-        const tableHint = wantsTable ? `\n  TABLE REQUIRED: You MUST output a "table" field for this slide. Extract all numeric values marked [from file] from the department files. Do NOT output bullets — the table IS the content. If you include bullets at all, limit to 1 short sentence maximum.` : ''
+        const tableHint = wantsTable ? `\n  TABLE REQUIRED: Output a "table" field with "headers" and "rows" arrays matching the table structure above. Replace every [from file] cell with the real value from the department files. Replace every [calculate] cell with the computed result. Do NOT output this data as bullets. Bullets field should be omitted or contain 1 short sentence at most.` : ''
         return `  Id: ${s._id}\n  Title: ${s.title}${guidance}${imgHint}${tableHint}`
       }).join('\n')
       // Use deptSummary (dept-only) if available, otherwise fall back to fileSummary
