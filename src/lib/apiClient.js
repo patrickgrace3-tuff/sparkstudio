@@ -78,6 +78,23 @@ export const api = {
   adminGetClients:  ()              => apiFetch('/api/admin/clients'),
   adminGetSetting:  (key)           => apiFetch(`/api/admin/settings/${key}`),
   adminPutSetting:  (key, value)    => apiFetch(`/api/admin/settings/${key}`, { method: 'PUT', body: value }),
+  adminTemplateInfo: ()             => apiFetch('/api/admin/template-info'),
+  adminUploadTemplate: (arrayBuffer) => {
+    const token = localStorage.getItem('ss:token')
+    return fetch(`${BASE}/api/admin/template`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/octet-stream', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: arrayBuffer,
+    }).then(r => r.json())
+  },
+  adminUploadBranding: (filename, arrayBuffer, mimeType) => {
+    const token = localStorage.getItem('ss:token')
+    return fetch(`${BASE}/api/admin/branding/${filename}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': mimeType || 'image/jpeg', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: arrayBuffer,
+    }).then(r => r.json())
+  },
 
   // Templates
   getTemplates:   ()          => apiFetch('/api/templates'),

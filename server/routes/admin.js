@@ -1,7 +1,13 @@
-import { Router } from 'express'
+import express, { Router } from 'express'
 import bcrypt from 'bcryptjs'
+import { readFileSync, writeFileSync, statSync } from 'fs'
+import { resolve, dirname } from 'path'
+import { fileURLToPath } from 'url'
 import { query } from '../db.js'
 import { requireAdmin } from '../auth.js'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const PUBLIC_DIR = resolve(__dirname, '../../public')
 
 const router = Router()
 router.use(requireAdmin)
@@ -120,6 +126,43 @@ router.get('/clients', async (req, res) => {
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// GET /api/admin/template-info — metadata about the current template.pptx
+router.get('/template-info', (req, res) => {
+  try {
+    const stat = statSync(resolve(PUBLIC_DIR, 'template.pptx'))
+    res.json({ size: stat.size, updatedAt: stat.mtime })
+  } catch {
+    res.json({ size: null, updatedAt: null })
+  }
+})
+
+// PUT /api/admin/template — replace template.pptx (raw binary body)
+router.put('/template', express.raw({ type: 'application/octet-stream', limit: '50mb' }), (req, res) => {
+  try {
+    if (!req.body || req.body.length === 0) return res.status(400).json({ error: 'No file data' })
+    writeFileSync(resolve(PUBLIC_DIR, 'template.pptx'), req.body)
+    const stat = statSync(resolve(PUBLIC_DIR, 'template.pptx'))
+    res.json({ ok: true, size: stat.size, updatedAt: stat.mtime })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Failed to save template' })
+  }
+})
+
+// PUT /api/admin/branding/:filename — replace a branding image (raw binary body)
+router.put('/branding/:filename', express.raw({ type: ['image/jpeg', 'image/png', 'image/webp'], limit: '20mb' }), (req, res) => {
+  const allowed = ['cover-bg.jpg', 'section-bg.jpg', 'content-bg.jpg']
+  if (!allowed.includes(req.params.filename)) return res.status(400).json({ error: 'Unknown branding file' })
+  try {
+    if (!req.body || req.body.length === 0) return res.status(400).json({ error: 'No file data' })
+    writeFileSync(resolve(PUBLIC_DIR, 'branding', req.params.filename), req.body)
+    res.json({ ok: true })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Failed to save branding image' })
   }
 })
 

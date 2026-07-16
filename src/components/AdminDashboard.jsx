@@ -417,151 +417,155 @@ function StylesTab() {
 }
 
 // ── Slide Templates section (inside Styles tab) ───────────────────────────────
-const TEMPLATE_TYPES = [
-  { key: 'title',   label: 'Title Slide',       desc: 'Opening slide — shown first in every presentation.' },
-  { key: 'section', label: 'Section Divider',   desc: 'Marks the start of a new topic or section.' },
-  { key: 'content', label: 'Content Slide',     desc: 'Standard body slide with title and bullet points.' },
-  { key: 'closing', label: 'Closing Slide',     desc: 'Thank-you / closing slide at the end of the deck.' },
+// Maps each slide type to the branding background image that's actually used
+// when generating slides — these ARE the live template previews.
+const SLIDE_LAYOUTS = [
+  { key: 'title',   label: 'Title Slide',     desc: 'Opening slide — first in every deck.',           bgFile: 'cover-bg.jpg',   bgPath: '/branding/cover-bg.jpg' },
+  { key: 'section', label: 'Section Divider', desc: 'Dark divider slide between topics.',              bgFile: 'section-bg.jpg', bgPath: '/branding/section-bg.jpg' },
+  { key: 'content', label: 'Content Slide',   desc: 'Standard body slide with title and bullets.',    bgFile: 'content-bg.jpg', bgPath: '/branding/content-bg.jpg' },
+  { key: 'closing', label: 'Closing Slide',   desc: 'Thank-you slide at the end — uses section bg.', bgFile: 'section-bg.jpg', bgPath: '/branding/section-bg.jpg' },
 ]
 
-const DEFAULT_TEMPLATES = Object.fromEntries(
-  TEMPLATE_TYPES.map(t => [t.key, { label: t.label, description: t.desc, previewImage: null }])
-)
-
 function SlideTemplatesSection() {
-  const [templates, setTemplates] = useState(null)
-  const [loading,   setLoading]   = useState(true)
-  const [saving,    setSaving]    = useState(false)
-  const [saved,     setSaved]     = useState(false)
-  const [err,       setErr]       = useState('')
-  const fileRefs = Object.fromEntries(TEMPLATE_TYPES.map(t => [t.key, React.createRef()]))
+  const [templateInfo, setTemplateInfo] = useState(null)
+  const [uploadingPptx, setUploadingPptx] = useState(false)
+  const [uploadingBg,   setUploadingBg]   = useState({})
+  const [msg,           setMsg]           = useState('')
+  const [err,           setErr]           = useState('')
+  // Cache-busting suffix so branding images reload after upload
+  const [cacheBust, setCacheBust] = useState(Date.now())
+
+  const pptxRef = React.useRef(null)
+  const bgRefs  = Object.fromEntries(SLIDE_LAYOUTS.map(l => [l.key, React.createRef()]))
 
   useEffect(() => {
-    api.adminGetSetting('slide_templates')
-      .then(data => setTemplates(data ?? DEFAULT_TEMPLATES))
-      .catch(() => setTemplates(DEFAULT_TEMPLATES))
-      .finally(() => setLoading(false))
+    api.adminTemplateInfo().then(setTemplateInfo).catch(() => {})
   }, [])
 
-  function handleImageUpload(key, e) {
+  async function handlePptxUpload(e) {
     const file = e.target.files?.[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = ev => {
-      setTemplates(t => ({ ...t, [key]: { ...t[key], previewImage: ev.target.result } }))
-    }
-    reader.readAsDataURL(file)
-  }
-
-  function updateField(key, field, val) {
-    setTemplates(t => ({ ...t, [key]: { ...t[key], [field]: val } }))
-  }
-
-  async function handleSave() {
-    setSaving(true); setSaved(false); setErr('')
+    if (!file.name.endsWith('.pptx')) { setErr('Only .pptx files are accepted'); return }
+    setUploadingPptx(true); setErr(''); setMsg('')
     try {
-      await api.adminPutSetting('slide_templates', templates)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2500)
-    } catch (e) { setErr(e.message) }
-    finally { setSaving(false) }
+      const buf = await file.arrayBuffer()
+      const result = await api.adminUploadTemplate(buf)
+      setTemplateInfo({ size: result.size, updatedAt: result.updatedAt })
+      setMsg('Template updated! New presentations will use this file.')
+      setTimeout(() => setMsg(''), 4000)
+    } catch (e) { setErr(e.message || 'Upload failed') }
+    finally { setUploadingPptx(false); e.target.value = '' }
   }
 
-  if (loading) return <div style={{ fontSize: 13, color: 'var(--color-text-muted)', padding: '8px 0' }}>Loading templates…</div>
+  async function handleBgUpload(layout, e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingBg(b => ({ ...b, [layout.key]: true })); setErr('')
+    try {
+      const buf = await file.arrayBuffer()
+      await api.adminUploadBranding(layout.bgFile, buf, file.type)
+      setCacheBust(Date.now())
+      setMsg(`${layout.label} background updated.`)
+      setTimeout(() => setMsg(''), 3000)
+    } catch (e) { setErr(e.message || 'Upload failed') }
+    finally { setUploadingBg(b => ({ ...b, [layout.key]: false })); e.target.value = '' }
+  }
+
+  function fmtBytes(n) {
+    if (!n) return '—'
+    if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`
+    return `${(n / 1024).toFixed(0)} KB`
+  }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={S.sectionHeader}>
-        <span style={S.sectionTitle}>Slide Templates</span>
-        <span style={S.sectionSub}>Preview images for each slide type used during generation</span>
+        <span style={S.sectionTitle}>Active PPTX Template</span>
       </div>
       <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: 0 }}>
-        Upload a screenshot or design mock for each template type. These are reference previews — they show admins what the generated output will look like.
+        All generated presentations are built from this single PowerPoint template file. Upload a new .pptx to change the base layout, fonts, logos, and slide structure for everyone.
       </p>
+
       {err && <div style={S.error}>{err}</div>}
+      {msg && <div style={{ fontSize: 13, color: '#1D9E75', background: '#1D9E7510', border: '0.5px solid #1D9E7530', borderRadius: 6, padding: '10px 14px' }}>{msg}</div>}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
-        {TEMPLATE_TYPES.map(type => {
-          const tpl = templates[type.key] ?? { label: type.label, description: type.desc, previewImage: null }
-          return (
-            <div key={type.key} style={{ border: '0.5px solid var(--color-border)', borderRadius: 10, overflow: 'hidden', background: 'var(--color-bg)', display: 'flex', flexDirection: 'column' }}>
-              {/* Preview area — 16:9 */}
-              <div
-                style={{
-                  width: '100%',
-                  aspectRatio: '16/9',
-                  background: tpl.previewImage
-                    ? `url(${tpl.previewImage}) center/cover no-repeat`
-                    : 'var(--color-bg-secondary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  position: 'relative',
-                  cursor: 'pointer',
-                }}
-                onClick={() => fileRefs[type.key].current?.click()}
-                title="Click to upload preview image"
-              >
-                {!tpl.previewImage && (
-                  <div style={{ textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 12 }}>
-                    <div style={{ fontSize: 28, marginBottom: 6 }}>🖼</div>
-                    <div>Click to upload preview</div>
-                  </div>
-                )}
-                {tpl.previewImage && (
-                  <button
-                    onClick={e => { e.stopPropagation(); updateField(type.key, 'previewImage', null) }}
-                    style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.6)', color: '#fff', border: 'none', borderRadius: '50%', width: 22, height: 22, fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                    title="Remove image"
-                  >✕</button>
-                )}
-                <input
-                  ref={fileRefs[type.key]}
-                  type="file"
-                  accept="image/*"
-                  style={{ display: 'none' }}
-                  onChange={e => handleImageUpload(type.key, e)}
-                />
-              </div>
-
-              {/* Metadata */}
-              <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', flexShrink: 0 }}>
-                    {type.key}
-                  </span>
-                  <div style={{ flex: 1, height: '0.5px', background: 'var(--color-border)' }} />
-                </div>
-                <input
-                  style={{ ...SLocal.input, fontSize: 13, fontWeight: 600 }}
-                  value={tpl.label}
-                  onChange={e => updateField(type.key, 'label', e.target.value)}
-                  placeholder="Template name"
-                />
-                <textarea
-                  style={{ ...SLocal.input, fontSize: 11, resize: 'none', lineHeight: 1.5 }}
-                  rows={2}
-                  value={tpl.description}
-                  onChange={e => updateField(type.key, 'description', e.target.value)}
-                  placeholder="Description of when this template is used…"
-                />
-                <button
-                  style={{ ...S.ghostBtn, fontSize: 11, alignSelf: 'flex-start' }}
-                  onClick={() => fileRefs[type.key].current?.click()}
-                >
-                  {tpl.previewImage ? '↺ Replace image' : '↑ Upload image'}
-                </button>
-              </div>
-            </div>
-          )
-        })}
+      {/* Template file card */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 10, padding: '16px 20px' }}>
+        <div style={{ fontSize: 32 }}>📄</div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)' }}>template.pptx</div>
+          <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 }}>
+            {fmtBytes(templateInfo?.size)}
+            {templateInfo?.updatedAt ? ` · Last updated ${new Date(templateInfo.updatedAt).toLocaleString()}` : ''}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <a
+            href="/template.pptx"
+            download="template.pptx"
+            style={{ ...S.ghostBtn, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', fontSize: 12 }}
+          >
+            ↓ Download
+          </a>
+          <button style={S.primaryBtn} onClick={() => pptxRef.current?.click()} disabled={uploadingPptx}>
+            {uploadingPptx ? 'Uploading…' : '↑ Upload new template'}
+          </button>
+          <input ref={pptxRef} type="file" accept=".pptx" style={{ display: 'none' }} onChange={handlePptxUpload} />
+        </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-        <button style={S.primaryBtn} onClick={handleSave} disabled={saving}>
-          {saving ? 'Saving…' : 'Save templates'}
-        </button>
-        {saved && <span style={{ fontSize: 12, color: '#1D9E75' }}>Templates saved!</span>}
+      {/* Per-slide background image previews */}
+      <div style={S.sectionHeader}>
+        <span style={S.sectionTitle}>Slide Background Images</span>
+        <span style={S.sectionSub}>Live previews from /public/branding/</span>
+      </div>
+      <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: 0 }}>
+        These are the actual background images rendered in every slide preview and exported into the PowerPoint. Upload a new image to update the look for all users immediately.
+      </p>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
+        {SLIDE_LAYOUTS.map(layout => (
+          <div key={layout.key} style={{ border: '0.5px solid var(--color-border)', borderRadius: 10, overflow: 'hidden', background: 'var(--color-bg)', display: 'flex', flexDirection: 'column' }}>
+            {/* Live 16:9 preview using the actual file */}
+            <div style={{ width: '100%', aspectRatio: '16/9', position: 'relative', overflow: 'hidden', background: '#111' }}>
+              <img
+                src={`${layout.bgPath}?v=${cacheBust}`}
+                alt={layout.label}
+                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              />
+              {uploadingBg[layout.key] && (
+                <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12 }}>
+                  Uploading…
+                </div>
+              )}
+            </div>
+
+            {/* Metadata + upload */}
+            <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)' }}>{layout.label}</div>
+                  <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 1 }}>{layout.bgFile}</div>
+                </div>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', lineHeight: 1.5 }}>{layout.desc}</div>
+              <button
+                style={{ ...S.ghostBtn, fontSize: 11, alignSelf: 'flex-start' }}
+                onClick={() => bgRefs[layout.key].current?.click()}
+                disabled={uploadingBg[layout.key]}
+              >
+                ↑ Replace background
+              </button>
+              <input
+                ref={bgRefs[layout.key]}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                style={{ display: 'none' }}
+                onChange={e => handleBgUpload(layout, e)}
+              />
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )
