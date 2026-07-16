@@ -65,6 +65,10 @@ export const api = {
   getClientData:  (clientId, key)        => apiFetch(`/api/clientdata/${clientId}/${key}`),
   setClientData:  (clientId, key, value) => apiFetch(`/api/clientdata/${clientId}/${key}`, { method: 'PUT', body: { value } }),
 
+  // Token logging
+  logTokens: (clientId, model, inputTokens, outputTokens) =>
+    apiFetch('/api/tokenlogs', { method: 'POST', body: { clientId, model, inputTokens, outputTokens } }),
+
   // Admin
   adminStats:       ()              => apiFetch('/api/admin/stats'),
   adminGetUsers:    ()              => apiFetch('/api/admin/users'),

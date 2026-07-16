@@ -1,8 +1,9 @@
 import { ANTHROPIC_API_KEY, ANTHROPIC_MODEL, ANTHROPIC_MODEL_FAST } from './constants.js'
+import { api } from './apiClient.js'
 
 const API_URL = 'https://api.anthropic.com/v1/messages'
 
-export async function callClaude(userPrompt, system = '', maxTokens = 1500, { imageFiles = [], pdfFiles = [], model = ANTHROPIC_MODEL } = {}) {
+export async function callClaude(userPrompt, system = '', maxTokens = 1500, { imageFiles = [], pdfFiles = [], model = ANTHROPIC_MODEL, clientId = null } = {}) {
   if (!ANTHROPIC_API_KEY) {
     throw new Error('Missing VITE_ANTHROPIC_API_KEY. Add it to your .env file and restart the dev server.')
   }
@@ -52,10 +53,17 @@ export async function callClaude(userPrompt, system = '', maxTokens = 1500, { im
   }
 
   const data = await res.json()
+
+  // Fire-and-forget token logging (never blocks or throws)
+  const usage = data.usage
+  if (usage) {
+    api.logTokens(clientId, model, usage.input_tokens ?? 0, usage.output_tokens ?? 0).catch(() => {})
+  }
+
   return data.content?.map(b => b.text ?? '').join('') ?? ''
 }
 
-export async function enhanceSlideBody(deptName, title, rawBody) {
+export async function enhanceSlideBody(deptName, title, rawBody, clientId = null) {
   const prompt = `
 You are refining a slide for an executive company presentation.
 Department: ${deptName}
@@ -67,11 +75,11 @@ Return ONLY the bullet points as plain text, one per line, each starting with "-
 No preamble, no markdown fences.
 `.trim()
 
-  const text = await callClaude(prompt, '', 400)
+  const text = await callClaude(prompt, '', 400, { clientId })
   return text.trim()
 }
 
-export async function generateDeck(deptContributions, clientName = "") {
+export async function generateDeck(deptContributions, clientName = "", clientId = null) {
   const allowedDepts = deptContributions.map(d => d.dept)
 
   // Collect all image files across departments (deduplicated by name)
@@ -157,7 +165,7 @@ Return ONLY valid JSON, no markdown:
 Department submissions:
 ${slideData}`.trim()
 
-  const raw   = await callClaude(prompt, system, 4000, { imageFiles: allImageFiles, pdfFiles: allPdfFiles, model: ANTHROPIC_MODEL_FAST })
+  const raw   = await callClaude(prompt, system, 4000, { imageFiles: allImageFiles, pdfFiles: allPdfFiles, model: ANTHROPIC_MODEL_FAST, clientId })
   const clean = raw.replace(/```json|```/g, '').trim()
   const deck  = JSON.parse(clean)
 

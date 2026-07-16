@@ -170,7 +170,7 @@ export default function App() {
   // ── AI ─────────────────────────────────────────────────────────────────────
   async function handleAiAssist(title, body) {
     setIsEnhancing(true)
-    try { return await enhanceSlideBody(activeDept.name, title, body) }
+    try { return await enhanceSlideBody(activeDept.name, title, body, activeClientId) }
     catch (err) { alert('AI enhancement failed: ' + err.message); return null }
     finally { setIsEnhancing(false) }
   }
@@ -189,7 +189,7 @@ export default function App() {
         const ctx = buildAIContext(fileData, d.name, globalData)
         return { dept: d.name, slides: allSlides[d.id] || [], deptSummary: ctx.deptSummary, globalSummary: ctx.globalSummary, imageFiles: ctx.imageFiles, pdfFiles: ctx.pdfFiles }
       })
-      const result = await generateDeck(withData, activeClient.name)
+      const result = await generateDeck(withData, activeClient.name, activeClientId)
 
       const allSlidesFlat = Object.values(allSlides).flat()
       result.slides = result.slides.map(genSlide => {
