@@ -203,7 +203,7 @@ ${slideData}`.trim()
 
   await Promise.all(tableSlides.map(async ({ sourceId, headers, rows, fileCtx }) => {
     const skeleton = JSON.stringify({ headers, rows }, null, 2)
-    const tablePrompt = `Fill in the following JSON table object. Replace every "[from file]" cell with the exact numeric rating value found in the attached files. Replace every "[calculate]" cell with the computed integer result. Output ONLY the raw JSON object — no markdown fences, no explanation, nothing else before or after the JSON.
+    const tablePrompt = `${fileCtx}Using the data above, fill in the following JSON table object. Replace every "[from file]" cell with the exact numeric rating value found in the data. Replace every "[calculate]" cell with the computed integer result. Output ONLY the completed raw JSON object — no markdown fences, no explanation, nothing else.
 
 ${skeleton}`
 
