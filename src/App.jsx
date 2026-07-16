@@ -239,17 +239,20 @@ export default function App() {
 
   function saveDeckSlide(updated) {
     if (!deck) return
+    const newDeck = {
+      ...deck,
+      slides: deck.slides.map(s => s === editingSlide.slide ? updated : s),
+    }
     setDeckMap(prev => {
       const prevDeck = prev[activeClientId]
       if (!prevDeck) return prev
       return {
         ...prev,
-        [activeClientId]: {
-          ...prevDeck,
-          slides: prevDeck.slides.map(s => s === editingSlide.slide ? updated : s),
-        },
+        [activeClientId]: newDeck,
       }
     })
+    // Persist the updated deck so slide edits (position, content) survive a page refresh.
+    api.savePresentation(activeClientId, { title: newDeck.title, deck: newDeck }).catch(console.error)
   }
 
   async function handleExport(orderedSlides) {

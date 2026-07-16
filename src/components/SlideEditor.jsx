@@ -462,6 +462,9 @@ export default function SlideEditor({ slide, onSave, onClose }) {
       ? [...slide.bullets]
       : (slide.body ?? '').split('\n').filter(Boolean),
     style: {
+      // Spread all existing style fields first so nothing (tableBox, bgImage, etc.)
+      // is silently dropped when the editor opens and saves without touching that field.
+      ...slide.style,
       font:    slide.style?.font    ?? FONTS[0].value,
       layout:  slide.style?.layout  ?? 'title-top',
       bg:      slide.style?.bg      ?? '#FFFFFF',
