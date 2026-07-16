@@ -14,30 +14,6 @@ function RichText({ text }) {
 
 const FONTS = [
   { label: 'Arial', value: 'Arial, sans-serif' },
-  { label: 'Georgia', value: 'Georgia, serif' },
-  { label: 'Trebuchet MS', value: "'Trebuchet MS', sans-serif" },
-  { label: 'Calibri', value: 'Calibri, sans-serif' },
-  { label: 'Palatino', value: "'Palatino Linotype', serif" },
-  { label: 'Verdana', value: 'Verdana, sans-serif' },
-]
-
-const LAYOUTS = [
-  { id: 'title-left',   label: 'Title Left',    icon: '▤' },
-  { id: 'title-top',    label: 'Title Top',      icon: '▥' },
-  { id: 'split',        label: 'Two Column',     icon: '▦' },
-  { id: 'centered',     label: 'Centered',       icon: '▣' },
-  { id: 'image-right',  label: 'Image Right',    icon: '◧' },
-  { id: 'full-image',   label: 'Full Background',icon: '█' },
-]
-
-const BG_PRESETS = [
-  { label: 'White',       bg: '#FFFFFF', text: '#1a1a1a', accent: '#CD2F37' },
-  { label: 'Dark',        bg: '#1E2761', text: '#FFFFFF', accent: '#CADCFC' },
-  { label: 'Spark Red',   bg: '#CD2F37', text: '#FFFFFF', accent: '#FFFFFF' },
-  { label: 'Charcoal',    bg: '#36454F', text: '#F2F2F2', accent: '#ef4444' },
-  { label: 'Slate',       bg: '#2C3E50', text: '#ECF0F1', accent: '#3498db' },
-  { label: 'Forest',      bg: '#2C5F2D', text: '#F5F5F5', accent: '#97BC62' },
-  { label: 'Custom',      bg: null,      text: null,      accent: null },
 ]
 
 function clamp(v, min, max) {
@@ -497,7 +473,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
     },
   })
   const [bgImage,       setBgImage]       = useState(slide.style?.bgImage ?? null)
-  const [activePanel,   setActivePanel]   = useState('content') // content | layout | style | notes
+  const [activePanel,   setActivePanel]   = useState('content') // content | images | notes
   const [fullscreen,    setFullscreen]    = useState(true)
   const [controlsWidth, setControlsWidth] = useState(300)
   const splitterDragRef = useRef(null)
@@ -620,13 +596,6 @@ export default function SlideEditor({ slide, onSave, onClose }) {
     }
   }
 
-  function applyPreset(preset) {
-    if (!preset.bg) return
-    updateStyle('bg', preset.bg)
-    updateStyle('textCol', preset.text)
-    updateStyle('accent', preset.accent)
-  }
-
   function handleBgUpload(e) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -700,8 +669,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
             <div style={styles.panelTabs}>
               {[
                 { id: 'content', label: 'Content' },
-                { id: 'layout',  label: 'Layout' },
-                { id: 'style',   label: 'Style' },
+                { id: 'images',  label: 'Images', badge: (draft.style.images?.length || draft.style.bgImage || draft.style.contentImage) ? '●' : null },
                 { id: 'notes',   label: 'Notes', badge: draft.notes?.trim() ? '●' : null },
               ].map(p => (
                 <button
@@ -820,23 +788,9 @@ export default function SlideEditor({ slide, onSave, onClose }) {
               </div>
             )}
 
-            {/* Layout panel */}
-            {activePanel === 'layout' && (
+            {/* Images panel */}
+            {activePanel === 'images' && (
               <div style={styles.panel}>
-                <label style={styles.label}>Layout</label>
-                <div style={styles.layoutGrid}>
-                  {LAYOUTS.map(l => (
-                    <button
-                      key={l.id}
-                      style={{ ...styles.layoutBtn, ...(draft.style.layout === l.id ? styles.layoutBtnActive : {}) }}
-                      onClick={() => updateStyle('layout', l.id)}
-                    >
-                      <span style={styles.layoutIcon}>{l.icon}</span>
-                      <span style={styles.layoutLabel}>{l.label}</span>
-                    </button>
-                  ))}
-                </div>
-
                 <label style={styles.label}>Background image</label>
                 <div style={styles.uploadRow}>
                   <button style={styles.uploadBtn} onClick={() => bgInputRef.current?.click()}>
@@ -849,8 +803,25 @@ export default function SlideEditor({ slide, onSave, onClose }) {
                   )}
                   <input ref={bgInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBgUpload} />
                 </div>
+                {bgImage && (
+                  <img src={bgImage} style={{ width: '100%', borderRadius: 6, objectFit: 'cover', maxHeight: 80 }} />
+                )}
 
-                <label style={styles.label}>Images (drag in preview to position/resize)</label>
+                <label style={styles.label}>Content image (right panel)</label>
+                <div style={styles.uploadRow}>
+                  <button style={styles.uploadBtn} onClick={() => contentImgRef.current?.click()}>
+                    {draft.style.contentImage ? '↺ Replace' : '↑ Upload'}
+                  </button>
+                  {draft.style.contentImage && (
+                    <button style={styles.clearBtn} onClick={() => updateStyle('contentImage', null)}>Remove</button>
+                  )}
+                  <input ref={contentImgRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleContentImgUpload} />
+                </div>
+                {draft.style.contentImage && (
+                  <img src={draft.style.contentImage} style={{ width: '100%', borderRadius: 6, objectFit: 'cover', maxHeight: 80 }} />
+                )}
+
+                <label style={styles.label}>Overlay images (drag in preview to position/resize)</label>
                 <div style={styles.uploadRow}>
                   <button style={styles.uploadBtn} onClick={() => freeImgRef.current?.click()}>+ Add image</button>
                   <input ref={freeImgRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFreeImageUpload} />
@@ -866,65 +837,6 @@ export default function SlideEditor({ slide, onSave, onClose }) {
                     ))}
                   </div>
                 )}
-
-                {(draft.style.layout === 'image-right') && (
-                  <>
-                    <label style={styles.label}>Content image (right panel)</label>
-                    <div style={styles.uploadRow}>
-                      <button style={styles.uploadBtn} onClick={() => contentImgRef.current?.click()}>
-                        {draft.style.contentImage ? '↺ Replace' : '↑ Upload'}
-                      </button>
-                      {draft.style.contentImage && (
-                        <button style={styles.clearBtn} onClick={() => updateStyle('contentImage', null)}>Remove</button>
-                      )}
-                      <input ref={contentImgRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleContentImgUpload} />
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-
-            {/* Style panel */}
-            {activePanel === 'style' && (
-              <div style={styles.panel}>
-                <label style={styles.label}>Color preset</label>
-                <div style={styles.presetGrid}>
-                  {BG_PRESETS.filter(p => p.bg).map(p => (
-                    <button
-                      key={p.label}
-                      style={{ ...styles.presetBtn, background: p.bg, color: p.text, border: draft.style.bg === p.bg ? `2px solid ${p.accent}` : '0.5px solid rgba(0,0,0,0.15)' }}
-                      onClick={() => applyPreset(p)}
-                      title={p.label}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-
-                <label style={styles.label}>Custom background color</label>
-                <div style={styles.colorRow}>
-                  <input type="color" style={styles.colorPicker} value={draft.style.bg} onChange={e => updateStyle('bg', e.target.value)} />
-                  <span style={styles.colorVal}>{draft.style.bg}</span>
-                </div>
-
-                <label style={styles.label}>Text color</label>
-                <div style={styles.colorRow}>
-                  <input type="color" style={styles.colorPicker} value={draft.style.textCol} onChange={e => updateStyle('textCol', e.target.value)} />
-                  <span style={styles.colorVal}>{draft.style.textCol}</span>
-                </div>
-
-                <label style={styles.label}>Accent color</label>
-                <div style={styles.colorRow}>
-                  <input type="color" style={styles.colorPicker} value={draft.style.accent} onChange={e => updateStyle('accent', e.target.value)} />
-                  <span style={styles.colorVal}>{draft.style.accent}</span>
-                </div>
-
-                <label style={styles.label}>Font</label>
-                <select style={styles.select} value={draft.style.font} onChange={e => updateStyle('font', e.target.value)}>
-                  {FONTS.map(f => (
-                    <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>{f.label}</option>
-                  ))}
-                </select>
               </div>
             )}
 
@@ -976,7 +888,8 @@ export default function SlideEditor({ slide, onSave, onClose }) {
                 onSourceChange={text => update('source', text.trim())}
               />
               <div style={styles.previewHint}>
-                {draft.bullets.length} bullet{draft.bullets.length !== 1 ? 's' : ''} · {draft.style.layout.replace('-', ' ')} layout
+                {draft.bullets.length} bullet{draft.bullets.length !== 1 ? 's' : ''}
+                {draft.style.images?.length ? ` · ${draft.style.images.length} overlay image${draft.style.images.length !== 1 ? 's' : ''}` : ''}
               </div>
               {/* Notes strip below canvas */}
               <div style={styles.notesStrip}>
@@ -1037,19 +950,9 @@ const styles = {
   editorRowNum:     { background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', padding: '2px 6px', fontSize: 10, color: 'var(--color-text-muted)', textAlign: 'center', width: 24 },
   editorTd:         { border: '0.5px solid var(--color-border)', padding: 0 },
   editorCellInput:  { border: 'none', background: 'none', padding: '4px 6px', fontSize: 11, color: 'var(--color-text-primary)', outline: 'none', width: '100%', minWidth: 70 },
-  layoutGrid:       { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
-  layoutBtn:        { background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 7, padding: '10px 6px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 },
-  layoutBtnActive:  { border: '2px solid var(--color-text-primary)', background: 'var(--color-bg-tertiary)' },
-  layoutIcon:       { fontSize: 20, lineHeight: 1 },
-  layoutLabel:      { fontSize: 10, color: 'var(--color-text-secondary)', fontWeight: 500 },
   uploadRow:        { display: 'flex', gap: 8, alignItems: 'center' },
   uploadBtn:        { background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer', color: 'var(--color-text-primary)' },
   clearBtn:         { background: 'none', border: '0.5px solid #ef444466', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer', color: '#ef4444' },
-  presetGrid:       { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 },
-  presetBtn:        { borderRadius: 6, padding: '8px 4px', fontSize: 11, cursor: 'pointer', fontWeight: 500, textAlign: 'center' },
-  colorRow:         { display: 'flex', alignItems: 'center', gap: 10 },
-  colorPicker:      { width: 36, height: 36, border: '0.5px solid var(--color-border)', borderRadius: 6, cursor: 'pointer', padding: 2 },
-  colorVal:         { fontSize: 12, color: 'var(--color-text-muted)', fontFamily: 'monospace' },
   select:           { background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 7, padding: '7px 10px', fontSize: 13, color: 'var(--color-text-primary)', width: '100%', outline: 'none' },
   preview:          { flex: 1, display: 'flex', flexDirection: 'column', padding: '20px 24px', gap: 12, background: 'var(--color-bg-secondary)', overflow: 'auto' },
   previewInner:     { width: '100%', maxWidth: 'calc((100vh - 260px) * 16 / 9)', margin: '0 auto' },
