@@ -117,11 +117,27 @@ export async function generateDeck(deptContributions, clientName = "", clientId 
         const wantsImg  = rawBody.includes('[images]')
         const wantsTable = rawBody.includes('[table]')
         const cleanBody = rawBody.replace(/\[images\]/gi, '').replace(/\[table\]/gi, '').trim()
-        const guidance  = wantsTable && cleanBody
-          ? `\n  Table structure to reproduce (use this as the exact table layout — fill in [from file] values from department files, calculate [calculate] values):\n${cleanBody}`
-          : cleanBody ? `\n  Guidance notes (use as source material, do NOT copy verbatim): ${cleanBody}` : ''
-        const imgHint   = wantsImg && allImageFiles.length ? `\n  IMAGE REQUIRED: You MUST include an "imageFile" field for this slide — pick the most relevant image from the available images list.` : ''
-        const tableHint = wantsTable ? `\n  TABLE REQUIRED: Output a "table" field with "headers" and "rows" arrays matching the table structure above. Replace every [from file] cell with the real value from the department files. Replace every [calculate] cell with the computed result. Do NOT output this data as bullets. Bullets field should be omitted or contain 1 short sentence at most.` : ''
+        // Parse pipe-structured table in guidance notes into a JSON skeleton for the AI
+        let tableHint = ''
+        let guidance = ''
+        if (wantsTable && cleanBody) {
+          const pipeLines = cleanBody.split('\n').map(l => l.trim()).filter(l => l.includes('|'))
+          if (pipeLines.length >= 2) {
+            const headers = pipeLines[0].split('|').map(c => c.trim())
+            const rows    = pipeLines.slice(1).map(l => l.split('|').map(c => c.trim()))
+            const skeleton = JSON.stringify({ headers, rows }, null, 2)
+            tableHint = `\n  TABLE REQUIRED: Your output for this slide MUST include a "table" field. Start from this JSON skeleton and replace every "[from file]" cell with the actual value found in the department files, and every "[calculate]" cell with the computed numeric result. Do NOT add bullets for this data — omit the bullets field or use at most 1 short sentence.\n  Table skeleton:\n${skeleton}`
+            // Any non-pipe lines become narrative guidance
+            const narrative = cleanBody.split('\n').filter(l => !l.includes('|')).join(' ').trim()
+            guidance = narrative ? `\n  Guidance notes: ${narrative}` : ''
+          } else {
+            guidance = `\n  Guidance notes (use as source material, do NOT copy verbatim): ${cleanBody}`
+            tableHint = `\n  TABLE REQUIRED: Output a "table" field with "headers" and "rows" arrays. Extract tabular data from the department files.`
+          }
+        } else {
+          guidance = cleanBody ? `\n  Guidance notes (use as source material, do NOT copy verbatim): ${cleanBody}` : ''
+        }
+        const imgHint = wantsImg && allImageFiles.length ? `\n  IMAGE REQUIRED: You MUST include an "imageFile" field for this slide — pick the most relevant image from the available images list.` : ''
         return `  Id: ${s._id}\n  Title: ${s.title}${guidance}${imgHint}${tableHint}`
       }).join('\n')
       // Use deptSummary (dept-only) if available, otherwise fall back to fileSummary
