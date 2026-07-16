@@ -113,12 +113,18 @@ export async function generateDeck(deptContributions, clientName = "", clientId 
   const slideData = deptContributions
     .map(({ dept, slides, deptSummary, fileSummary }) => {
       const slideText = slides.map(s => {
-        const rawBody   = s.body ?? ''
-        const wantsImg  = rawBody.includes('[images]')
-        const cleanBody = rawBody.replace(/\[images\]/gi, '').replace(/\[table\]/gi, '').trim()
+        const rawBody    = s.body ?? ''
+        const wantsImg   = rawBody.includes('[images]')
+        const wantsTable = rawBody.includes('[table]')
+        // Strip tags; also strip pipe-structured lines so they don't bleed into bullets
+        const stripped   = rawBody.replace(/\[images\]/gi, '').replace(/\[table\]/gi, '')
+        const cleanBody  = wantsTable
+          ? stripped.split('\n').filter(l => !l.includes('|')).join('\n').trim()
+          : stripped.trim()
         const guidance  = cleanBody ? `\n  Guidance notes (use as source material, do NOT copy verbatim): ${cleanBody}` : ''
         const imgHint   = wantsImg && allImageFiles.length ? `\n  IMAGE REQUIRED: You MUST include an "imageFile" field for this slide — pick the most relevant image from the available images list.` : ''
-        return `  Id: ${s._id}\n  Title: ${s.title}${guidance}${imgHint}`
+        const tableNote = wantsTable ? `\n  Note: this slide will have a data table added automatically — generate 1-2 short narrative bullets only.` : ''
+        return `  Id: ${s._id}\n  Title: ${s.title}${guidance}${imgHint}${tableNote}`
       }).join('\n')
       // Use deptSummary (dept-only) if available, otherwise fall back to fileSummary
       const summary  = deptSummary ?? fileSummary ?? ''
@@ -197,18 +203,19 @@ ${slideData}`.trim()
 
   await Promise.all(tableSlides.map(async ({ sourceId, headers, rows, fileCtx }) => {
     const skeleton = JSON.stringify({ headers, rows }, null, 2)
-    const tablePrompt = `You are filling in a data table for a presentation slide.
-
-${fileCtx}Table skeleton — fill in every cell that says "[from file]" with the exact value from the attached files, and every cell that says "[calculate]" with the computed result. Keep all other cells exactly as-is. Return ONLY the completed JSON object, no markdown, no explanation.
+    const tablePrompt = `Fill in the following JSON table object. Replace every "[from file]" cell with the exact numeric rating value found in the attached files. Replace every "[calculate]" cell with the computed integer result. Output ONLY the raw JSON object — no markdown fences, no explanation, nothing else before or after the JSON.
 
 ${skeleton}`
 
     try {
-      const tableRaw   = await callClaude(tablePrompt, '', 800, { pdfFiles: allPdfFiles, imageFiles: allImageFiles, model: ANTHROPIC_MODEL_DECK, clientId })
-      const tableClean = tableRaw.replace(/```json|```/g, '').trim()
-      const tableData  = JSON.parse(tableClean)
+      const tableRaw   = await callClaude(tablePrompt, 'You output only raw JSON. No markdown. No explanation.', 600, { pdfFiles: allPdfFiles, imageFiles: allImageFiles, model: ANTHROPIC_MODEL_DECK, clientId })
+      // Extract JSON object even if the model adds surrounding text
+      const jsonMatch  = tableRaw.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) throw new Error('No JSON object found in response')
+      const tableData  = JSON.parse(jsonMatch[0])
       const match = deck.slides.find(s => s.sourceId === sourceId)
       if (match) match.table = tableData
+      else console.warn('No deck slide matched sourceId', sourceId, 'available:', deck.slides.map(s => s.sourceId))
     } catch (e) { console.error('Table generation failed for', sourceId, e) }
   }))
 
