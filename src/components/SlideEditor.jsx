@@ -791,50 +791,27 @@ export default function SlideEditor({ slide, onSave, onClose }) {
             {/* Images panel */}
             {activePanel === 'images' && (
               <div style={styles.panel}>
-                <label style={styles.label}>Background image</label>
-                <div style={styles.uploadRow}>
-                  <button style={styles.uploadBtn} onClick={() => bgInputRef.current?.click()}>
-                    {bgImage ? '↺ Replace image' : '↑ Upload image'}
-                  </button>
-                  {bgImage && (
-                    <button style={styles.clearBtn} onClick={() => { setBgImage(null); updateStyle('bgImage', null) }}>
-                      Remove
-                    </button>
-                  )}
-                  <input ref={bgInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBgUpload} />
-                </div>
-                {bgImage && (
-                  <img src={bgImage} style={{ width: '100%', borderRadius: 6, objectFit: 'cover', maxHeight: 80 }} />
-                )}
-
-                <label style={styles.label}>Content image (right panel)</label>
-                <div style={styles.uploadRow}>
-                  <button style={styles.uploadBtn} onClick={() => contentImgRef.current?.click()}>
-                    {draft.style.contentImage ? '↺ Replace' : '↑ Upload'}
-                  </button>
-                  {draft.style.contentImage && (
-                    <button style={styles.clearBtn} onClick={() => updateStyle('contentImage', null)}>Remove</button>
-                  )}
-                  <input ref={contentImgRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleContentImgUpload} />
-                </div>
-                {draft.style.contentImage && (
-                  <img src={draft.style.contentImage} style={{ width: '100%', borderRadius: 6, objectFit: 'cover', maxHeight: 80 }} />
-                )}
-
-                <label style={styles.label}>Overlay images (drag in preview to position/resize)</label>
+                <label style={styles.label}>Overlay images</label>
+                <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: 0 }}>
+                  Upload images and drag/resize them directly on the slide preview.
+                </p>
                 <div style={styles.uploadRow}>
                   <button style={styles.uploadBtn} onClick={() => freeImgRef.current?.click()}>+ Add image</button>
                   <input ref={freeImgRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFreeImageUpload} />
                 </div>
-                {draft.style.images?.length > 0 && (
+                {draft.style.images?.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {draft.style.images.map((img, i) => (
                       <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <img src={img.src} style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4 }} />
-                        <span style={{ fontSize: 11, color: 'var(--color-text-muted)', flex: 1 }}>Image {i + 1}</span>
-                        <button style={styles.microBtn} onClick={() => removeFreeImage(i)}>✕</button>
+                        <img src={img.src} style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4, border: '0.5px solid var(--color-border)' }} />
+                        <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', flex: 1 }}>Image {i + 1}</span>
+                        <button style={styles.microBtn} onClick={() => removeFreeImage(i)}>✕ Remove</button>
                       </div>
                     ))}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: 'var(--color-text-muted)', padding: '12px 0', textAlign: 'center', border: '0.5px dashed var(--color-border)', borderRadius: 6 }}>
+                    No overlay images yet
                   </div>
                 )}
               </div>

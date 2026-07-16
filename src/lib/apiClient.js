@@ -76,6 +76,8 @@ export const api = {
   adminUpdateUser:  (id, u)         => apiFetch(`/api/admin/users/${id}`, { method: 'PATCH',  body: u }),
   adminDeleteUser:  (id)            => apiFetch(`/api/admin/users/${id}`, { method: 'DELETE' }),
   adminGetClients:  ()              => apiFetch('/api/admin/clients'),
+  adminGetSetting:  (key)           => apiFetch(`/api/admin/settings/${key}`),
+  adminPutSetting:  (key, value)    => apiFetch(`/api/admin/settings/${key}`, { method: 'PUT', body: value }),
 
   // Templates
   getTemplates:   ()          => apiFetch('/api/templates'),

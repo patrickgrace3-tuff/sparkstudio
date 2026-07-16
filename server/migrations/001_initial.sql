@@ -99,3 +99,10 @@ CREATE TABLE IF NOT EXISTS client_data (
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   PRIMARY KEY (client_id, data_key)
 );
+
+-- ── Admin settings (key/value store for system configuration) ─────────────────
+CREATE TABLE IF NOT EXISTS admin_settings (
+  key        TEXT PRIMARY KEY,
+  value      JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
