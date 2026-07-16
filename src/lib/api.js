@@ -265,12 +265,8 @@ ${slideData}`.trim()
   const clean = raw.replace(/```json|```/g, '').trim()
   const deck  = JSON.parse(clean)
 
-  // Safety net: inject pre-generated table/bullets if the main call didn't copy them
-  for (const [slideId, preGen] of Object.entries(preGenMap)) {
-    const match = deck.slides.find(s => s.sourceId === slideId)
-    if (match && preGen.table && !match.table) match.table = preGen.table
-    if (match && preGen.bullets?.length && (!match.bullets?.length)) match.bullets = preGen.bullets
-  }
+  console.log('[generateDeck] preGenMap keys:', Object.keys(preGenMap))
+  console.log('[generateDeck] deck sourceIds:', deck.slides.map(s => s.sourceId))
 
   // Filter out any slides the AI sneaked in with non-dept values
   const forbidden = ['all', 'overview', 'introduction', 'intro', 'closing', 'conclusion', 'summary', 'general']
@@ -344,6 +340,23 @@ ${slideData}`.trim()
         bodyBox: adjustedBox,
       }
     })
+  }
+
+  // Final injection: force pre-generated table/bullets onto matching slides.
+  // Runs after all post-processing so split/filter can't clobber it.
+  // Matches by sourceId first, then falls back to title similarity.
+  for (const [slideId, preGen] of Object.entries(preGenMap)) {
+    let match = deck.slides.find(s => s.sourceId === slideId)
+    if (!match && preGen.title) {
+      match = deck.slides.find(s => s.title?.toLowerCase().includes(preGen.title.toLowerCase().slice(0, 20)))
+    }
+    if (match) {
+      if (preGen.table) match.table = preGen.table
+      if (preGen.bullets?.length && !match.bullets?.length) match.bullets = preGen.bullets
+      console.log('[generateDeck] Injected pre-gen table into slide:', match.title)
+    } else {
+      console.warn('[generateDeck] Could not find slide to inject preGen for slideId:', slideId)
+    }
   }
 
   deck.slides.forEach((s, i) => { s.num = i + 1 })
