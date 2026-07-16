@@ -1,4 +1,4 @@
-import { ANTHROPIC_API_KEY, ANTHROPIC_MODEL, ANTHROPIC_MODEL_FAST } from './constants.js'
+import { ANTHROPIC_API_KEY, ANTHROPIC_MODEL, ANTHROPIC_MODEL_FAST, ANTHROPIC_MODEL_DECK } from './constants.js'
 import { api } from './apiClient.js'
 
 const API_URL = 'https://api.anthropic.com/v1/messages'
@@ -199,7 +199,7 @@ Notes on the table field:
 Department submissions:
 ${slideData}`.trim()
 
-  const raw   = await callClaude(prompt, system, 4000, { imageFiles: allImageFiles, pdfFiles: allPdfFiles, model: ANTHROPIC_MODEL_FAST, clientId })
+  const raw   = await callClaude(prompt, system, 4000, { imageFiles: allImageFiles, pdfFiles: allPdfFiles, model: ANTHROPIC_MODEL_DECK, clientId })
   const clean = raw.replace(/```json|```/g, '').trim()
   const deck  = JSON.parse(clean)
 
