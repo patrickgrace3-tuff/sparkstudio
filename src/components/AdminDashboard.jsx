@@ -140,14 +140,40 @@ function UsersTab({ currentUserId }) {
 }
 
 // ── Clients tab ───────────────────────────────────────────────────────────────
-function ClientsTab() {
-  const [clients, setClients] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [err,     setErr]     = useState('')
+function ClientsTab({ onClientsChange }) {
+  const [clients,     setClients]     = useState([])
+  const [loading,     setLoading]     = useState(true)
+  const [err,         setErr]         = useState('')
+  const [newName,     setNewName]     = useState('')
+  const [adding,      setAdding]      = useState(false)
+  const [confirmDel,  setConfirmDel]  = useState(null)
 
   useEffect(() => {
     api.adminGetClients().then(setClients).catch(e => setErr(e.message)).finally(() => setLoading(false))
   }, [])
+
+  async function handleAdd() {
+    if (!newName.trim()) return
+    setAdding(true); setErr('')
+    try {
+      const created = await api.createClient(newName.trim())
+      const updated = [...clients, { ...created, slide_count: 0, total_tokens: 0, estimated_cost: 0 }]
+      setClients(updated)
+      onClientsChange?.(updated)
+      setNewName('')
+    } catch (e) { setErr(e.message) }
+    finally { setAdding(false) }
+  }
+
+  async function handleDelete(id) {
+    try {
+      await api.deleteClient(id)
+      const updated = clients.filter(c => c.id !== id)
+      setClients(updated)
+      onClientsChange?.(updated)
+      setConfirmDel(null)
+    } catch (e) { setErr(e.message) }
+  }
 
   if (loading) return <div style={S.loading}>Loading clients…</div>
 
@@ -158,10 +184,24 @@ function ClientsTab() {
         <span style={S.sectionSub}>{clients.length} total</span>
       </div>
       {err && <div style={S.error}>{err}</div>}
+
+      <div style={S.inviteForm}>
+        <input
+          style={{ ...S.input, flex: 1 }}
+          placeholder="New client name"
+          value={newName}
+          onChange={e => setNewName(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleAdd()}
+        />
+        <button style={S.primaryBtn} onClick={handleAdd} disabled={adding || !newName.trim()}>
+          {adding ? 'Adding…' : '+ Add client'}
+        </button>
+      </div>
+
       <table style={S.table}>
         <thead>
           <tr>
-            {['Client name', 'Slides', 'Token usage', 'Est. cost', 'Created'].map(h => (
+            {['Client name', 'Slides', 'Token usage', 'Est. cost', 'Created', ''].map(h => (
               <th key={h} style={S.th}>{h}</th>
             ))}
           </tr>
@@ -174,6 +214,17 @@ function ClientsTab() {
               <td style={S.td}>{fmtTokens(c.total_tokens)}</td>
               <td style={S.td}>{fmtCost(c.estimated_cost)}</td>
               <td style={S.td}>{new Date(c.created_at).toLocaleDateString()}</td>
+              <td style={S.td}>
+                {confirmDel === c.id ? (
+                  <div style={S.actions}>
+                    <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Remove?</span>
+                    <button style={S.dangerBtn} onClick={() => handleDelete(c.id)}>Yes</button>
+                    <button style={S.ghostBtn}  onClick={() => setConfirmDel(null)}>No</button>
+                  </div>
+                ) : (
+                  <button style={S.dangerBtn} onClick={() => setConfirmDel(c.id)}>Remove</button>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -228,7 +279,7 @@ function OverviewTab() {
 }
 
 // ── Main AdminDashboard ───────────────────────────────────────────────────────
-export default function AdminDashboard({ onClose, currentUser }) {
+export default function AdminDashboard({ onClose, currentUser, onClientsChange }) {
   const [tab, setTab] = useState('overview')
 
   const isAdmin = currentUser?.role === 'admin'
@@ -282,7 +333,7 @@ export default function AdminDashboard({ onClose, currentUser }) {
             <div style={S.body}>
               {tab === 'overview' && <OverviewTab />}
               {tab === 'users'    && <UsersTab currentUserId={currentUser?.id} />}
-              {tab === 'clients'  && <ClientsTab />}
+              {tab === 'clients'  && <ClientsTab onClientsChange={onClientsChange} />}
             </div>
           </>
         )}

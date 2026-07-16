@@ -324,8 +324,6 @@ export default function App() {
         clients={clients}
         activeClientId={activeClientId}
         onSelect={handleSelectClient}
-        onAdd={handleAddClient}
-        onDelete={handleDeleteClient}
         currentUser={currentUser}
         onLogout={() => { setToken(null); setCurrentUser(null) }}
       />
@@ -355,7 +353,17 @@ export default function App() {
             <AdminPanel onClose={() => setShowAdmin(false)} onTemplatesChange={setTemplates} />
           )}
           {showAdminDashboard && (
-            <AdminDashboard onClose={() => setShowAdminDashboard(false)} currentUser={currentUser} />
+            <AdminDashboard
+              onClose={() => setShowAdminDashboard(false)}
+              currentUser={currentUser}
+              onClientsChange={updated => {
+                const normalized = updated.map(c => ({ id: c.id, name: c.name }))
+                setClients(normalized)
+                if (!normalized.find(c => c.id === activeClientId)) {
+                  setActiveClientId(normalized[0]?.id ?? null)
+                }
+              }}
+            />
           )}
 
           {isApplyingTemplate && (
