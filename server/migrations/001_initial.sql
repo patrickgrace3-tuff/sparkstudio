@@ -77,6 +77,19 @@ CREATE TABLE IF NOT EXISTS files (
 );
 CREATE INDEX IF NOT EXISTS files_client_dept ON files(client_id, dept_id);
 
+-- ── Token usage logs ─────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS token_logs (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id      UUID REFERENCES clients(id) ON DELETE SET NULL,
+  user_id        INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  model          TEXT NOT NULL,
+  input_tokens   INTEGER NOT NULL DEFAULT 0,
+  output_tokens  INTEGER NOT NULL DEFAULT 0,
+  created_at     TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS token_logs_client ON token_logs(client_id);
+CREATE INDEX IF NOT EXISTS token_logs_created ON token_logs(created_at);
+
 -- ── Generic client data blobs (funnel, team, files, checklists) ───────────────
 CREATE TABLE IF NOT EXISTS client_data (
   client_id  UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,

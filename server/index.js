@@ -11,6 +11,7 @@ import presentationRoutes from './routes/presentations.js'
 import templateRoutes     from './routes/templates.js'
 import clientDataRoutes   from './routes/clientdata.js'
 import adminRoutes        from './routes/admin.js'
+import tokenLogRoutes    from './routes/tokenlogs.js'
 
 const app  = express()
 const PORT = process.env.PORT || 3001
@@ -28,6 +29,7 @@ app.use('/api/presentations', presentationRoutes)
 app.use('/api/templates',     templateRoutes)
 app.use('/api/clientdata',    clientDataRoutes)
 app.use('/api/admin',         adminRoutes)
+app.use('/api/tokenlogs',     tokenLogRoutes)
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }))
 

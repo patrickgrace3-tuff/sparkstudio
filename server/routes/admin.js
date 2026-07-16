@@ -1,10 +1,10 @@
 import { Router } from 'express'
 import bcrypt from 'bcryptjs'
 import { query } from '../db.js'
-import { requireAuth } from '../auth.js'
+import { requireAdmin } from '../auth.js'
 
 const router = Router()
-router.use(requireAuth)
+router.use(requireAdmin)
 
 // GET /api/admin/users
 router.get('/users', async (req, res) => {
@@ -73,17 +73,24 @@ router.delete('/users/:id', async (req, res) => {
 // GET /api/admin/stats
 router.get('/stats', async (req, res) => {
   try {
-    const [users, clients, templates, slides] = await Promise.all([
+    const [users, clients, templates, slides, tokens] = await Promise.all([
       query('SELECT COUNT(*) FROM users'),
       query('SELECT COUNT(*) FROM clients'),
       query('SELECT COUNT(*) FROM templates'),
       query('SELECT COUNT(*) FROM slides'),
+      query('SELECT COALESCE(SUM(input_tokens),0) AS input, COALESCE(SUM(output_tokens),0) AS output FROM token_logs'),
     ])
+    const input  = parseInt(tokens.rows[0].input)
+    const output = parseInt(tokens.rows[0].output)
     res.json({
-      users:     parseInt(users.rows[0].count),
-      clients:   parseInt(clients.rows[0].count),
-      templates: parseInt(templates.rows[0].count),
-      slides:    parseInt(slides.rows[0].count),
+      users:         parseInt(users.rows[0].count),
+      clients:       parseInt(clients.rows[0].count),
+      templates:     parseInt(templates.rows[0].count),
+      slides:        parseInt(slides.rows[0].count),
+      inputTokens:   input,
+      outputTokens:  output,
+      totalTokens:   input + output,
+      estimatedCost: calcCost('mixed', input, output),
     })
   } catch (err) {
     console.error(err)
@@ -91,22 +98,39 @@ router.get('/stats', async (req, res) => {
   }
 })
 
-// GET /api/admin/clients  — clients with slide counts
+// GET /api/admin/clients  — clients with slide counts + token usage
 router.get('/clients', async (req, res) => {
   try {
     const result = await query(`
       SELECT c.id, c.name, c.created_at,
-             COUNT(DISTINCT s.id) AS slide_count
+             COUNT(DISTINCT s.id)               AS slide_count,
+             COALESCE(SUM(tl.input_tokens),  0) AS input_tokens,
+             COALESCE(SUM(tl.output_tokens), 0) AS output_tokens
       FROM clients c
-      LEFT JOIN slides s ON s.client_id = c.id
+      LEFT JOIN slides    s  ON s.client_id  = c.id
+      LEFT JOIN token_logs tl ON tl.client_id = c.id
       GROUP BY c.id
       ORDER BY c.created_at ASC
     `)
-    res.json(result.rows)
+    res.json(result.rows.map(r => ({
+      ...r,
+      total_tokens:   parseInt(r.input_tokens) + parseInt(r.output_tokens),
+      estimated_cost: calcCost('mixed', parseInt(r.input_tokens), parseInt(r.output_tokens)),
+    })))
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Server error' })
   }
 })
+
+// Pricing helper — blended rate across sonnet + haiku mix
+// Sonnet 4.6: $3/M input, $15/M output
+// Haiku 4.5:  $0.80/M input, $4/M output
+// Blended estimate weights ~70% haiku (deck gen) / 30% sonnet (AI assistant)
+function calcCost(model, input, output) {
+  const inRate  = (0.7 * 0.80 + 0.3 * 3.00)  / 1_000_000
+  const outRate = (0.7 * 4.00 + 0.3 * 15.00) / 1_000_000
+  return parseFloat((input * inRate + output * outRate).toFixed(4))
+}
 
 export default router

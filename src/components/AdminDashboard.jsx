@@ -161,7 +161,7 @@ function ClientsTab() {
       <table style={S.table}>
         <thead>
           <tr>
-            {['Client name', 'Slides', 'Created'].map(h => (
+            {['Client name', 'Slides', 'Token usage', 'Est. cost', 'Created'].map(h => (
               <th key={h} style={S.th}>{h}</th>
             ))}
           </tr>
@@ -171,6 +171,8 @@ function ClientsTab() {
             <tr key={c.id} style={S.tr}>
               <td style={S.td}>{c.name}</td>
               <td style={S.td}>{c.slide_count}</td>
+              <td style={S.td}>{fmtTokens(c.total_tokens)}</td>
+              <td style={S.td}>{fmtCost(c.estimated_cost)}</td>
               <td style={S.td}>{new Date(c.created_at).toLocaleDateString()}</td>
             </tr>
           ))}
@@ -178,6 +180,18 @@ function ClientsTab() {
       </table>
     </div>
   )
+}
+
+function fmtTokens(n) {
+  if (n == null) return '—'
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000)     return `${(n / 1_000).toFixed(1)}K`
+  return String(n)
+}
+
+function fmtCost(n) {
+  if (n == null) return '—'
+  return `$${Number(n).toFixed(2)}`
 }
 
 // ── Overview tab ──────────────────────────────────────────────────────────────
@@ -199,6 +213,16 @@ function OverviewTab() {
         <StatTile label="Templates" value={stats?.templates} color="#F59E0B" />
         <StatTile label="Slides"    value={stats?.slides}    color="#EC4899" />
       </div>
+      <div style={S.sectionHeader}>
+        <span style={S.sectionTitle}>Token Usage (all time)</span>
+      </div>
+      <div style={S.tileRow}>
+        <StatTile label="Input tokens"  value={fmtTokens(stats?.inputTokens)}  color="#6366F1" />
+        <StatTile label="Output tokens" value={fmtTokens(stats?.outputTokens)} color="#1D9E75" />
+        <StatTile label="Total tokens"  value={fmtTokens(stats?.totalTokens)}  color="#F59E0B" />
+        <StatTile label="Est. cost"     value={fmtCost(stats?.estimatedCost)}  color="#EC4899" />
+      </div>
+      <p style={S.costNote}>Cost estimated using blended Sonnet 4.6 / Haiku 4.5 rates. Actual charges depend on your Anthropic billing.</p>
     </div>
   )
 }
@@ -207,7 +231,7 @@ function OverviewTab() {
 export default function AdminDashboard({ onClose, currentUser }) {
   const [tab, setTab] = useState('overview')
 
-  const isAdmin = true // temporarily open to all users
+  const isAdmin = currentUser?.role === 'admin'
 
   const tabs = [
     { id: 'overview', label: 'Overview' },
@@ -297,6 +321,7 @@ const S = {
   tile:     { background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 4, minWidth: 120 },
   tileValue:{ fontSize: 32, fontWeight: 800, lineHeight: 1 },
   tileLabel:{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' },
+  costNote: { fontSize: 11, color: 'var(--color-text-muted)', fontStyle: 'italic', margin: 0 },
 
   // Table
   table:  { width: '100%', borderCollapse: 'collapse', fontSize: 13 },

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { loadFiles, loadGlobalFiles, buildAIContext } from '../lib/files.js'
 import { callClaude } from '../lib/api.js'
+import { api } from '../lib/apiClient.js'
 
 function getSuggestions(clientName) {
   const c = clientName || 'this client'
@@ -228,6 +229,11 @@ ${existingSlides || 'No slides added yet.'}
 
       const data  = await res.json()
       const reply = data.content?.map(b => b.text ?? '').join('') ?? ''
+
+      // Log token usage (fire-and-forget)
+      if (data.usage) {
+        api.logTokens(clientId, ANTHROPIC_MODEL, data.usage.input_tokens ?? 0, data.usage.output_tokens ?? 0).catch(() => {})
+      }
 
       // Build image map so parseSlides can resolve base64
       const imageMap = Object.fromEntries(attachedImages.map(i => [i.name, i]))
