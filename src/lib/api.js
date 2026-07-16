@@ -189,34 +189,27 @@ ${slideData}`.trim()
           const fileSummary = contrib.deptSummary ?? contrib.fileSummary ?? ''
           const globalCtx   = globalSummary ? `Shared context:\n${globalSummary}\n\n` : ''
           const fileCtx     = fileSummary ? `Department files:\n${fileSummary}\n\n` : ''
-          tableSlides.push({ sourceId: s._id, headers, rows, fileCtx: globalCtx + fileCtx, pdfFiles: contrib.pdfFiles ?? [], imageFiles: contrib.imageFiles ?? [] })
+          tableSlides.push({ sourceId: s._id, headers, rows, fileCtx: globalCtx + fileCtx })
         }
       }
     }
   }
 
-  await Promise.all(tableSlides.map(async ({ sourceId, headers, rows, fileCtx, pdfFiles, imageFiles }) => {
+  await Promise.all(tableSlides.map(async ({ sourceId, headers, rows, fileCtx }) => {
     const skeleton = JSON.stringify({ headers, rows }, null, 2)
-    const tablePrompt = `You are filling in a data table for a slide in an executive presentation.
+    const tablePrompt = `You are filling in a data table for a presentation slide.
 
-${fileCtx}Table skeleton (fill in every cell that contains "[from file]" or "[calculate]" with the real value from the files above. Keep all other cells exactly as-is):
-${skeleton}
+${fileCtx}Table skeleton — fill in every cell that says "[from file]" with the exact value from the attached files, and every cell that says "[calculate]" with the computed result. Keep all other cells exactly as-is. Return ONLY the completed JSON object, no markdown, no explanation.
 
-Rules:
-- Return ONLY valid JSON — the completed table object, nothing else.
-- Replace "[from file]" with the exact numeric value found in the files.
-- Replace "[calculate]" with the calculated numeric result (e.g. how many 5-star reviews needed to raise the current rating to the target rating).
-- Do not add or remove rows or columns.
-- Do not include any explanation or markdown.`
+${skeleton}`
 
     try {
-      const tableRaw   = await callClaude(tablePrompt, '', 800, { pdfFiles, imageFiles, model: ANTHROPIC_MODEL_DECK, clientId })
+      const tableRaw   = await callClaude(tablePrompt, '', 800, { pdfFiles: allPdfFiles, imageFiles: allImageFiles, model: ANTHROPIC_MODEL_DECK, clientId })
       const tableClean = tableRaw.replace(/```json|```/g, '').trim()
       const tableData  = JSON.parse(tableClean)
-      // Find the matching output slide by sourceId and attach the table
       const match = deck.slides.find(s => s.sourceId === sourceId)
       if (match) match.table = tableData
-    } catch { /* leave slide without table if this fails */ }
+    } catch (e) { console.error('Table generation failed for', sourceId, e) }
   }))
 
   // Filter out any slides the AI sneaked in with non-dept values
