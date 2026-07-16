@@ -92,9 +92,9 @@ export default function App() {
   // ── Load slides when client changes ───────────────────────────────────────
   useEffect(() => {
     if (!activeClientId) return
+
     if (!allSlidesMap[activeClientId]) {
       api.getSlides(activeClientId).then(map => {
-        // API returns rows; normalise to { [deptId]: [...slides with _id] }
         const normalised = {}
         for (const [deptId, slides] of Object.entries(map)) {
           normalised[deptId] = slides.map(s => ({ ...s, _id: s.id }))
@@ -102,7 +102,17 @@ export default function App() {
         setAllSlidesMap(prev => ({ ...prev, [activeClientId]: normalised }))
       }).catch(console.error)
     }
-    api.getPresentations(activeClientId).then(setPresentations).catch(console.error)
+
+    // Load presentations list then hydrate deckMap with the latest saved deck
+    api.getPresentations(activeClientId).then(async rows => {
+      setPresentations(rows)
+      if (rows.length && !deckMap[activeClientId]) {
+        try {
+          const latest = await api.getPresentation(activeClientId, rows[0].id)
+          setDeckMap(prev => ({ ...prev, [activeClientId]: latest.deck }))
+        } catch { /* non-fatal */ }
+      }
+    }).catch(console.error)
 
     // Load files for all departments and global from server
     Promise.all([

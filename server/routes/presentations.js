@@ -36,26 +36,41 @@ router.get('/:clientId/:versionId', async (req, res) => {
   }
 })
 
-// POST /api/presentations/:clientId — save a new version
+// POST /api/presentations/:clientId — save / overwrite the latest version
+// If a presentation already exists for this client, update it in place.
+// This keeps one live deck per client rather than accumulating stale versions.
 router.post('/:clientId', async (req, res) => {
   const { title, deck, version_label } = req.body
   if (!deck) return res.status(400).json({ error: 'deck required' })
   try {
-    // Get next version number
-    const vResult = await query(
-      'SELECT COALESCE(MAX(version_number), 0) + 1 AS next FROM presentations WHERE client_id = $1',
+    const existing = await query(
+      'SELECT id FROM presentations WHERE client_id = $1 ORDER BY version_number DESC LIMIT 1',
       [req.params.clientId]
     )
-    const versionNumber = vResult.rows[0].next
 
-    const result = await query(
-      `INSERT INTO presentations (client_id, version_number, version_label, title, deck, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, version_number, version_label, title, created_at`,
-      [req.params.clientId, versionNumber,
-       version_label || `Version ${versionNumber}`,
-       title || deck.title || '', JSON.stringify(deck), req.user.id]
-    )
-    res.status(201).json(result.rows[0])
+    let result
+    if (existing.rows.length) {
+      // Overwrite the existing presentation
+      result = await query(
+        `UPDATE presentations
+         SET title = $1, deck = $2, version_label = $3, created_by = $4, created_at = NOW()
+         WHERE id = $5
+         RETURNING id, version_number, version_label, title, created_at`,
+        [title || deck.title || '', JSON.stringify(deck),
+         version_label || 'Latest', req.user.id, existing.rows[0].id]
+      )
+      res.json(result.rows[0])
+    } else {
+      // First time — insert
+      result = await query(
+        `INSERT INTO presentations (client_id, version_number, version_label, title, deck, created_by)
+         VALUES ($1, 1, $2, $3, $4, $5)
+         RETURNING id, version_number, version_label, title, created_at`,
+        [req.params.clientId, version_label || 'Latest',
+         title || deck.title || '', JSON.stringify(deck), req.user.id]
+      )
+      res.status(201).json(result.rows[0])
+    }
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Server error' })
