@@ -65,6 +65,14 @@ export const api = {
   getClientData:  (clientId, key)        => apiFetch(`/api/clientdata/${clientId}/${key}`),
   setClientData:  (clientId, key, value) => apiFetch(`/api/clientdata/${clientId}/${key}`, { method: 'PUT', body: { value } }),
 
+  // Admin
+  adminStats:       ()              => apiFetch('/api/admin/stats'),
+  adminGetUsers:    ()              => apiFetch('/api/admin/users'),
+  adminCreateUser:  (u)             => apiFetch('/api/admin/users',       { method: 'POST',   body: u }),
+  adminUpdateUser:  (id, u)         => apiFetch(`/api/admin/users/${id}`, { method: 'PATCH',  body: u }),
+  adminDeleteUser:  (id)            => apiFetch(`/api/admin/users/${id}`, { method: 'DELETE' }),
+  adminGetClients:  ()              => apiFetch('/api/admin/clients'),
+
   // Templates
   getTemplates:   ()          => apiFetch('/api/templates'),
   createTemplate: (t)         => apiFetch('/api/templates',       { method: 'POST', body: t }),

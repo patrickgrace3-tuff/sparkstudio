@@ -9,7 +9,8 @@ import SlideEditor  from './components/SlideEditor.jsx'
 import AIAssistant  from './components/AIAssistant.jsx'
 import FunnelBuilder from './components/FunnelBuilder.jsx'
 import TeamBuilder   from './components/TeamBuilder.jsx'
-import AdminPanel    from './components/AdminPanel.jsx'
+import AdminPanel       from './components/AdminPanel.jsx'
+import AdminDashboard  from './components/AdminDashboard.jsx'
 import LoginScreen   from './components/LoginScreen.jsx'
 import { DEPARTMENTS } from './lib/constants.js'
 import { loadFunnelConfig } from './lib/funnel.js'
@@ -40,6 +41,7 @@ export default function App() {
   const [showFunnel,     setShowFunnel]     = useState(false)
   const [showTeam,       setShowTeam]       = useState(false)
   const [showAdmin,         setShowAdmin]         = useState(false)
+  const [showAdminDashboard, setShowAdminDashboard] = useState(false)
   const [selectedTemplate,  setSelectedTemplate]  = useState(null)
   const [isApplyingTemplate, setIsApplyingTemplate] = useState(false)
   const [filesVersion,       setFilesVersion]       = useState(0)
@@ -329,6 +331,7 @@ export default function App() {
           onOpenFunnel={() => setShowFunnel(true)}
           onOpenTeam={() => setShowTeam(true)}
           onOpenAdmin={() => setShowAdmin(true)}
+          onOpenAdminDashboard={() => setShowAdminDashboard(true)}
         />
 
         <div style={styles.main}>
@@ -340,6 +343,9 @@ export default function App() {
           )}
           {showAdmin && (
             <AdminPanel onClose={() => setShowAdmin(false)} onTemplatesChange={setTemplates} />
+          )}
+          {showAdminDashboard && (
+            <AdminDashboard onClose={() => setShowAdminDashboard(false)} currentUser={currentUser} />
           )}
 
           {isApplyingTemplate && (
