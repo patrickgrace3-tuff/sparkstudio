@@ -79,6 +79,63 @@ No preamble, no markdown fences.
   return text.trim()
 }
 
+// Parse a pipe-table out of an AI Assistant-style SLIDE_START block
+function parseTableFromBlock(block) {
+  const tableMatch = block.match(/TABLE[^\n]*\n([\s\S]+)$/)
+  if (!tableMatch) return null
+  const rows = tableMatch[1]
+    .split('\n').map(r => r.trim()).filter(r => r && r.includes('|'))
+    .map(r => r.split('|').map(c => c.trim()).filter(c => c !== ''))
+  if (rows.length < 2) return null
+  return { headers: rows[0], rows: rows.slice(1) }
+}
+
+// Generate a single slide using the AI Assistant format (SLIDE_START/END).
+// Returns { bullets, table } or null on failure.
+async function preGenerateSlide({ instruction, clientName, fileSummary, pdfFiles, imageFiles, clientId }) {
+  const system = `You are an AI assistant building a presentation slide for client: ${clientName}.
+You have full access to the attached files and the text content below.
+Do NOT say you cannot access files — the content is provided.
+
+Slide format — use EXACTLY this, nothing else:
+
+SLIDE_START
+TITLE: Compelling title
+BULLETS:
+- Short narrative point (omit section entirely if table covers everything)
+TABLE:
+Header1 | Header2 | Header3
+Row1Col1 | Row1Col2 | Row1Col3
+Row2Col1 | Row2Col2 | Row2Col3
+SLIDE_END
+
+Rules:
+- Include TABLE only when the instruction asks for tabular data. First TABLE row = column headers.
+- Fill every [from file] value with the real number from the attached files.
+- Fill every [calculate] value with the computed result.
+- Omit BULLETS section if the table is self-explanatory.
+- No markdown, no explanation outside the SLIDE_START/SLIDE_END block.
+
+--- File content ---
+${fileSummary || 'See attached PDFs.'}`
+
+  try {
+    const raw = await callClaude(instruction, system, 1200, { pdfFiles, imageFiles, model: ANTHROPIC_MODEL_DECK, clientId })
+    const blockMatch = raw.match(/SLIDE_START([\s\S]*?)SLIDE_END/)
+    if (!blockMatch) return null
+    const block   = blockMatch[1]
+    const titleM  = block.match(/TITLE:\s*(.+)/)
+    const bulletSection = block.split(/^(?:TABLE|IMAGE)/m)[0]
+    const bulletsM = [...bulletSection.matchAll(/^[-•*]\s*(.+)/gm)]
+    const table   = parseTableFromBlock(block)
+    return {
+      title:   titleM?.[1]?.trim() ?? null,
+      bullets: bulletsM.map(b => b[1].trim()),
+      table,
+    }
+  } catch { return null }
+}
+
 export async function generateDeck(deptContributions, clientName = "", clientId = null) {
   const allowedDepts = deptContributions.map(d => d.dept)
 
@@ -110,13 +167,42 @@ export async function generateDeck(deptContributions, clientName = "", clientId 
   // files are sent once instead of repeated for every department.
   const globalSummary = deptContributions[0]?.globalSummary ?? ''
 
+  // Pre-generate slides whose instructions mention table/tabular data using the
+  // AI Assistant approach (SLIDE_START/END format). Keyed by slide._id.
+  const TABLE_KEYWORDS = /\btable\b|\bcolumns?\b|\brows?\b|rating|comparison|breakdown|\bmatrix\b/i
+  const preGenMap = {}
+  await Promise.all(
+    deptContributions.flatMap(contrib =>
+      contrib.slides
+        .filter(s => TABLE_KEYWORDS.test(s.body ?? ''))
+        .map(async s => {
+          const fileSummary = [
+            globalSummary ? `Shared context:\n${globalSummary}` : '',
+            (contrib.deptSummary ?? contrib.fileSummary ?? '') ? `Department files:\n${contrib.deptSummary ?? contrib.fileSummary}` : '',
+          ].filter(Boolean).join('\n\n')
+          const result = await preGenerateSlide({
+            instruction: s.body ?? '',
+            clientName,
+            fileSummary,
+            pdfFiles: allPdfFiles,
+            imageFiles: allImageFiles,
+            clientId,
+          })
+          if (result) preGenMap[s._id] = result
+        })
+    )
+  )
+
   const slideData = deptContributions
     .map(({ dept, slides, deptSummary, fileSummary }) => {
       const slideText = slides.map(s => {
         const rawBody  = s.body ?? ''
         const wantsImg = rawBody.includes('[images]')
         const cleanBody = rawBody.replace(/\[images\]/gi, '').trim()
-        const instructions = cleanBody ? `\n  Instructions: ${cleanBody}` : ''
+        const preGen = preGenMap[s._id]
+        const instructions = preGen
+          ? `\n  Pre-computed content — copy EXACTLY into bullets and table fields, do not change:\n  bullets: ${JSON.stringify(preGen.bullets)}\n  table: ${JSON.stringify(preGen.table)}`
+          : cleanBody ? `\n  Instructions: ${cleanBody}` : ''
         const imgHint = wantsImg && allImageFiles.length ? `\n  IMAGE REQUIRED: You MUST include an "imageFile" field for this slide — pick the most relevant image from the available images list.` : ''
         return `  Id: ${s._id}\n  Title: ${s.title}${instructions}${imgHint}`
       }).join('\n')
@@ -178,6 +264,13 @@ ${slideData}`.trim()
   const raw   = await callClaude(prompt, system, 4000, { imageFiles: allImageFiles, pdfFiles: allPdfFiles, model: ANTHROPIC_MODEL_DECK, clientId })
   const clean = raw.replace(/```json|```/g, '').trim()
   const deck  = JSON.parse(clean)
+
+  // Safety net: inject pre-generated table/bullets if the main call didn't copy them
+  for (const [slideId, preGen] of Object.entries(preGenMap)) {
+    const match = deck.slides.find(s => s.sourceId === slideId)
+    if (match && preGen.table && !match.table) match.table = preGen.table
+    if (match && preGen.bullets?.length && (!match.bullets?.length)) match.bullets = preGen.bullets
+  }
 
   // Filter out any slides the AI sneaked in with non-dept values
   const forbidden = ['all', 'overview', 'introduction', 'intro', 'closing', 'conclusion', 'summary', 'general']
