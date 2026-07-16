@@ -408,6 +408,161 @@ function StylesTab() {
         </button>
         {saved && <span style={{ fontSize: 12, color: '#1D9E75' }}>Saved!</span>}
       </div>
+
+      <div style={{ borderTop: '0.5px solid var(--color-border)', paddingTop: 20, marginTop: 4 }}>
+        <SlideTemplatesSection />
+      </div>
+    </div>
+  )
+}
+
+// ── Slide Templates section (inside Styles tab) ───────────────────────────────
+const TEMPLATE_TYPES = [
+  { key: 'title',   label: 'Title Slide',       desc: 'Opening slide — shown first in every presentation.' },
+  { key: 'section', label: 'Section Divider',   desc: 'Marks the start of a new topic or section.' },
+  { key: 'content', label: 'Content Slide',     desc: 'Standard body slide with title and bullet points.' },
+  { key: 'closing', label: 'Closing Slide',     desc: 'Thank-you / closing slide at the end of the deck.' },
+]
+
+const DEFAULT_TEMPLATES = Object.fromEntries(
+  TEMPLATE_TYPES.map(t => [t.key, { label: t.label, description: t.desc, previewImage: null }])
+)
+
+function SlideTemplatesSection() {
+  const [templates, setTemplates] = useState(null)
+  const [loading,   setLoading]   = useState(true)
+  const [saving,    setSaving]    = useState(false)
+  const [saved,     setSaved]     = useState(false)
+  const [err,       setErr]       = useState('')
+  const fileRefs = Object.fromEntries(TEMPLATE_TYPES.map(t => [t.key, React.createRef()]))
+
+  useEffect(() => {
+    api.adminGetSetting('slide_templates')
+      .then(data => setTemplates(data ?? DEFAULT_TEMPLATES))
+      .catch(() => setTemplates(DEFAULT_TEMPLATES))
+      .finally(() => setLoading(false))
+  }, [])
+
+  function handleImageUpload(key, e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = ev => {
+      setTemplates(t => ({ ...t, [key]: { ...t[key], previewImage: ev.target.result } }))
+    }
+    reader.readAsDataURL(file)
+  }
+
+  function updateField(key, field, val) {
+    setTemplates(t => ({ ...t, [key]: { ...t[key], [field]: val } }))
+  }
+
+  async function handleSave() {
+    setSaving(true); setSaved(false); setErr('')
+    try {
+      await api.adminPutSetting('slide_templates', templates)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+    } catch (e) { setErr(e.message) }
+    finally { setSaving(false) }
+  }
+
+  if (loading) return <div style={{ fontSize: 13, color: 'var(--color-text-muted)', padding: '8px 0' }}>Loading templates…</div>
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={S.sectionHeader}>
+        <span style={S.sectionTitle}>Slide Templates</span>
+        <span style={S.sectionSub}>Preview images for each slide type used during generation</span>
+      </div>
+      <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: 0 }}>
+        Upload a screenshot or design mock for each template type. These are reference previews — they show admins what the generated output will look like.
+      </p>
+      {err && <div style={S.error}>{err}</div>}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
+        {TEMPLATE_TYPES.map(type => {
+          const tpl = templates[type.key] ?? { label: type.label, description: type.desc, previewImage: null }
+          return (
+            <div key={type.key} style={{ border: '0.5px solid var(--color-border)', borderRadius: 10, overflow: 'hidden', background: 'var(--color-bg)', display: 'flex', flexDirection: 'column' }}>
+              {/* Preview area — 16:9 */}
+              <div
+                style={{
+                  width: '100%',
+                  aspectRatio: '16/9',
+                  background: tpl.previewImage
+                    ? `url(${tpl.previewImage}) center/cover no-repeat`
+                    : 'var(--color-bg-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  position: 'relative',
+                  cursor: 'pointer',
+                }}
+                onClick={() => fileRefs[type.key].current?.click()}
+                title="Click to upload preview image"
+              >
+                {!tpl.previewImage && (
+                  <div style={{ textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 12 }}>
+                    <div style={{ fontSize: 28, marginBottom: 6 }}>🖼</div>
+                    <div>Click to upload preview</div>
+                  </div>
+                )}
+                {tpl.previewImage && (
+                  <button
+                    onClick={e => { e.stopPropagation(); updateField(type.key, 'previewImage', null) }}
+                    style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.6)', color: '#fff', border: 'none', borderRadius: '50%', width: 22, height: 22, fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    title="Remove image"
+                  >✕</button>
+                )}
+                <input
+                  ref={fileRefs[type.key]}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={e => handleImageUpload(type.key, e)}
+                />
+              </div>
+
+              {/* Metadata */}
+              <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', flexShrink: 0 }}>
+                    {type.key}
+                  </span>
+                  <div style={{ flex: 1, height: '0.5px', background: 'var(--color-border)' }} />
+                </div>
+                <input
+                  style={{ ...SLocal.input, fontSize: 13, fontWeight: 600 }}
+                  value={tpl.label}
+                  onChange={e => updateField(type.key, 'label', e.target.value)}
+                  placeholder="Template name"
+                />
+                <textarea
+                  style={{ ...SLocal.input, fontSize: 11, resize: 'none', lineHeight: 1.5 }}
+                  rows={2}
+                  value={tpl.description}
+                  onChange={e => updateField(type.key, 'description', e.target.value)}
+                  placeholder="Description of when this template is used…"
+                />
+                <button
+                  style={{ ...S.ghostBtn, fontSize: 11, alignSelf: 'flex-start' }}
+                  onClick={() => fileRefs[type.key].current?.click()}
+                >
+                  {tpl.previewImage ? '↺ Replace image' : '↑ Upload image'}
+                </button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <button style={S.primaryBtn} onClick={handleSave} disabled={saving}>
+          {saving ? 'Saving…' : 'Save templates'}
+        </button>
+        {saved && <span style={{ fontSize: 12, color: '#1D9E75' }}>Templates saved!</span>}
+      </div>
     </div>
   )
 }
