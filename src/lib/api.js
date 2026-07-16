@@ -150,17 +150,31 @@ RULES — follow exactly:
 - CRITICAL: You must generate exactly one output slide for EVERY input slide listed under each department. Do NOT merge multiple input slides into one. Do NOT skip any input slide. Each input slide gets its own output slide.
 - Each input slide has an "Id" — every output slide must include a "sourceId" field that exactly copies the Id of the input slide it was generated from (verbatim, unchanged).
 - Where "Guidance notes" are provided for a slide, use them as topical direction and source material — synthesise them with the supporting file context into polished executive bullet points. Never copy the guidance notes verbatim into the output.
-- Review all supporting file content (both global files shared across departments and department-specific files) when generating bullets for each slide.
-- Each slide must contain NO MORE than 4 bullet points. If a topic genuinely has more content than fits in 4 bullets, add a continuation slide immediately after with " (cont'd)" appended to the title. Continuation slides must share the same "sourceId".${allImageFiles.length ? `\n- If an image from the available images list is relevant or would enhance a slide, include an "imageFile" field with the exact filename and an "imagePlacement" field. Choose the placement that makes the image look most natural: "bottom" stretches the image across the full content width below the bullets (best for charts, graphs, tables, timelines — use this by default for data visuals), "right" places the image on the right side with text on the left (best for product shots, logos, or portrait images). Only use one image per slide. Omit both fields if no image fits.` : ''}
+- Review ALL supporting file content (both global shared files and department-specific files) carefully when generating content for each slide. Extract specific data, numbers, and facts from the files — do not rely on generic statements.
+- Each slide must contain NO MORE than 4 bullet points. If a topic genuinely has more content than fits in 4 bullets, add a continuation slide immediately after with " (cont'd)" appended to the title. Continuation slides must share the same "sourceId".
+- TABLE RULE: When guidance notes or file data describe information that is naturally tabular (comparisons across platforms/competitors/categories, rating tables, metric breakdowns by row, before/after data, side-by-side comparisons), you MUST output a "table" field instead of or in addition to bullets. A table makes the data far more readable than bullet points. Use your judgment: if it looks like a spreadsheet or comparison matrix, use a table.${allImageFiles.length ? `\n- If an image from the available images list is relevant or would enhance a slide, include an "imageFile" field with the exact filename and an "imagePlacement" field. Choose the placement that makes the image look most natural: "bottom" stretches the image across the full content width below the bullets (best for charts, graphs, tables, timelines — use this by default for data visuals), "right" places the image on the right side with text on the left (best for product shots, logos, or portrait images). Only use one image per slide. Omit both fields if no image fits.` : ''}
 ${imageList}
 
 Return ONLY valid JSON, no markdown:
 {
   "title": "Presentation title including client name",
   "slides": [
-    { "num": 1, "title": "Slide title", "dept": "Exact department name", "bullets": ["bullet 1", "bullet 2"], "sourceId": "the input slide's exact Id"${allImageFiles.length ? ', "imageFile": "optional-filename.png (omit if no image)", "imagePlacement": "bottom or right (omit if no image)"' : ''} }
+    {
+      "num": 1,
+      "title": "Slide title",
+      "dept": "Exact department name",
+      "bullets": ["bullet 1", "bullet 2"],
+      "table": { "headers": ["Column A", "Column B"], "rows": [["row1col1", "row1col2"], ["row2col1", "row2col2"]] },
+      "sourceId": "the input slide's exact Id"${allImageFiles.length ? ',\n      "imageFile": "optional-filename.png (omit if no image)",\n      "imagePlacement": "bottom or right (omit if no image)"' : ''}
+    }
   ]
 }
+
+Notes on the table field:
+- "headers" is an array of column header strings
+- "rows" is an array of rows; each row is an array of cell values (strings or numbers) matching the header count
+- Include "table" only when the data genuinely calls for it; omit the field entirely for narrative slides
+- A slide may have both "bullets" (for context/narrative) AND a "table" (for the data itself), or just one of them
 
 Department submissions:
 ${slideData}`.trim()
