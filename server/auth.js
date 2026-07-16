@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken'
+import { query } from './db.js'
 
 const SECRET = process.env.JWT_SECRET || 'changeme-set-JWT_SECRET-in-env'
 
@@ -23,9 +24,19 @@ export function requireAuth(req, res, next) {
   }
 }
 
+// Checks the DB for the role so cached JWTs can't bypass a role downgrade,
+// and old tokens without a role field still work correctly.
 export function requireAdmin(req, res, next) {
-  requireAuth(req, res, () => {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' })
-    next()
+  requireAuth(req, res, async () => {
+    try {
+      const result = await query('SELECT role FROM users WHERE id = $1', [req.user.id])
+      const role   = result.rows[0]?.role
+      if (role !== 'admin') return res.status(403).json({ error: 'Admin only' })
+      req.user.role = role
+      next()
+    } catch (err) {
+      console.error('requireAdmin DB error:', err)
+      res.status(500).json({ error: 'Server error' })
+    }
   })
 }

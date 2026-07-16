@@ -52,9 +52,16 @@ router.post('/login', async (req, res) => {
   }
 })
 
-// GET /api/auth/me
-router.get('/me', requireAuth, (req, res) => {
-  res.json({ user: req.user })
+// GET /api/auth/me  — return live DB record so role is always current
+router.get('/me', requireAuth, async (req, res) => {
+  try {
+    const result = await query('SELECT id, email, name, role FROM users WHERE id = $1', [req.user.id])
+    if (!result.rows.length) return res.status(404).json({ error: 'User not found' })
+    res.json({ user: result.rows[0] })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  }
 })
 
 export default router
