@@ -1,36 +1,10 @@
-import React, { useState } from 'react'
-import { nameToId } from '../lib/clients.js'
+import React from 'react'
 
-export default function ClientBar({ clients, activeClientId, onSelect, onAdd, onDelete, currentUser, onLogout }) {
-  const [adding,     setAdding]     = useState(false)
-  const [draft,      setDraft]      = useState('')
-  const [confirmDel, setConfirmDel] = useState(false)
-
-  const activeClient = clients.find(c => c.id === activeClientId)
-
-  function handleAdd() {
-    const name = draft.trim()
-    if (!name) return
-    const id = nameToId(name)
-    if (clients.find(c => c.id === id)) {
-      alert('A client with that name already exists.')
-      return
-    }
-    onAdd({ id, name })
-    setDraft('')
-    setAdding(false)
-  }
-
-  function handleKey(e) {
-    if (e.key === 'Enter')  handleAdd()
-    if (e.key === 'Escape') { setAdding(false); setDraft('') }
-  }
-
+export default function ClientBar({ clients, activeClientId, onSelect, currentUser, onLogout }) {
   return (
     <div style={styles.bar}>
       <span style={styles.label}>Client</span>
 
-      {/* Dropdown */}
       <select
         style={styles.select}
         value={activeClientId}
@@ -41,41 +15,8 @@ export default function ClientBar({ clients, activeClientId, onSelect, onAdd, on
         ))}
       </select>
 
-      {/* Add new */}
-      {adding ? (
-        <div style={styles.addRow}>
-          <input
-            style={styles.addInput}
-            value={draft}
-            onChange={e => setDraft(e.target.value)}
-            onKeyDown={handleKey}
-            placeholder="Client name"
-            autoFocus
-          />
-          <button style={styles.btnPrimary} onClick={handleAdd}>Add</button>
-          <button style={styles.btnGhost}   onClick={() => { setAdding(false); setDraft('') }}>Cancel</button>
-        </div>
-      ) : (
-        <button style={styles.btnGhost} onClick={() => setAdding(true)}>+ New client</button>
-      )}
-
-      {/* Delete active client */}
-      {clients.length > 1 && !adding && (
-        confirmDel ? (
-          <div style={styles.addRow}>
-            <span style={styles.confirmText}>Remove "{activeClient?.name}"?</span>
-            <button style={styles.btnDanger} onClick={() => { onDelete(activeClientId); setConfirmDel(false) }}>Remove</button>
-            <button style={styles.btnGhost}  onClick={() => setConfirmDel(false)}>Cancel</button>
-          </div>
-        ) : (
-          <button style={styles.btnDanger} onClick={() => setConfirmDel(true)}>Remove client</button>
-        )
-      )}
-
-      {/* Spacer */}
       <div style={{ flex: 1 }} />
 
-      {/* User info + logout */}
       {currentUser && (
         <div style={styles.userArea}>
           <span style={styles.userName}>{currentUser.name || currentUser.email}</span>
@@ -119,31 +60,6 @@ const styles = {
     minWidth: 200,
     appearance: 'auto',
   },
-  addRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-  },
-  addInput: {
-    background: 'var(--color-bg-secondary)',
-    border: '0.5px solid var(--color-border)',
-    borderRadius: 'var(--radius-sm)',
-    padding: '5px 10px',
-    fontSize: 13,
-    color: 'var(--color-text-primary)',
-    outline: 'none',
-    width: 180,
-  },
-  btnPrimary: {
-    background: 'var(--color-accent)',
-    color: '#FFFFFF',
-    border: 'none',
-    borderRadius: 'var(--radius-pill)',
-    padding: '5px 14px',
-    fontSize: 12,
-    fontWeight: 500,
-    cursor: 'pointer',
-  },
   btnGhost: {
     background: 'none',
     border: '0.5px solid var(--color-border)',
@@ -152,19 +68,6 @@ const styles = {
     fontSize: 12,
     color: 'var(--color-text-secondary)',
     cursor: 'pointer',
-  },
-  btnDanger: {
-    background: 'none',
-    border: '0.5px solid var(--color-error)',
-    borderRadius: 'var(--radius-pill)',
-    padding: '5px 12px',
-    fontSize: 12,
-    color: 'var(--color-error)',
-    cursor: 'pointer',
-  },
-  confirmText: {
-    fontSize: 12,
-    color: 'var(--color-text-secondary)',
   },
   userArea: {
     display: 'flex',
