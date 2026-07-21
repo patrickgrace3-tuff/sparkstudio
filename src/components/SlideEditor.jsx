@@ -204,8 +204,9 @@ function stopForEdit(e) {
 function SlideCanvas({
   slide, bgImage, table, onImagesChange, onBodyBoxChange, onTableBoxChange,
   onTitleChange, onBulletChange, onTableHeaderChange, onTableCellChange, onSourceChange,
+  onExtraBoxChange, onExtraBulletChange,
 }) {
-  const { title, bullets, source, style = {} } = slide
+  const { title, bullets, source, style = {}, extraBulletBoxes = [] } = slide
   const font    = style.font    ?? FONTS[0].value
   const layout  = style.layout  ?? 'title-top'
   const bg      = style.bg      ?? '#FFFFFF'
@@ -436,6 +437,24 @@ function SlideCanvas({
           <TablePreview tbl={table} />
         </DraggableBox>
       )}
+      {extraBulletBoxes.map((eb, bi) => (
+        <DraggableBox key={bi} box={eb.box} onChange={box => onExtraBoxChange?.(bi, box)}>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+            {(eb.bullets || []).map((b, li) => (
+              <li key={li} style={{ color: bgImage ? '#fff' : textCol, fontSize: '1.7cqw', lineHeight: 1.6, display: 'flex', gap: 8, marginBottom: '0.5em', textShadow: bgImage ? '0 1px 3px rgba(0,0,0,0.6)' : 'none' }}>
+                <span style={{ color: accent, fontWeight: 700, flexShrink: 0 }}>•</span>
+                <span
+                  contentEditable={!!onExtraBulletChange}
+                  suppressContentEditableWarning
+                  onPointerDown={stopForEdit}
+                  onBlur={e => onExtraBulletChange?.(bi, li, e.currentTarget.innerText)}
+                  style={{ outline: 'none', cursor: onExtraBulletChange ? 'text' : 'default' }}
+                ><RichText text={b} /></span>
+              </li>
+            ))}
+          </ul>
+        </DraggableBox>
+      ))}
       <div style={{ position: 'absolute', left: '1.8%', top: '90.4%', width: '48.4%', fontSize: '1.2cqw', fontStyle: 'italic', color: bgImage ? 'rgba(255,255,255,0.7)' : '#7F7F7F', display: 'flex', gap: '0.3em' }}>
         <span style={{ flexShrink: 0 }}>Source:</span>
         <span
@@ -461,6 +480,8 @@ export default function SlideEditor({ slide, onSave, onClose }) {
     bullets: slide.bullets?.length
       ? [...slide.bullets]
       : (slide.body ?? '').split('\n').filter(Boolean),
+    // extraBulletBoxes: array of { bullets: string[], box: {x,y,w,h} }
+    extraBulletBoxes: slide.extraBulletBoxes ? slide.extraBulletBoxes.map(eb => ({ ...eb, bullets: [...eb.bullets] })) : [],
     style: {
       // Spread all existing style fields first so nothing (tableBox, bgImage, etc.)
       // is silently dropped when the editor opens and saves without touching that field.
@@ -532,6 +553,47 @@ export default function SlideEditor({ slide, onSave, onClose }) {
     if (j < 0 || j >= b.length) return
     ;[b[i], b[j]] = [b[j], b[i]]
     update('bullets', b)
+  }
+
+  // ── Extra bullet box helpers ──────────────────────────────────────────────
+  function addExtraBulletBox() {
+    const next = [...draft.extraBulletBoxes, {
+      bullets: [''],
+      box: { x: 0.5, y: 0.19, w: 0.37, h: 0.35 },
+    }]
+    update('extraBulletBoxes', next)
+  }
+
+  function removeExtraBulletBox(bi) {
+    update('extraBulletBoxes', draft.extraBulletBoxes.filter((_, i) => i !== bi))
+  }
+
+  function updateExtraBox(bi, box) {
+    const next = draft.extraBulletBoxes.map((eb, i) => i === bi ? { ...eb, box } : eb)
+    update('extraBulletBoxes', next)
+  }
+
+  function updateExtraBullet(bi, li, val) {
+    const next = draft.extraBulletBoxes.map((eb, i) => {
+      if (i !== bi) return eb
+      const bullets = [...eb.bullets]; bullets[li] = val
+      return { ...eb, bullets }
+    })
+    update('extraBulletBoxes', next)
+  }
+
+  function addExtraBullet(bi) {
+    const next = draft.extraBulletBoxes.map((eb, i) =>
+      i === bi ? { ...eb, bullets: [...eb.bullets, ''] } : eb
+    )
+    update('extraBulletBoxes', next)
+  }
+
+  function removeExtraBullet(bi, li) {
+    const next = draft.extraBulletBoxes.map((eb, i) =>
+      i === bi ? { ...eb, bullets: eb.bullets.filter((_, j) => j !== li) } : eb
+    )
+    update('extraBulletBoxes', next)
   }
 
   // Wrap the selected text of bullet `i` in markdown-style markers (** for
@@ -643,6 +705,9 @@ export default function SlideEditor({ slide, onSave, onClose }) {
       notes:   draft.notes,
       style:   draft.style,
       table:   table && table.headers.length > 0 ? table : null,
+      extraBulletBoxes: draft.extraBulletBoxes
+        .filter(eb => eb.bullets.some(Boolean))
+        .map(eb => ({ ...eb, bullets: eb.bullets.filter(Boolean) })),
     }
     onSave(saved)
     onClose()
@@ -719,6 +784,34 @@ export default function SlideEditor({ slide, onSave, onClose }) {
                   ))}
                   <button style={styles.addBulletBtn} onClick={addBullet}>+ Add bullet</button>
                 </div>
+
+                {/* ── Extra bullet boxes ── */}
+                <div style={styles.tableSectionHeader}>
+                  <label style={styles.label}>Extra bullet areas</label>
+                  <button style={styles.microBtn} onClick={addExtraBulletBox}>+ Add area</button>
+                </div>
+                {draft.extraBulletBoxes.map((eb, bi) => (
+                  <div key={bi} style={{ border: '0.5px solid var(--color-border)', borderRadius: 6, padding: '8px 10px', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)' }}>Area {bi + 2}</span>
+                      <button style={{ ...styles.microBtn, color: '#ef4444', borderColor: '#ef444466' }} onClick={() => removeExtraBulletBox(bi)}>Remove</button>
+                    </div>
+                    <div style={styles.bulletList}>
+                      {eb.bullets.map((b, li) => (
+                        <div key={li} style={styles.bulletRow}>
+                          <input
+                            style={styles.bulletInput}
+                            value={b}
+                            onChange={e => updateExtraBullet(bi, li, e.target.value)}
+                            placeholder={`Bullet ${li + 1}`}
+                          />
+                          <button style={styles.microBtn} onClick={() => removeExtraBullet(bi, li)}>✕</button>
+                        </div>
+                      ))}
+                      <button style={styles.addBulletBtn} onClick={() => addExtraBullet(bi)}>+ Add bullet</button>
+                    </div>
+                  </div>
+                ))}
 
                 {/* ── Table editor ── */}
                 <div style={styles.tableSectionHeader}>
@@ -866,6 +959,8 @@ export default function SlideEditor({ slide, onSave, onClose }) {
                 onTableHeaderChange={(ci, text) => setTableHeader(ci, text.trim())}
                 onTableCellChange={(ri, ci, text) => setTableCell(ri, ci, text.trim())}
                 onSourceChange={text => update('source', text.trim())}
+                onExtraBoxChange={updateExtraBox}
+                onExtraBulletChange={(bi, li, text) => updateExtraBullet(bi, li, text.trim())}
               />
               <div style={styles.previewHint}>
                 {draft.bullets.length} bullet{draft.bullets.length !== 1 ? 's' : ''}
