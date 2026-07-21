@@ -1,44 +1,58 @@
 /**
- * files.js — per-client, per-dept file storage in localStorage
- *
- * Structure:
- *   pres-builder:files:<clientId>:<deptId>  →  { folders: [...], files: [...] }
- *
- * Folder: { id, name, parentId }
- * File:   { id, name, type ('word'|'excel'|'upload'), folderId, content, createdAt, updatedAt }
- *   - word:   content = HTML string
- *   - excel:  content = { headers: [], rows: [[]] }
- *   - upload: content = { base64, mimeType, size }
+ * files.js — per-client, per-dept file storage
+ * Reads/writes via the API (synced across users).
+ * Falls back to localStorage for immediate reads while API loads.
  */
 
-function key(clientId, deptId) {
+import { api } from './apiClient.js'
+
+function lsKey(clientId, deptId) {
   return `pres-builder:files:${clientId}:${deptId}`
 }
-
-function globalKey(clientId) {
+function globalLsKey(clientId) {
   return `pres-builder:files:${clientId}:__global__`
 }
 
 export function loadFiles(clientId, deptId) {
   try {
-    const raw = localStorage.getItem(key(clientId, deptId))
+    const raw = localStorage.getItem(lsKey(clientId, deptId))
     return raw ? JSON.parse(raw) : { folders: [], files: [] }
   } catch { return { folders: [], files: [] } }
 }
 
+export async function loadFilesRemote(clientId, deptId) {
+  try {
+    const res = await api.getClientData(clientId, `files:${deptId}`)
+    const data = res.value ?? { folders: [], files: [] }
+    localStorage.setItem(lsKey(clientId, deptId), JSON.stringify(data))
+    return data
+  } catch { return loadFiles(clientId, deptId) }
+}
+
 export function saveFiles(clientId, deptId, data) {
-  localStorage.setItem(key(clientId, deptId), JSON.stringify(data))
+  localStorage.setItem(lsKey(clientId, deptId), JSON.stringify(data))
+  api.setClientData(clientId, `files:${deptId}`, data).catch(console.error)
 }
 
 export function loadGlobalFiles(clientId) {
   try {
-    const raw = localStorage.getItem(globalKey(clientId))
+    const raw = localStorage.getItem(globalLsKey(clientId))
     return raw ? JSON.parse(raw) : { folders: [], files: [] }
   } catch { return { folders: [], files: [] } }
 }
 
+export async function loadGlobalFilesRemote(clientId) {
+  try {
+    const res = await api.getClientData(clientId, 'files:__global__')
+    const data = res.value ?? { folders: [], files: [] }
+    localStorage.setItem(globalLsKey(clientId), JSON.stringify(data))
+    return data
+  } catch { return loadGlobalFiles(clientId) }
+}
+
 export function saveGlobalFiles(clientId, data) {
-  localStorage.setItem(globalKey(clientId), JSON.stringify(data))
+  localStorage.setItem(globalLsKey(clientId), JSON.stringify(data))
+  api.setClientData(clientId, 'files:__global__', data).catch(console.error)
 }
 
 export function uid() {
@@ -197,68 +211,87 @@ export async function fetchLinkContent(url) {
  *   textSummary — plain text blob for text-based files
  *   pdfFiles    — array of { name, base64 } for PDFs (sent as document blocks)
  */
-export function buildAIContext(data, deptName, globalData = null) {
-  const lines    = [`=== ${deptName} department files ===`]
-  const pdfFiles = []
+function processFile(f, lines, pdfFiles, imageFiles) {
+  if (f.type === 'word') {
+    const text = (f.content ?? '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 3000)
+    lines.push(text || '(empty document)')
 
-  // Merge global files in first so they're always visible to the AI
-  const allFiles = [
-    ...(globalData?.files ?? []).map(f => ({ ...f, _global: true })),
-    ...data.files,
-  ]
+  } else if (f.type === 'excel') {
+    const { headers = [], rows = [] } = f.content ?? {}
+    if (headers.length) {
+      lines.push(`Headers: ${headers.join(' | ')}`)
+      rows.slice(0, 50).forEach(r => lines.push(r.join(' | ')))
+      if (rows.length > 50) lines.push(`… and ${rows.length - 50} more rows`)
+    } else {
+      lines.push('(empty spreadsheet)')
+    }
 
-  for (const f of allFiles) {
-    if (f._global) lines.push(`\n--- Global File: "${f.name}" (shared across all departments) ---`)
-    if (f.type === 'word') {
-      const text = (f.content ?? '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 3000)
-      lines.push(text || '(empty document)')
+  } else if (f.type === 'upload') {
+    const ext  = f.name.split('.').pop().toLowerCase()
+    const mime = f.content?.mimeType ?? ''
 
-    } else if (f.type === 'excel') {
-      const { headers = [], rows = [] } = f.content ?? {}
-      if (headers.length) {
-        lines.push(`Headers: ${headers.join(' | ')}`)
-        rows.slice(0, 50).forEach(r => lines.push(r.join(' | ')))
-        if (rows.length > 50) lines.push(`… and ${rows.length - 50} more rows`)
-      } else {
-        lines.push('(empty spreadsheet)')
+    if (ext === 'pdf' || mime.includes('pdf')) {
+      const base64 = f.content?.base64?.split(',')[1] ?? f.content?.base64
+      if (base64) {
+        if (pdfFiles) pdfFiles.push({ name: f.name, base64 })
+        lines.push(`[PDF — will be read directly by AI]`)
       }
-
-    } else if (f.type === 'upload') {
-      const ext  = f.name.split('.').pop().toLowerCase()
-      const mime = f.content?.mimeType ?? ''
-
-      if (ext === 'pdf' || mime.includes('pdf')) {
-        // PDF — collect for native Anthropic document block
-        const base64 = f.content?.base64?.split(',')[1] ?? f.content?.base64
-        if (base64) {
-          pdfFiles.push({ name: f.name, base64 })
-          lines.push(`[PDF — will be read directly by AI]`)
-        }
-      } else {
-        const extracted = extractUploadedContent(f)
-        if (extracted && extracted !== '__PDF__') {
-          lines.push(extracted)
-        } else {
-          const kb = Math.round((f.content?.size ?? 0) / 1024)
-          lines.push(`[Binary file — ${mime || 'unknown'}, ${kb}KB — not readable as text]`)
-        }
+    } else if (mime.startsWith('image/') || ['png','jpg','jpeg','gif','webp'].includes(ext)) {
+      const raw = f.content?.base64
+      if (raw) {
+        const b64 = raw.includes(',') ? raw.split(',')[1] : raw
+        const imageMime = mime || `image/${ext === 'jpg' ? 'jpeg' : ext}`
+        if (imageFiles) imageFiles.push({ name: f.name, base64: b64, mimeType: imageMime })
+        lines.push(`[Image file: "${f.name}" — will be viewed directly by AI]`)
       }
-    } else if (f.type === 'link') {
-      const url = f.content?.url ?? ''
-      if (f.content?.fetchedText) {
-        lines.push(`[Linked file: "${f.name}" — ${url}]\n${f.content.fetchedText}`)
+    } else {
+      const extracted = extractUploadedContent(f)
+      if (extracted && extracted !== '__PDF__') {
+        lines.push(extracted)
       } else {
-        lines.push(`[Linked file: "${f.name}" — ${url} — content could not be auto-read (${f.content?.fetchError || 'sign-in required'}); treat as a named reference only]`)
+        const kb = Math.round((f.content?.size ?? 0) / 1024)
+        lines.push(`[Binary file — ${mime || 'unknown'}, ${kb}KB — not readable as text]`)
       }
     }
+  } else if (f.type === 'link') {
+    const url = f.content?.url ?? ''
+    if (f.content?.fetchedText) {
+      lines.push(`[Linked file: "${f.name}" — ${url}]\n${f.content.fetchedText}`)
+    } else {
+      lines.push(`[Linked file: "${f.name}" — ${url} — content could not be auto-read (${f.content?.fetchError || 'sign-in required'}); treat as a named reference only]`)
+    }
   }
+}
+
+export function buildAIContext(data, deptName, globalData = null) {
+  const pdfFiles   = []
+  const imageFiles = []
+
+  const deptFiles   = data.files ?? []
+  const globalFiles = (globalData?.files ?? [])
+
+  // Dept-only summary
+  const deptLines = deptFiles.length ? [`=== ${deptName} department files ===`] : []
+  for (const f of deptFiles) processFile(f, deptLines, pdfFiles, imageFiles)
+
+  // Global-only summary (sent once at top of prompt, not per-dept)
+  const globalLines = globalFiles.length ? ['=== Shared company files ==='] : []
+  for (const f of globalFiles) processFile(f, globalLines, pdfFiles, imageFiles)
+
+  // Combined summary (for single-dept use cases or backward compat)
+  const allLines = []
+  if (globalLines.length) allLines.push(...globalLines)
+  if (deptLines.length)   allLines.push(...deptLines)
 
   return {
-    textSummary: allFiles.length ? lines.join('\n') : '',
+    textSummary:   allLines.length    ? allLines.join('\n')    : '',
+    deptSummary:   deptLines.length   ? deptLines.join('\n')   : '',
+    globalSummary: globalLines.length ? globalLines.join('\n') : '',
     pdfFiles,
+    imageFiles,
   }
 }

@@ -3,8 +3,9 @@ import { loadFiles, saveFiles, loadGlobalFiles, saveGlobalFiles, uid, fetchLinkC
 import WordEditor  from './WordEditor.jsx'
 import ExcelEditor from './ExcelEditor.jsx'
 import RequirementsChecklist from './RequirementsChecklist.jsx'
+import LookerPanel from './LookerPanel.jsx'
 
-export default function FileManager({ clientId, deptId, deptName, deptColor, isGlobal = false }) {
+export default function FileManager({ clientId, clientName, deptId, deptName, deptColor, isGlobal = false }) {
   const [data,       setData]       = useState(() =>
     isGlobal ? loadGlobalFiles(clientId) : loadFiles(clientId, deptId)
   )
@@ -13,8 +14,9 @@ export default function FileManager({ clientId, deptId, deptName, deptColor, isG
   const [newFolderMode, setNewFolderMode] = useState(false)
   const [folderDraft,   setFolderDraft]   = useState('')
   const [dragging,   setDragging]   = useState(false)
-  const [newLinkMode, setNewLinkMode] = useState(false)
-  const [linkDraft,   setLinkDraft]   = useState('')
+  const [newLinkMode,  setNewLinkMode]  = useState(false)
+  const [linkDraft,    setLinkDraft]    = useState('')
+  const [showLooker,   setShowLooker]   = useState(false)
   const fileInputRef = useRef(null)
 
   function persist(updated) {
@@ -82,6 +84,18 @@ export default function FileManager({ clientId, deptId, deptName, deptColor, isG
   function deleteFile(fileId) {
     persist({ ...data, files: data.files.filter(f => f.id !== fileId) })
     if (openFile?.id === fileId) setOpenFile(null)
+  }
+
+  // ── Looker CSV save ────────────────────────────────────────────────────────
+  function saveLookerFile({ name, csv }) {
+    const file = {
+      id: uid(), name, type: 'upload',
+      folderId: activeFolderId,
+      content: { base64: `data:text/csv;base64,${btoa(unescape(encodeURIComponent(csv)))}`, mimeType: 'text/csv', size: csv.length },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    persist({ ...data, files: [...data.files, file] })
   }
 
   // ── Upload ─────────────────────────────────────────────────────────────────
@@ -236,6 +250,11 @@ export default function FileManager({ clientId, deptId, deptName, deptColor, isG
         <button style={styles.toolBtn} onClick={() => createFile('word')}>+ Word doc</button>
         <button style={styles.toolBtn} onClick={() => createFile('excel')}>+ Excel sheet</button>
         <button style={styles.toolBtn} onClick={() => fileInputRef.current?.click()}>↑ Upload file</button>
+        {isGlobal && (
+          <button style={{ ...styles.toolBtn, ...styles.lookerBtn }} onClick={() => setShowLooker(true)}>
+            📊 Looker report
+          </button>
+        )}
         <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }}
           onChange={e => Array.from(e.target.files).forEach(handleUpload)} />
         {newLinkMode ? (
@@ -291,6 +310,14 @@ export default function FileManager({ clientId, deptId, deptName, deptColor, isG
         <div style={styles.dropOverlay}>Drop files to upload</div>
       )}
 
+      {showLooker && (
+        <LookerPanel
+          clientName={clientName || clientId}
+          onSaveFile={file => { saveLookerFile(file); setShowLooker(false) }}
+          onClose={() => setShowLooker(false)}
+        />
+      )}
+
       {/* Contents */}
       <div style={styles.contents}>
         {subFolders.length === 0 && currentFiles.length === 0 && (
@@ -344,6 +371,7 @@ const styles = {
   browserDragging:{ outline: '2px dashed var(--color-border-medium)', outlineOffset: -4 },
   toolbar:        { display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', borderBottom: '0.5px solid var(--color-border)', flexWrap: 'wrap' },
   toolBtn:        { background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '5px 12px', fontSize: 12, color: 'var(--color-text-primary)', cursor: 'pointer', whiteSpace: 'nowrap' },
+  lookerBtn:      { borderColor: '#4285f4', color: '#4285f4' },
   ghostBtn:       { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '5px 12px', fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'pointer', whiteSpace: 'nowrap' },
   folderInputRow: { display: 'flex', alignItems: 'center', gap: 6 },
   folderInput:    { background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: '4px 9px', fontSize: 12, color: 'var(--color-text-primary)', outline: 'none', width: 160 },

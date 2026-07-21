@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { DEPARTMENTS } from '../lib/constants.js'
 import { parseRichText } from '../lib/richtext.js'
 import { FunnelSlidePreview } from './FunnelBuilder.jsx'
+import { TeamSlidePreview } from './TeamBuilder.jsx'
 
 function RichText({ text }) {
   return parseRichText(text).map((seg, i) => {
@@ -38,25 +39,14 @@ function SectionSlidePreview({ dept }) {
   )
 }
 
-// Positions below are lifted directly from the real template's slide3.xml
-// placeholder coordinates (converted from EMU to % of slide), so this preview
-// renders the same layout the pptx export actually produces — the exporter
-// uses a single fixed content-slide template for every slide regardless of
-// the "layout" style choice (only bgImage/contentImage are composited on top).
 function ContentSlidePreview({ slide }) {
   const { title, bullets = [], style = {}, table, source } = slide
   const tc     = style.textCol || '#1A1A1A'
-  const accent = style.accent  || deptColor(slide.dept) || '#CD2F37'
+  const accent = style.accent  || '#CD2F37'
   const font   = style.font    || 'Arial, sans-serif'
   const bgImg  = style.bgImage || null
   const showContentImage = style.layout === 'image-right' && style.contentImage
 
-  // containerType + cqw (container-query width) units tie every font size to
-  // this slide box's own rendered pixel width, so the grid thumbnail and the
-  // fullscreen presenter view — which render the same slide at very
-  // different pixel widths — stay visually identical. These ratios match
-  // SlideEditor's live-preview canvas exactly, so editor/grid/presenter all
-  // agree on how a slide looks.
   const wrap = {
     ...S.slide,
     background: bgImg ? `url(${bgImg}) center/cover no-repeat` : `url(/branding/content-bg.jpg) center/cover no-repeat`,
@@ -133,7 +123,6 @@ function ContentSlidePreview({ slide }) {
   )
 }
 
-// ── Group slides by department (one section per dept) ─────────────────────────
 function groupByDept(slides) {
   const groups = []
   let current  = null
@@ -147,8 +136,7 @@ function groupByDept(slides) {
   return groups
 }
 
-// ── Build a flat, ordered list of slide descriptors shared by grid + presenter view ──
-function buildSlideList(deck, funnelConfig) {
+function buildSlideList(deck, funnelConfig, teamConfig) {
   const groups = groupByDept(deck.slides)
   const list = [{ kind: 'cover', label: 'Cover' }]
   for (const group of groups) {
@@ -157,8 +145,14 @@ function buildSlideList(deck, funnelConfig) {
       list.push({ kind: 'content', label: group.dept, slide })
     }
   }
-  if (funnelConfig) {
+  if (funnelConfig?.current) {
+    list.push({ kind: 'funnel', label: 'Current Funnel', funnelConfig: funnelConfig.current, funnelLabel: 'CURRENT' })
+    list.push({ kind: 'funnel', label: 'Target Funnel',  funnelConfig: funnelConfig.target,  funnelLabel: 'TARGET' })
+  } else if (funnelConfig) {
     list.push({ kind: 'funnel', label: 'Funnel', funnelConfig })
+  }
+  if (teamConfig) {
+    list.push({ kind: 'team', label: 'My Team', teamConfig })
   }
   list.push({ kind: 'closing', label: 'Closing' })
   return list
@@ -169,7 +163,8 @@ function renderSlide(item) {
     case 'cover':   return <CoverSlidePreview />
     case 'section': return <SectionSlidePreview dept={item.dept} />
     case 'closing': return <ClosingSlidePreview />
-    case 'funnel':  return <FunnelSlidePreview config={item.funnelConfig} />
+    case 'funnel':  return <FunnelSlidePreview config={item.funnelConfig} label={item.funnelLabel} />
+    case 'team':    return <TeamSlidePreview config={item.teamConfig} />
     default:        return <ContentSlidePreview slide={item.slide} />
   }
 }
@@ -205,9 +200,12 @@ function PresenterView({ slides, startIndex, onClose }) {
   )
 }
 
-export default function PreviewPanel({ deck, funnelConfig, isGenerating, onExport, isExporting }) {
-  const [presenting, setPresenting] = useState(false)
-  const [startIndex, setStartIndex] = useState(0)
+export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerating, onExport, isExporting, onEditSlide }) {
+  const [presenting,  setPresenting]  = useState(false)
+  const [startIndex,  setStartIndex]  = useState(0)
+  const [order,       setOrder]       = useState(null)
+  const dragIdx = useRef(null)
+  const overIdx = useRef(null)
 
   if (isGenerating) {
     return (
@@ -226,7 +224,37 @@ export default function PreviewPanel({ deck, funnelConfig, isGenerating, onExpor
     )
   }
 
-  const slides = buildSlideList(deck, funnelConfig)
+  const baseSlides = buildSlideList(deck, funnelConfig, teamConfig)
+  const slides = order ? order.map(i => baseSlides[i]) : baseSlides
+
+  function onDragStart(e, i) {
+    dragIdx.current = i
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  function onDragOver(e, i) {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    overIdx.current = i
+  }
+
+  function onDrop(e, i) {
+    e.preventDefault()
+    const from = dragIdx.current
+    if (from === null || from === i) return
+    const base = order || baseSlides.map((_, idx) => idx)
+    const next = [...base]
+    const [moved] = next.splice(from, 1)
+    next.splice(i, 0, moved)
+    setOrder(next)
+    dragIdx.current = null
+    overIdx.current = null
+  }
+
+  function onDragEnd() {
+    dragIdx.current = null
+    overIdx.current = null
+  }
 
   return (
     <div style={S.wrapper}>
@@ -243,7 +271,7 @@ export default function PreviewPanel({ deck, funnelConfig, isGenerating, onExpor
           </button>
           <button
             style={{ ...S.exportBtn, opacity: isExporting ? 0.5 : 1, cursor: isExporting ? 'not-allowed' : 'pointer' }}
-            onClick={onExport}
+            onClick={() => onExport(slides)}
             disabled={isExporting}
           >
             {isExporting ? 'Exporting…' : 'Export PowerPoint ↓'}
@@ -254,12 +282,34 @@ export default function PreviewPanel({ deck, funnelConfig, isGenerating, onExpor
       <div style={S.grid}>
         {slides.map((item, i) => (
           <div
-            key={i}
-            style={S.slideWrapper}
+            key={`${item.kind}-${i}`}
+            draggable
+            onDragStart={e => onDragStart(e, i)}
+            onDragOver={e => onDragOver(e, i)}
+            onDrop={e => onDrop(e, i)}
+            onDragEnd={onDragEnd}
+            style={{ ...S.slideWrapper, cursor: 'grab' }}
             onClick={() => { setStartIndex(i); setPresenting(true) }}
           >
             <div style={S.slideLabel}>Slide {i + 1} · {item.label}</div>
             <div style={S.slideTile}>{renderSlide(item)}</div>
+            {item.kind === 'content' && (
+              <div style={S.notesStrip}>
+                {item.slide?.notes?.trim()
+                  ? <>
+                      <span style={S.notesIcon}>📝</span>
+                      <span style={S.notesText}>{item.slide.notes.trim()}</span>
+                    </>
+                  : <span style={{ ...S.notesText, color: 'var(--color-text-muted)', fontStyle: 'italic' }}>No notes</span>
+                }
+                {onEditSlide && (
+                  <button
+                    style={S.notesEditBtn}
+                    onClick={e => { e.stopPropagation(); onEditSlide(item) }}
+                  >Edit</button>
+                )}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -279,7 +329,6 @@ const S = {
   grid:           { flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16, alignContent: 'start' },
   slideWrapper:   { display: 'flex', flexDirection: 'column', gap: 5, cursor: 'pointer' },
   slideLabel:     { fontSize: 11, color: 'var(--color-text-muted)', fontWeight: 500 },
-  // Fixed 16:9 box so every slide tile renders at the same size/shape regardless of content
   slideTile:      { width: '100%', aspectRatio: '16 / 9', borderRadius: 'var(--radius-sm)', overflow: 'hidden', border: '0.5px solid var(--color-border)' },
   slide:          { width: '100%', height: '100%', boxSizing: 'border-box' },
   center:         { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 },
@@ -289,4 +338,8 @@ const S = {
   presenterClose:   { position: 'fixed', top: 20, right: 24, background: 'transparent', color: '#fff', border: '0.5px solid rgba(255,255,255,0.3)', borderRadius: 'var(--radius-pill)', padding: '6px 14px', fontSize: 13, cursor: 'pointer' },
   presenterNav:     { position: 'fixed', top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', borderRadius: '50%', width: 44, height: 44, fontSize: 22, cursor: 'pointer' },
   presenterCounter: { position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', color: 'rgba(255,255,255,0.7)', fontSize: 13 },
+  notesStrip:       { display: 'flex', gap: 5, alignItems: 'flex-start', padding: '5px 8px', background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-sm)', marginTop: 2 },
+  notesIcon:        { fontSize: 10, flexShrink: 0, lineHeight: 1.6 },
+  notesText:        { fontSize: 10, color: 'var(--color-text-muted)', lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', flex: 1 },
+  notesEditBtn:     { flexShrink: 0, fontSize: 9, background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 3, padding: '1px 6px', cursor: 'pointer', color: 'var(--color-text-muted)' },
 }

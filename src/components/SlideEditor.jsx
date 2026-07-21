@@ -14,30 +14,6 @@ function RichText({ text }) {
 
 const FONTS = [
   { label: 'Arial', value: 'Arial, sans-serif' },
-  { label: 'Georgia', value: 'Georgia, serif' },
-  { label: 'Trebuchet MS', value: "'Trebuchet MS', sans-serif" },
-  { label: 'Calibri', value: 'Calibri, sans-serif' },
-  { label: 'Palatino', value: "'Palatino Linotype', serif" },
-  { label: 'Verdana', value: 'Verdana, sans-serif' },
-]
-
-const LAYOUTS = [
-  { id: 'title-left',   label: 'Title Left',    icon: '▤' },
-  { id: 'title-top',    label: 'Title Top',      icon: '▥' },
-  { id: 'split',        label: 'Two Column',     icon: '▦' },
-  { id: 'centered',     label: 'Centered',       icon: '▣' },
-  { id: 'image-right',  label: 'Image Right',    icon: '◧' },
-  { id: 'full-image',   label: 'Full Background',icon: '█' },
-]
-
-const BG_PRESETS = [
-  { label: 'White',       bg: '#FFFFFF', text: '#1a1a1a', accent: '#CD2F37' },
-  { label: 'Dark',        bg: '#1E2761', text: '#FFFFFF', accent: '#CADCFC' },
-  { label: 'Spark Red',   bg: '#CD2F37', text: '#FFFFFF', accent: '#FFFFFF' },
-  { label: 'Charcoal',    bg: '#36454F', text: '#F2F2F2', accent: '#ef4444' },
-  { label: 'Slate',       bg: '#2C3E50', text: '#ECF0F1', accent: '#3498db' },
-  { label: 'Forest',      bg: '#2C5F2D', text: '#F5F5F5', accent: '#97BC62' },
-  { label: 'Custom',      bg: null,      text: null,      accent: null },
 ]
 
 function clamp(v, min, max) {
@@ -481,10 +457,14 @@ export default function SlideEditor({ slide, onSave, onClose }) {
     title:   slide.title   ?? '',
     body:    slide.body    ?? '',
     source:  slide.source  ?? '',
+    notes:   slide.notes   ?? '',
     bullets: slide.bullets?.length
       ? [...slide.bullets]
       : (slide.body ?? '').split('\n').filter(Boolean),
     style: {
+      // Spread all existing style fields first so nothing (tableBox, bgImage, etc.)
+      // is silently dropped when the editor opens and saves without touching that field.
+      ...slide.style,
       font:    slide.style?.font    ?? FONTS[0].value,
       layout:  slide.style?.layout  ?? 'title-top',
       bg:      slide.style?.bg      ?? '#FFFFFF',
@@ -496,8 +476,8 @@ export default function SlideEditor({ slide, onSave, onClose }) {
     },
   })
   const [bgImage,       setBgImage]       = useState(slide.style?.bgImage ?? null)
-  const [activePanel,   setActivePanel]   = useState('content') // content | layout | style
-  const [fullscreen,    setFullscreen]    = useState(false)
+  const [activePanel,   setActivePanel]   = useState('content') // content | images | notes
+  const [fullscreen,    setFullscreen]    = useState(true)
   const [controlsWidth, setControlsWidth] = useState(300)
   const splitterDragRef = useRef(null)
 
@@ -619,13 +599,6 @@ export default function SlideEditor({ slide, onSave, onClose }) {
     }
   }
 
-  function applyPreset(preset) {
-    if (!preset.bg) return
-    updateStyle('bg', preset.bg)
-    updateStyle('textCol', preset.text)
-    updateStyle('accent', preset.accent)
-  }
-
   function handleBgUpload(e) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -667,6 +640,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
       bullets: draft.bullets.filter(Boolean),
       body:    draft.bullets.filter(Boolean).join('\n'),
       source:  draft.source,
+      notes:   draft.notes,
       style:   draft.style,
       table:   table && table.headers.length > 0 ? table : null,
     }
@@ -696,13 +670,18 @@ export default function SlideEditor({ slide, onSave, onClose }) {
           <div style={{ ...styles.controls, width: controlsWidth }}>
             {/* Panel tabs */}
             <div style={styles.panelTabs}>
-              {['content', 'layout', 'style'].map(p => (
+              {[
+                { id: 'content', label: 'Content' },
+                { id: 'images',  label: 'Images', badge: (draft.style.images?.length || draft.style.bgImage || draft.style.contentImage) ? '●' : null },
+                { id: 'notes',   label: 'Notes', badge: draft.notes?.trim() ? '●' : null },
+              ].map(p => (
                 <button
-                  key={p}
-                  style={{ ...styles.panelTab, ...(activePanel === p ? styles.panelTabActive : {}) }}
-                  onClick={() => setActivePanel(p)}
+                  key={p.id}
+                  style={{ ...styles.panelTab, ...(activePanel === p.id ? styles.panelTabActive : {}) }}
+                  onClick={() => setActivePanel(p.id)}
                 >
-                  {p.charAt(0).toUpperCase() + p.slice(1)}
+                  {p.label}
+                  {p.badge && <span style={{ marginLeft: 4, fontSize: 8, color: 'var(--color-accent)' }}>{p.badge}</span>}
                 </button>
               ))}
             </div>
@@ -812,111 +791,58 @@ export default function SlideEditor({ slide, onSave, onClose }) {
               </div>
             )}
 
-            {/* Layout panel */}
-            {activePanel === 'layout' && (
+            {/* Images panel */}
+            {activePanel === 'images' && (
               <div style={styles.panel}>
-                <label style={styles.label}>Layout</label>
-                <div style={styles.layoutGrid}>
-                  {LAYOUTS.map(l => (
-                    <button
-                      key={l.id}
-                      style={{ ...styles.layoutBtn, ...(draft.style.layout === l.id ? styles.layoutBtnActive : {}) }}
-                      onClick={() => updateStyle('layout', l.id)}
-                    >
-                      <span style={styles.layoutIcon}>{l.icon}</span>
-                      <span style={styles.layoutLabel}>{l.label}</span>
-                    </button>
-                  ))}
-                </div>
-
-                <label style={styles.label}>Background image</label>
-                <div style={styles.uploadRow}>
-                  <button style={styles.uploadBtn} onClick={() => bgInputRef.current?.click()}>
-                    {bgImage ? '↺ Replace image' : '↑ Upload image'}
-                  </button>
-                  {bgImage && (
-                    <button style={styles.clearBtn} onClick={() => { setBgImage(null); updateStyle('bgImage', null) }}>
-                      Remove
-                    </button>
-                  )}
-                  <input ref={bgInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBgUpload} />
-                </div>
-
-                <label style={styles.label}>Images (drag in preview to position/resize)</label>
+                <label style={styles.label}>Overlay images</label>
+                <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: 0 }}>
+                  Upload images and drag/resize them directly on the slide preview.
+                </p>
                 <div style={styles.uploadRow}>
                   <button style={styles.uploadBtn} onClick={() => freeImgRef.current?.click()}>+ Add image</button>
                   <input ref={freeImgRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFreeImageUpload} />
                 </div>
-                {draft.style.images?.length > 0 && (
+                {draft.style.images?.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {draft.style.images.map((img, i) => (
                       <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <img src={img.src} style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4 }} />
-                        <span style={{ fontSize: 11, color: 'var(--color-text-muted)', flex: 1 }}>Image {i + 1}</span>
-                        <button style={styles.microBtn} onClick={() => removeFreeImage(i)}>✕</button>
+                        <img src={img.src} style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4, border: '0.5px solid var(--color-border)' }} />
+                        <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', flex: 1 }}>Image {i + 1}</span>
+                        <button style={styles.microBtn} onClick={() => removeFreeImage(i)}>✕ Remove</button>
                       </div>
                     ))}
                   </div>
-                )}
-
-                {(draft.style.layout === 'image-right') && (
-                  <>
-                    <label style={styles.label}>Content image (right panel)</label>
-                    <div style={styles.uploadRow}>
-                      <button style={styles.uploadBtn} onClick={() => contentImgRef.current?.click()}>
-                        {draft.style.contentImage ? '↺ Replace' : '↑ Upload'}
-                      </button>
-                      {draft.style.contentImage && (
-                        <button style={styles.clearBtn} onClick={() => updateStyle('contentImage', null)}>Remove</button>
-                      )}
-                      <input ref={contentImgRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleContentImgUpload} />
-                    </div>
-                  </>
+                ) : (
+                  <div style={{ fontSize: 12, color: 'var(--color-text-muted)', padding: '12px 0', textAlign: 'center', border: '0.5px dashed var(--color-border)', borderRadius: 6 }}>
+                    No overlay images yet
+                  </div>
                 )}
               </div>
             )}
 
-            {/* Style panel */}
-            {activePanel === 'style' && (
+            {/* Notes panel */}
+            {activePanel === 'notes' && (
               <div style={styles.panel}>
-                <label style={styles.label}>Color preset</label>
-                <div style={styles.presetGrid}>
-                  {BG_PRESETS.filter(p => p.bg).map(p => (
-                    <button
-                      key={p.label}
-                      style={{ ...styles.presetBtn, background: p.bg, color: p.text, border: draft.style.bg === p.bg ? `2px solid ${p.accent}` : '0.5px solid rgba(0,0,0,0.15)' }}
-                      onClick={() => applyPreset(p)}
-                      title={p.label}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-
-                <label style={styles.label}>Custom background color</label>
-                <div style={styles.colorRow}>
-                  <input type="color" style={styles.colorPicker} value={draft.style.bg} onChange={e => updateStyle('bg', e.target.value)} />
-                  <span style={styles.colorVal}>{draft.style.bg}</span>
-                </div>
-
-                <label style={styles.label}>Text color</label>
-                <div style={styles.colorRow}>
-                  <input type="color" style={styles.colorPicker} value={draft.style.textCol} onChange={e => updateStyle('textCol', e.target.value)} />
-                  <span style={styles.colorVal}>{draft.style.textCol}</span>
-                </div>
-
-                <label style={styles.label}>Accent color</label>
-                <div style={styles.colorRow}>
-                  <input type="color" style={styles.colorPicker} value={draft.style.accent} onChange={e => updateStyle('accent', e.target.value)} />
-                  <span style={styles.colorVal}>{draft.style.accent}</span>
-                </div>
-
-                <label style={styles.label}>Font</label>
-                <select style={styles.select} value={draft.style.font} onChange={e => updateStyle('font', e.target.value)}>
-                  {FONTS.map(f => (
-                    <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>{f.label}</option>
-                  ))}
-                </select>
+                <label style={styles.label}>Presenter notes</label>
+                <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: 0 }}>
+                  Notes appear below the slide in the preview and in the PowerPoint notes section when exported.
+                </p>
+                <textarea
+                  style={{
+                    ...styles.input,
+                    minHeight: 220,
+                    resize: 'vertical',
+                    fontFamily: 'inherit',
+                    fontSize: 13,
+                    lineHeight: 1.6,
+                  }}
+                  value={draft.notes}
+                  onChange={e => update('notes', e.target.value)}
+                  placeholder="Add presenter notes, talking points, or reminders for this slide…"
+                />
+                <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: 0 }}>
+                  {draft.notes?.trim().split(/\s+/).filter(Boolean).length || 0} words
+                </p>
               </div>
             )}
           </div>
@@ -942,7 +868,22 @@ export default function SlideEditor({ slide, onSave, onClose }) {
                 onSourceChange={text => update('source', text.trim())}
               />
               <div style={styles.previewHint}>
-                {draft.bullets.length} bullet{draft.bullets.length !== 1 ? 's' : ''} · {draft.style.layout.replace('-', ' ')} layout
+                {draft.bullets.length} bullet{draft.bullets.length !== 1 ? 's' : ''}
+                {draft.style.images?.length ? ` · ${draft.style.images.length} overlay image${draft.style.images.length !== 1 ? 's' : ''}` : ''}
+              </div>
+              {/* Notes strip below canvas */}
+              <div style={styles.notesStrip}>
+                <div style={styles.notesStripHeader}>
+                  <span style={styles.notesStripLabel}>Notes</span>
+                  <button
+                    style={styles.notesStripEdit}
+                    onClick={() => setActivePanel('notes')}
+                  >Edit</button>
+                </div>
+                {draft.notes?.trim()
+                  ? <p style={styles.notesStripText}>{draft.notes}</p>
+                  : <p style={{ ...styles.notesStripText, color: 'var(--color-text-muted)', fontStyle: 'italic' }}>No notes — click Edit to add presenter notes</p>
+                }
               </div>
             </div>
           </div>
@@ -989,22 +930,17 @@ const styles = {
   editorRowNum:     { background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', padding: '2px 6px', fontSize: 10, color: 'var(--color-text-muted)', textAlign: 'center', width: 24 },
   editorTd:         { border: '0.5px solid var(--color-border)', padding: 0 },
   editorCellInput:  { border: 'none', background: 'none', padding: '4px 6px', fontSize: 11, color: 'var(--color-text-primary)', outline: 'none', width: '100%', minWidth: 70 },
-  layoutGrid:       { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
-  layoutBtn:        { background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 7, padding: '10px 6px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 },
-  layoutBtnActive:  { border: '2px solid var(--color-text-primary)', background: 'var(--color-bg-tertiary)' },
-  layoutIcon:       { fontSize: 20, lineHeight: 1 },
-  layoutLabel:      { fontSize: 10, color: 'var(--color-text-secondary)', fontWeight: 500 },
   uploadRow:        { display: 'flex', gap: 8, alignItems: 'center' },
   uploadBtn:        { background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer', color: 'var(--color-text-primary)' },
   clearBtn:         { background: 'none', border: '0.5px solid #ef444466', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer', color: '#ef4444' },
-  presetGrid:       { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 },
-  presetBtn:        { borderRadius: 6, padding: '8px 4px', fontSize: 11, cursor: 'pointer', fontWeight: 500, textAlign: 'center' },
-  colorRow:         { display: 'flex', alignItems: 'center', gap: 10 },
-  colorPicker:      { width: 36, height: 36, border: '0.5px solid var(--color-border)', borderRadius: 6, cursor: 'pointer', padding: 2 },
-  colorVal:         { fontSize: 12, color: 'var(--color-text-muted)', fontFamily: 'monospace' },
   select:           { background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 7, padding: '7px 10px', fontSize: 13, color: 'var(--color-text-primary)', width: '100%', outline: 'none' },
   preview:          { flex: 1, display: 'flex', flexDirection: 'column', padding: '20px 24px', gap: 12, background: 'var(--color-bg-secondary)', overflow: 'auto' },
-  previewInner:     { width: '100%' },
+  previewInner:     { width: '100%', maxWidth: 'calc((100vh - 260px) * 16 / 9)', margin: '0 auto' },
   previewLabel:     { fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' },
   previewHint:      { fontSize: 11, color: 'var(--color-text-muted)', textAlign: 'center' },
+  notesStrip:       { marginTop: 12, border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 6 },
+  notesStripHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  notesStripLabel:  { fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' },
+  notesStripEdit:   { fontSize: 11, background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', color: 'var(--color-text-secondary)' },
+  notesStripText:   { margin: 0, fontSize: 13, color: 'var(--color-text-primary)', lineHeight: 1.6, whiteSpace: 'pre-wrap' },
 }

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { loadFiles, loadGlobalFiles, buildAIContext } from '../lib/files.js'
 import { callClaude } from '../lib/api.js'
+import { api } from '../lib/apiClient.js'
 
 function getSuggestions(clientName) {
   const c = clientName || 'this client'
@@ -13,11 +14,59 @@ function getSuggestions(clientName) {
 }
 
 export default function AIAssistant({ clientId, clientName, deptId, deptName, deptColor, allSlides, onAddSlide }) {
-  const [messages,  setMessages]  = useState([])
-  const [input,     setInput]     = useState('')
-  const [loading,   setLoading]   = useState(false)
+  const [messages,       setMessages]       = useState([])
+  const [input,          setInput]          = useState('')
+  const [loading,        setLoading]        = useState(false)
+  const [selectedImages, setSelectedImages] = useState([])
+  const [showFiles,      setShowFiles]      = useState(false)
+  const [excludedFiles,  setExcludedFiles]  = useState(new Set())  // filenames to exclude
   const bottomRef  = useRef(null)
   const inputRef   = useRef(null)
+
+  // All available files (dept + global) for the checkbox panel
+  function getAllFiles() {
+    const fileData   = loadFiles(clientId, deptId)
+    const globalData = loadGlobalFiles(clientId)
+    return [
+      ...globalData.files.map(f => ({ ...f, _global: true })),
+      ...fileData.files.map(f => ({ ...f, _global: false })),
+    ]
+  }
+
+  function toggleFile(name) {
+    setExcludedFiles(prev => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
+
+  // Collect image files from dept + global
+  function getAvailableImages() {
+    const fileData   = loadFiles(clientId, deptId)
+    const globalData = loadGlobalFiles(clientId)
+    const all = [...(globalData.files ?? []), ...(fileData.files ?? [])]
+    return all.filter(f => {
+      const ext  = f.name.split('.').pop().toLowerCase()
+      const mime = f.content?.mimeType ?? ''
+      return mime.startsWith('image/') || ['png','jpg','jpeg','gif','webp'].includes(ext)
+    }).map(f => {
+      const raw  = f.content?.base64 ?? ''
+      const b64  = raw.includes(',') ? raw.split(',')[1] : raw
+      const ext  = f.name.split('.').pop().toLowerCase()
+      const mime = f.content?.mimeType || `image/${ext === 'jpg' ? 'jpeg' : ext}`
+      return { name: f.name, base64: b64, mimeType: mime, dataUrl: raw.startsWith('data:') ? raw : `data:${mime};base64,${b64}` }
+    })
+  }
+
+  function toggleImage(img) {
+    setSelectedImages(prev =>
+      prev.find(i => i.name === img.name)
+        ? prev.filter(i => i.name !== img.name)
+        : [...prev, img]
+    )
+  }
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -29,14 +78,19 @@ export default function AIAssistant({ clientId, clientName, deptId, deptName, de
   function buildContext() {
     const fileData   = loadFiles(clientId, deptId)
     const globalData = loadGlobalFiles(clientId)
-    const { textSummary, pdfFiles } = buildAIContext(fileData, deptName, globalData)
+
+    // Filter out excluded files before building AI context
+    const filteredFileData   = { ...fileData,   files: fileData.files.filter(f   => !excludedFiles.has(f.name)) }
+    const filteredGlobalData = { ...globalData, files: globalData.files.filter(f => !excludedFiles.has(f.name)) }
+
+    const { textSummary, pdfFiles } = buildAIContext(filteredFileData, deptName, filteredGlobalData)
     pdfFilesRef.current = pdfFiles
 
-    const globalFiles = globalData.files.map(f => {
+    const globalFiles = filteredGlobalData.files.map(f => {
       const isPdf = f.name.toLowerCase().endsWith('.pdf') || (f.content?.mimeType ?? '').includes('pdf')
       return `  - "${f.name}" [GLOBAL]${isPdf ? ' (PDF, read natively)' : ''}${f.type === 'link' ? ' (linked file)' : ''}`
     })
-    const deptFiles = fileData.files.map(f => {
+    const deptFiles = filteredFileData.files.map(f => {
       const isPdf = f.name.toLowerCase().endsWith('.pdf') || (f.content?.mimeType ?? '').includes('pdf')
       return `  - "${f.name}"${isPdf ? ' (PDF, read natively)' : ''}${f.type === 'link' ? ' (linked file)' : ''}`
     })
@@ -81,15 +135,22 @@ BULLETS:
 - Insight-driven point in plain English, specific to the client
 - Clear and punchy — no markdown, no fluff
 - Action-oriented or data-backed conclusion
+IMAGE: filename.png
+PLACEMENT: bottom
 TABLE (only include if the user asks for a table or data grid):
 Month | Metric | Value
 Jan 2026 | Assisted Hires | 3
 Jan 2026 | Total Hires | 14
 SLIDE_END
 
+IMAGE and PLACEMENT rules:
+- If an image was attached to this conversation and it is relevant to the slide, include IMAGE: <exact filename> and PLACEMENT: bottom or right
+- "bottom" = image spans full width below bullets (best for charts, graphs, data visuals — use by default)
+- "right" = image on right side, text on left (best for product photos or portraits)
+- Omit IMAGE and PLACEMENT lines entirely if no image was attached or if it doesn't fit the slide
 If the user asks for a table, replace the TABLE example rows with real data from the files.
 The first TABLE row is always headers. Use pipe | to separate columns.
-You can include both BULLETS and TABLE in the same slide, or just one.
+You can include BULLETS, IMAGE, and TABLE in the same slide, or just some of them.
 
 --- Files available (${fileData.files.length} total) ---
 ${fileInventory}
@@ -106,8 +167,10 @@ ${existingSlides || 'No slides added yet.'}
     const userText = text ?? input.trim()
     if (!userText || loading) return
     setInput('')
+    const attachedImages = [...selectedImages]
+    setSelectedImages([])
 
-    const userMsg = { role: 'user', text: userText }
+    const userMsg = { role: 'user', text: userText, images: attachedImages.map(i => i.name) }
     const history = [...messages, userMsg]
     setMessages(history)
     setLoading(true)
@@ -117,23 +180,32 @@ ${existingSlides || 'No slides added yet.'}
       const system = buildContext()
       const pdfs   = pdfFilesRef.current
 
-      // Build conversation — inject PDF document blocks into the FIRST user message
+      // Build conversation — inject PDF + image blocks into the FIRST user message
       const convo = history.map((m, idx) => {
         if (m.role !== 'user') return { role: 'assistant', content: m.text }
 
-        // Attach PDFs only on the first user message so we don't repeat them
+        const extraBlocks = []
+
+        // Attach PDFs only on the first user message
         if (idx === 0 && pdfs.length > 0) {
-          const docBlocks = pdfs.map(pdf => ({
+          pdfs.forEach(pdf => extraBlocks.push({
             type:   'document',
             source: { type: 'base64', media_type: 'application/pdf', data: pdf.base64 },
             title:  pdf.name,
           }))
-          return {
-            role:    'user',
-            content: [...docBlocks, { type: 'text', text: m.text }],
-          }
         }
 
+        // Attach selected images on this specific message
+        if (idx === history.length - 1 && attachedImages.length > 0) {
+          attachedImages.forEach(img => extraBlocks.push({
+            type:   'image',
+            source: { type: 'base64', media_type: img.mimeType, data: img.base64 },
+          }))
+        }
+
+        if (extraBlocks.length > 0) {
+          return { role: 'user', content: [...extraBlocks, { type: 'text', text: m.text }] }
+        }
         return { role: 'user', content: m.text }
       })
 
@@ -158,8 +230,16 @@ ${existingSlides || 'No slides added yet.'}
       const data  = await res.json()
       const reply = data.content?.map(b => b.text ?? '').join('') ?? ''
 
+      // Log token usage (fire-and-forget)
+      if (data.usage) {
+        api.logTokens(clientId, ANTHROPIC_MODEL, data.usage.input_tokens ?? 0, data.usage.output_tokens ?? 0).catch(() => {})
+      }
+
+      // Build image map so parseSlides can resolve base64
+      const imageMap = Object.fromEntries(attachedImages.map(i => [i.name, i]))
+
       // Parse out any slide blocks
-      let slides  = parseSlides(reply)
+      let slides  = parseSlides(reply, imageMap)
       const stripped = reply.replace(/SLIDE_START[\s\S]*?SLIDE_END/g, '').trim()
       // Strip any markdown the AI used despite instructions
       const cleaned = stripped
@@ -192,7 +272,7 @@ ${existingSlides || 'No slides added yet.'}
           })
           const reformatData = await reformatRes.json()
           const reformatText = reformatData.content?.map(b => b.text ?? '').join('') ?? ''
-          slides = parseSlides(reformatText)
+          slides = parseSlides(reformatText, imageMap)
         } catch { /* silent — original response still shown */ }
       }
 
@@ -229,23 +309,48 @@ ${existingSlides || 'No slides added yet.'}
     return { headers: rows[0], rows: rows.slice(1) }
   }
 
-  function parseSlides(text) {
+  function parseSlides(text, imageMap = {}) {
+    // Default bodyBox matches PreviewPanel default
+    const DEFAULT_BOX = { x: 0.045, y: 0.19, w: 0.829, h: 0.63 }
+    const GAP = 0.015
+
+    function applyImagePlacement(imgName, placement, imageMap) {
+      const img = imageMap[imgName]
+      if (!img) return {}
+      const src = `data:${img.mimeType};base64,${img.base64}`
+      let imgRect, adjustedBox
+      if (placement === 'bottom') {
+        imgRect      = { x: 0.045, y: 0.50, w: 0.78, h: 0.38 }
+        adjustedBox  = { ...DEFAULT_BOX, h: 0.28 }
+      } else {
+        imgRect      = { x: 0.575, y: 0.19, w: 0.35, h: 0.60 }
+        adjustedBox  = { ...DEFAULT_BOX, w: imgRect.x - DEFAULT_BOX.x - GAP }
+      }
+      return { style: { images: [{ src, ...imgRect }], bodyBox: adjustedBox } }
+    }
+
     // Primary parser — strict SLIDE_START/SLIDE_END blocks
     const blocks = [...text.matchAll(/SLIDE_START([\s\S]*?)SLIDE_END/g)]
-    
+
     if (blocks.length > 0) {
       return blocks.map(m => {
-        const block    = m[1]
-        const titleM   = block.match(/TITLE:\s*(.+)/)
-        // Bullets stop at TABLE line
-        const bulletSection = block.split(/^TABLE/m)[0]
-        const bulletsM = [...bulletSection.matchAll(/^[-•*]\s*(.+)/gm)]
-        const table    = parseTable(block)
+        const block     = m[1]
+        const titleM    = block.match(/TITLE:\s*(.+)/)
+        const imageM    = block.match(/^IMAGE:\s*(.+)/m)
+        const placementM= block.match(/^PLACEMENT:\s*(.+)/m)
+        // Bullets stop at TABLE or IMAGE line
+        const bulletSection = block.split(/^(?:TABLE|IMAGE)/m)[0]
+        const bulletsM  = [...bulletSection.matchAll(/^[-•*]\s*(.+)/gm)]
+        const table     = parseTable(block)
+        const imgName   = imageM?.[1]?.trim()
+        const placement = placementM?.[1]?.trim() ?? 'bottom'
+        const imgStyle  = imgName ? applyImagePlacement(imgName, placement, imageMap) : {}
         return {
           title:   stripMd(titleM?.[1]?.trim() ?? 'Untitled slide'),
           body:    bulletsM.map(b => stripMd(b[1].trim())).join('\n'),
           bullets: bulletsM.map(b => stripMd(b[1].trim())),
           table,
+          ...imgStyle,
         }
       })
     }
@@ -295,16 +400,7 @@ ${existingSlides || 'No slides added yet.'}
           return (
           <div style={styles.welcome}>
             <p style={styles.welcomeTitle}>Ready to build slides for {clientName || 'this client'}</p>
-            {allFileNames.length > 0 ? (
-              <div style={styles.fileList}>
-                <p style={styles.fileListLabel}>Files I can read:</p>
-                {allFileNames.map((f, i) => (
-                  <span key={i} style={{ ...styles.fileChip, ...(f.global ? styles.fileChipGlobal : {}) }}>
-                    {f.global ? '🌐 ' : ''}{f.name}
-                  </span>
-                ))}
-              </div>
-            ) : (
+            {allFileNames.length === 0 && (
               <p style={styles.welcomeSub}>
                 No files uploaded yet. Add files in the <strong>Files</strong> tab or
                 the <strong>Global Files</strong> section, then come back here.
@@ -325,7 +421,14 @@ ${existingSlides || 'No slides added yet.'}
         {messages.map((msg, i) => (
           <div key={i} style={msg.role === 'user' ? styles.userBubbleWrap : styles.aiBubbleWrap}>
             {msg.role === 'user' ? (
-              <div style={styles.userBubble}>{msg.text}</div>
+              <div style={styles.userBubble}>
+                {msg.text}
+                {msg.images?.length > 0 && (
+                  <div style={styles.userBubbleImages}>
+                    {msg.images.map(n => <span key={n} style={styles.userBubbleImg}>🖼 {n}</span>)}
+                  </div>
+                )}
+              </div>
             ) : (
               <div style={styles.aiBubble}>
                 {msg.text && <p style={styles.aiText}>{msg.text}</p>}
@@ -338,7 +441,7 @@ ${existingSlides || 'No slides added yet.'}
                       <button
                         style={styles.addSlideBtn}
                         onClick={() => {
-                          onAddSlide({ title: slide.title, body: slide.body, bullets: slide.bullets, table: slide.table ?? null, style: {} })
+                          onAddSlide({ title: slide.title, body: slide.body, bullets: slide.bullets, table: slide.table ?? null, style: slide.style ?? {} })
                         }}
                       >
                         + Add to deck
@@ -390,6 +493,67 @@ ${existingSlides || 'No slides added yet.'}
 
         <div ref={bottomRef} />
       </div>
+
+      {/* File selector panel */}
+      {(() => {
+        const allFiles = getAllFiles()
+        if (!allFiles.length) return null
+        const activeCount = allFiles.length - excludedFiles.size
+        return (
+          <div style={styles.fileSelector}>
+            <button style={styles.fileSelectorToggle} onClick={() => setShowFiles(v => !v)}>
+              <span style={styles.fileSelectorIcon}>{showFiles ? '▾' : '▸'}</span>
+              <span>Context files</span>
+              <span style={styles.fileSelectorCount}>{activeCount}/{allFiles.length} active</span>
+            </button>
+            {showFiles && (
+              <div style={styles.fileSelectorList}>
+                {allFiles.map(f => {
+                  const checked = !excludedFiles.has(f.name)
+                  return (
+                    <label key={f.name} style={styles.fileRow}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleFile(f.name)}
+                        style={{ flexShrink: 0 }}
+                      />
+                      {f._global && <span style={styles.globalBadge}>Global</span>}
+                      <span style={{ ...styles.fileRowName, opacity: checked ? 1 : 0.4 }}>{f.name}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
+      {/* Image selector */}
+      {(() => {
+        const availableImages = getAvailableImages()
+        if (!availableImages.length) return null
+        return (
+          <div style={styles.imageSelector}>
+            <span style={styles.imageSelectorLabel}>Attach image:</span>
+            {availableImages.map(img => {
+              const selected = selectedImages.find(i => i.name === img.name)
+              return (
+                <button
+                  key={img.name}
+                  style={{ ...styles.imageChip, ...(selected ? styles.imageChipSelected : {}) }}
+                  onClick={() => toggleImage(img)}
+                  title={img.name}
+                >
+                  <img src={img.dataUrl} style={styles.imageThumb} alt={img.name} />
+                  <span style={styles.imageChipName}>{img.name}</span>
+                  {selected && <span style={styles.imageChipCheck}>✓</span>}
+                </button>
+              )
+            })}
+          </div>
+        )
+      })()}
 
       {/* Input */}
       <div style={styles.inputArea}>
@@ -458,6 +622,23 @@ const styles = {
   dot1:           { width: 6, height: 6, borderRadius: '50%', background: 'var(--color-text-muted)', animation: 'bounce 1.2s ease infinite 0s' },
   dot2:           { width: 6, height: 6, borderRadius: '50%', background: 'var(--color-text-muted)', animation: 'bounce 1.2s ease infinite 0.2s' },
   dot3:           { width: 6, height: 6, borderRadius: '50%', background: 'var(--color-text-muted)', animation: 'bounce 1.2s ease infinite 0.4s' },
+  fileSelector:       { borderTop: '0.5px solid var(--color-border)', background: 'var(--color-bg)', flexShrink: 0 },
+  fileSelectorToggle: { display: 'flex', alignItems: 'center', gap: 6, width: '100%', background: 'none', border: 'none', padding: '6px 12px', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'left' },
+  fileSelectorIcon:   { fontSize: 10, flexShrink: 0 },
+  fileSelectorCount:  { marginLeft: 'auto', fontSize: 10, fontWeight: 500, color: 'var(--color-text-muted)', background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 99, padding: '1px 7px' },
+  fileSelectorList:   { display: 'flex', flexDirection: 'column', gap: 1, padding: '4px 12px 8px', maxHeight: 140, overflowY: 'auto' },
+  fileRow:            { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', padding: '2px 0' },
+  fileRowName:        { fontSize: 12, color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, transition: 'opacity 0.15s' },
+  globalBadge:        { fontSize: 9, fontWeight: 700, color: '#7F77DD', background: '#7F77DD18', border: '0.5px solid #7F77DD44', borderRadius: 99, padding: '1px 5px', flexShrink: 0, textTransform: 'uppercase', letterSpacing: '0.05em' },
+  imageSelector:      { display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderTop: '0.5px solid var(--color-border)', background: 'var(--color-bg)', flexShrink: 0, flexWrap: 'wrap' },
+  imageSelectorLabel: { fontSize: 10, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', flexShrink: 0 },
+  imageChip:          { display: 'flex', alignItems: 'center', gap: 4, background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 6, padding: '3px 7px', cursor: 'pointer', fontSize: 11, color: 'var(--color-text-secondary)', maxWidth: 140 },
+  imageChipSelected:  { background: '#1D9E7518', borderColor: '#1D9E75', color: '#1D9E75' },
+  imageThumb:         { width: 20, height: 20, objectFit: 'cover', borderRadius: 3, flexShrink: 0 },
+  imageChipName:      { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 },
+  imageChipCheck:     { flexShrink: 0, fontWeight: 700 },
+  userBubbleImages:   { marginTop: 5, display: 'flex', flexWrap: 'wrap', gap: 4 },
+  userBubbleImg:      { fontSize: 10, background: 'rgba(255,255,255,0.2)', borderRadius: 4, padding: '2px 6px' },
   inputArea:      { display: 'flex', gap: 8, padding: '10px 12px', borderTop: '0.5px solid var(--color-border)', background: 'var(--color-bg)', flexShrink: 0, alignItems: 'flex-end' },
   textarea:       { flex: 1, background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '8px 10px', fontSize: 13, color: 'var(--color-text-primary)', resize: 'none', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5 },
   sendBtn:        { background: 'var(--color-accent)', color: '#FFFFFF', border: 'none', borderRadius: 'var(--radius-pill)', padding: '8px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer', flexShrink: 0 },
