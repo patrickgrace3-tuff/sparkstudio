@@ -65,9 +65,8 @@ export const api = {
   getClientData:  (clientId, key)        => apiFetch(`/api/clientdata/${clientId}/${key}`),
   setClientData:  (clientId, key, value) => apiFetch(`/api/clientdata/${clientId}/${key}`, { method: 'PUT', body: { value } }),
 
-  // Token logging
-  logTokens: (clientId, model, inputTokens, outputTokens) =>
-    apiFetch('/api/tokenlogs', { method: 'POST', body: { clientId, model, inputTokens, outputTokens } }),
+  // Claude AI proxy — API key stays on the server; browser sends JWT only
+  callClaude: (payload) => apiFetch('/api/claude/messages', { method: 'POST', body: payload }),
 
   // Admin
   adminStats:       ()              => apiFetch('/api/admin/stats'),
