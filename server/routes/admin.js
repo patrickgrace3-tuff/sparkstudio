@@ -139,10 +139,14 @@ router.get('/template-info', (req, res) => {
   }
 })
 
-// PUT /api/admin/template — replace template.pptx (raw binary body)
-router.put('/template', express.raw({ type: 'application/octet-stream', limit: '50mb' }), (req, res) => {
+// PUT /api/admin/template — replace template.pptx (raw binary body, max 20 MB)
+router.put('/template', express.raw({ type: 'application/octet-stream', limit: '20mb' }), (req, res) => {
   try {
     if (!req.body || req.body.length === 0) return res.status(400).json({ error: 'No file data' })
+    // PPTX/DOCX/XLSX are ZIP archives — magic bytes are PK\x03\x04
+    if (req.body[0] !== 0x50 || req.body[1] !== 0x4B || req.body[2] !== 0x03 || req.body[3] !== 0x04) {
+      return res.status(400).json({ error: 'Invalid file: expected a PPTX (ZIP) file' })
+    }
     writeFileSync(resolve(PUBLIC_DIR, 'template.pptx'), req.body)
     const stat = statSync(resolve(PUBLIC_DIR, 'template.pptx'))
     res.json({ ok: true, size: stat.size, updatedAt: stat.mtime })

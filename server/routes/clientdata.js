@@ -5,8 +5,17 @@ import { requireAuth } from '../auth.js'
 const router = Router()
 router.use(requireAuth)
 
+const ALLOWED_KEYS = new Set(['funnel', 'team', 'checklist', 'looker', 'files', 'presentation'])
+
+function validateKey(req, res, next) {
+  if (!ALLOWED_KEYS.has(req.params.dataKey)) {
+    return res.status(400).json({ error: 'Invalid data key' })
+  }
+  next()
+}
+
 // GET /api/clientdata/:clientId/:dataKey
-router.get('/:clientId/:dataKey', async (req, res) => {
+router.get('/:clientId/:dataKey', validateKey, async (req, res) => {
   try {
     const result = await query(
       'SELECT value FROM client_data WHERE client_id = $1 AND data_key = $2',
@@ -21,7 +30,7 @@ router.get('/:clientId/:dataKey', async (req, res) => {
 })
 
 // PUT /api/clientdata/:clientId/:dataKey
-router.put('/:clientId/:dataKey', async (req, res) => {
+router.put('/:clientId/:dataKey', validateKey, async (req, res) => {
   const { value } = req.body
   if (value === undefined) return res.status(400).json({ error: 'value required' })
   try {
