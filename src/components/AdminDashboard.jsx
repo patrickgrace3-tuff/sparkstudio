@@ -506,6 +506,148 @@ function fmtCost(n) {
   return `$${Number(n).toFixed(2)}`
 }
 
+// ── Slide Requests tab ────────────────────────────────────────────────────────
+function SlideRequestsTab() {
+  const [requests, setRequests] = useState([])
+  const [loading,  setLoading]  = useState(true)
+  const [err,      setErr]      = useState('')
+  const [approving, setApproving] = useState({}) // id -> { limit: string }
+  const [busy,     setBusy]     = useState({})   // id -> true while reviewing
+
+  useEffect(() => {
+    api.adminGetSlideRequests().then(setRequests).catch(e => setErr(e.message)).finally(() => setLoading(false))
+  }, [])
+
+  function startApprove(id, requestedLimit) {
+    setApproving(a => ({ ...a, [id]: { limit: String(requestedLimit ?? 10) } }))
+  }
+
+  function cancelApprove(id) {
+    setApproving(a => { const n = { ...a }; delete n[id]; return n })
+  }
+
+  async function handleReview(id, status, approvedLimit) {
+    setBusy(b => ({ ...b, [id]: true }))
+    try {
+      const updated = await api.adminReviewSlideRequest(id, status, approvedLimit ?? null)
+      setRequests(prev => prev.map(r => r.id === id ? { ...r, ...updated } : r))
+      cancelApprove(id)
+    } catch (e) { setErr(e.message) }
+    finally { setBusy(b => { const n = { ...b }; delete n[id]; return n }) }
+  }
+
+  if (loading) return <div style={S.loading}>Loading requests…</div>
+
+  const pending  = requests.filter(r => r.status === 'pending')
+  const resolved = requests.filter(r => r.status !== 'pending')
+
+  return (
+    <div style={S.tabContent}>
+      <div style={S.sectionHeader}>
+        <span style={S.sectionTitle}>Slide Limit Requests</span>
+        <span style={S.sectionSub}>{pending.length} pending</span>
+      </div>
+
+      {err && <div style={S.error}>{err}</div>}
+
+      {pending.length === 0 && (
+        <div style={{ fontSize: 13, color: 'var(--color-text-muted)', padding: '16px 0' }}>No pending requests.</div>
+      )}
+
+      {pending.map(r => (
+        <div key={r.id} style={{ background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 10, padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                {r.user_name} <span style={{ fontWeight: 400, color: 'var(--color-text-muted)' }}>({r.user_email})</span>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                Client: <strong style={{ color: 'var(--color-text-primary)' }}>{r.client_name}</strong>
+                {' · '}Requested limit: <strong style={{ color: 'var(--color-text-primary)' }}>{r.requested_limit}</strong> slides
+                {' · '}{new Date(r.created_at).toLocaleDateString()}
+              </div>
+              {r.note && (
+                <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 6, fontStyle: 'italic' }}>
+                  "{r.note}"
+                </div>
+              )}
+            </div>
+
+            {!approving[r.id] ? (
+              <div style={S.actions}>
+                <button style={S.primaryBtn} onClick={() => startApprove(r.id, r.requested_limit)} disabled={busy[r.id]}>
+                  Approve
+                </button>
+                <button style={S.dangerBtn} onClick={() => handleReview(r.id, 'rejected', null)} disabled={busy[r.id]}>
+                  {busy[r.id] ? '…' : 'Reject'}
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Grant limit:</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={200}
+                  style={{ ...S.input, width: 64, textAlign: 'center' }}
+                  value={approving[r.id].limit}
+                  onChange={e => setApproving(a => ({ ...a, [r.id]: { limit: e.target.value } }))}
+                />
+                <button
+                  style={S.primaryBtn}
+                  disabled={busy[r.id]}
+                  onClick={() => handleReview(r.id, 'approved', parseInt(approving[r.id].limit, 10) || r.requested_limit)}
+                >
+                  {busy[r.id] ? '…' : 'Confirm'}
+                </button>
+                <button style={S.ghostBtn} onClick={() => cancelApprove(r.id)}>Cancel</button>
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+
+      {resolved.length > 0 && (
+        <>
+          <div style={{ ...S.sectionHeader, marginTop: 8 }}>
+            <span style={S.sectionTitle}>Resolved</span>
+          </div>
+          <table style={S.table}>
+            <thead>
+              <tr>
+                {['User', 'Client', 'Requested', 'Approved', 'Status', 'Date'].map(h => (
+                  <th key={h} style={S.th}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {resolved.map(r => (
+                <tr key={r.id} style={S.tr}>
+                  <td style={S.td}>{r.user_name}</td>
+                  <td style={S.td}>{r.client_name}</td>
+                  <td style={S.td}>{r.requested_limit}</td>
+                  <td style={S.td}>{r.approved_limit ?? '—'}</td>
+                  <td style={S.td}>
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, borderRadius: 99, padding: '2px 8px', border: '0.5px solid',
+                      color: r.status === 'approved' ? '#1D9E75' : '#ef4444',
+                      background: r.status === 'approved' ? '#1D9E7512' : '#ef444412',
+                      borderColor: r.status === 'approved' ? '#1D9E7540' : '#ef444440',
+                    }}>
+                      {r.status}
+                    </span>
+                  </td>
+                  <td style={S.td}>{r.reviewed_at ? new Date(r.reviewed_at).toLocaleDateString() : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ── Overview tab ──────────────────────────────────────────────────────────────
 function OverviewTab() {
   const [stats, setStats] = useState(null)
@@ -546,10 +688,11 @@ export default function AdminDashboard({ onClose, currentUser, onClientsChange }
   const isAdmin = currentUser?.role === 'admin'
 
   const tabs = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'users',    label: 'Users' },
-    { id: 'clients',  label: 'Clients' },
-    { id: 'styles',   label: 'PowerPoint Template' },
+    { id: 'overview',  label: 'Overview' },
+    { id: 'users',     label: 'Users' },
+    { id: 'clients',   label: 'Clients' },
+    { id: 'requests',  label: 'Slide Requests' },
+    { id: 'styles',    label: 'PowerPoint Template' },
   ]
 
   return (
@@ -593,9 +736,10 @@ export default function AdminDashboard({ onClose, currentUser, onClientsChange }
             </div>
 
             <div style={S.body}>
-              {tab === 'overview' && <OverviewTab />}
+              {tab === 'overview'  && <OverviewTab />}
               {tab === 'users'    && <UsersTab currentUserId={currentUser?.id} />}
               {tab === 'clients'  && <ClientsTab onClientsChange={onClientsChange} />}
+              {tab === 'requests' && <SlideRequestsTab />}
               {tab === 'styles'   && <StylesTab />}
             </div>
           </>

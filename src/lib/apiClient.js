@@ -65,6 +65,12 @@ export const api = {
   getClientData:  (clientId, key)        => apiFetch(`/api/clientdata/${clientId}/${key}`),
   setClientData:  (clientId, key, value) => apiFetch(`/api/clientdata/${clientId}/${key}`, { method: 'PUT', body: { value } }),
 
+  // Slide limit requests
+  getMySlideLimit:         (clientId)                       => apiFetch(`/api/slide-requests/my-limit/${clientId}`),
+  requestMoreSlides:       (clientId, requestedLimit, note) => apiFetch('/api/slide-requests', { method: 'POST', body: { clientId, requestedLimit, note } }),
+  adminGetSlideRequests:   ()                               => apiFetch('/api/slide-requests'),
+  adminReviewSlideRequest: (id, status, approvedLimit)      => apiFetch(`/api/slide-requests/${id}`, { method: 'PATCH', body: { status, approvedLimit } }),
+
   // Token logging
   logTokens: (clientId, model, inputTokens, outputTokens) =>
     apiFetch('/api/tokenlogs', { method: 'POST', body: { clientId, model, inputTokens, outputTokens } }),
