@@ -65,6 +65,9 @@ export const api = {
   getClientData:  (clientId, key)        => apiFetch(`/api/clientdata/${clientId}/${key}`),
   setClientData:  (clientId, key, value) => apiFetch(`/api/clientdata/${clientId}/${key}`, { method: 'PUT', body: { value } }),
 
+  // Claude AI proxy — API key stays on the server; browser sends JWT only
+  callClaude: (payload) => apiFetch('/api/claude/messages', { method: 'POST', body: payload }),
+
   // Slide limit requests
   getMySlideLimit:         (clientId)                       => apiFetch(`/api/slide-requests/my-limit/${clientId}`),
   requestMoreSlides:       (clientId, requestedLimit, note) => apiFetch('/api/slide-requests', { method: 'POST', body: { clientId, requestedLimit, note } }),

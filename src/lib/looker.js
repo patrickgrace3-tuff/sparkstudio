@@ -1,5 +1,6 @@
 // Looker REST API helper (self-hosted / GCP Looker)
-// Credentials are stored in localStorage under LOOKER_CREDS_KEY.
+// baseUrl and clientId are persisted in localStorage for convenience.
+// clientSecret is intentionally NOT persisted — it must be re-entered each session.
 
 export const LOOKER_CREDS_KEY = 'sparkstudio_looker_creds'
 
@@ -17,7 +18,9 @@ export function loadLookerCreds() {
 }
 
 export function saveLookerCreds(creds) {
-  localStorage.setItem(LOOKER_CREDS_KEY, JSON.stringify(creds))
+  // Strip clientSecret before persisting — it must be re-entered each session
+  const { clientSecret: _omit, ...safe } = creds
+  localStorage.setItem(LOOKER_CREDS_KEY, JSON.stringify(safe))
 }
 
 // Authenticate and return a short-lived access token.

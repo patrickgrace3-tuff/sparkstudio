@@ -1,7 +1,11 @@
 import jwt from 'jsonwebtoken'
 import { query } from './db.js'
 
-const SECRET = process.env.JWT_SECRET || 'changeme-set-JWT_SECRET-in-env'
+const SECRET = process.env.JWT_SECRET
+if (!SECRET || SECRET.length < 32) {
+  console.error('FATAL: JWT_SECRET must be set to a random string of at least 32 characters.')
+  process.exit(1)
+}
 
 export function signToken(payload) {
   return jwt.sign(payload, SECRET, { expiresIn: '7d' })

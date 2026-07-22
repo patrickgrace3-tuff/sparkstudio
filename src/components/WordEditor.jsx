@@ -1,4 +1,5 @@
 import React, { useRef, useEffect } from 'react'
+import DOMPurify from 'dompurify'
 
 /**
  * Minimal rich-text editor using contentEditable + execCommand.
@@ -7,10 +8,11 @@ import React, { useRef, useEffect } from 'react'
 export default function WordEditor({ value, onChange }) {
   const ref = useRef(null)
 
-  // Initialise content once
+  // Initialise content once — sanitize before writing to innerHTML
   useEffect(() => {
-    if (ref.current && ref.current.innerHTML !== value) {
-      ref.current.innerHTML = value || ''
+    const safe = DOMPurify.sanitize(value || '')
+    if (ref.current && ref.current.innerHTML !== safe) {
+      ref.current.innerHTML = safe
     }
   }, [])
 

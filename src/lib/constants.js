@@ -51,18 +51,11 @@ export const DEPT_REQUIREMENTS = {
   ],
 }
 
-// ─── Anthropic API ───────────────────────────────────────────────────────────
-// Set your API key in a .env file at the project root:
-//   VITE_ANTHROPIC_API_KEY=sk-ant-...
-//
-// ⚠️  This calls the Anthropic API directly from the browser. That's fine for
-// local / internal tools, but you should proxy through a backend before
-// exposing this to the public internet.
- 
-export const ANTHROPIC_API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY ?? ''
-export const ANTHROPIC_MODEL = 'claude-sonnet-4-6'
-// Cheaper model used for bulk generation (template runs, deck generation)
-// Switch back to ANTHROPIC_MODEL if you need richer reasoning
+// ─── Anthropic models ────────────────────────────────────────────────────────
+// The API key is stored in server/.env (ANTHROPIC_API_KEY) and never exposed
+// to the browser. All Claude calls go through /api/claude/messages on the backend.
+
+export const ANTHROPIC_MODEL      = 'claude-sonnet-4-6'
 export const ANTHROPIC_MODEL_FAST = 'claude-haiku-4-5-20251001'
 export const ANTHROPIC_MODEL_DECK = 'claude-sonnet-4-6'
  

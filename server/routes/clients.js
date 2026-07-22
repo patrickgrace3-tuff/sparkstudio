@@ -5,6 +5,9 @@ import { requireAuth } from '../auth.js'
 const router = Router()
 router.use(requireAuth)
 
+// All authenticated users can list and read clients (shared workspace model).
+// Mutations (PATCH, DELETE) require admin role to prevent accidental data loss.
+
 // GET /api/clients
 router.get('/', async (req, res) => {
   try {
@@ -32,8 +35,9 @@ router.post('/', async (req, res) => {
   }
 })
 
-// PATCH /api/clients/:id
+// PATCH /api/clients/:id — admin only
 router.patch('/:id', async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' })
   const { name } = req.body
   if (!name?.trim()) return res.status(400).json({ error: 'name required' })
   try {
@@ -49,10 +53,12 @@ router.patch('/:id', async (req, res) => {
   }
 })
 
-// DELETE /api/clients/:id
+// DELETE /api/clients/:id — admin only
 router.delete('/:id', async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' })
   try {
-    await query('DELETE FROM clients WHERE id = $1', [req.params.id])
+    const result = await query('DELETE FROM clients WHERE id = $1 RETURNING id', [req.params.id])
+    if (!result.rows.length) return res.status(404).json({ error: 'Not found' })
     res.json({ ok: true })
   } catch (err) {
     console.error(err)
