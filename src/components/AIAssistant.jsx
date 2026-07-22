@@ -238,31 +238,15 @@ ${existingSlides || 'No slides added yet.'}
         return { role: 'user', content: m.text }
       })
 
-      const { ANTHROPIC_API_KEY, ANTHROPIC_MODEL } = await import('../lib/constants.js')
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
-          'anthropic-beta': 'pdfs-2024-09-25',
-        },
-        body: JSON.stringify({
-          model: ANTHROPIC_MODEL,
-          max_tokens: 1500,
-          system,
-          messages: convo,
-        }),
+      const { ANTHROPIC_MODEL } = await import('../lib/constants.js')
+      const data = await api.callClaude({
+        model: ANTHROPIC_MODEL,
+        max_tokens: 1500,
+        system,
+        messages: convo,
+        clientId,
       })
-
-      const data  = await res.json()
       const reply = data.content?.map(b => b.text ?? '').join('') ?? ''
-
-      // Log token usage (fire-and-forget)
-      if (data.usage) {
-        api.logTokens(clientId, ANTHROPIC_MODEL, data.usage.input_tokens ?? 0, data.usage.output_tokens ?? 0).catch(() => {})
-      }
 
       // Build image map so parseSlides can resolve base64
       const imageMap = Object.fromEntries(attachedImages.map(i => [i.name, i]))
@@ -282,24 +266,15 @@ ${existingSlides || 'No slides added yet.'}
       // Last resort — if still no slides, ask Claude to reformat
       if (slides.length === 0 && cleaned.length > 50) {
         try {
-          const reformatRes = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': ANTHROPIC_API_KEY,
-              'anthropic-version': '2023-06-01',
-              'anthropic-dangerous-direct-browser-access': 'true',
-            },
-            body: JSON.stringify({
-              model: ANTHROPIC_MODEL,
-              max_tokens: 600,
-              messages: [{
-                role: 'user',
-                content: 'Convert this response into a slide using EXACTLY this format and nothing else:\n\nSLIDE_START\nTITLE: <title>\nBULLETS:\n- <bullet>\n- <bullet>\n- <bullet>\nSLIDE_END\n\nResponse to convert:\n' + cleaned.slice(0, 1000)
-              }]
-            }),
+          const reformatData = await api.callClaude({
+            model: ANTHROPIC_MODEL,
+            max_tokens: 600,
+            messages: [{
+              role: 'user',
+              content: 'Convert this response into a slide using EXACTLY this format and nothing else:\n\nSLIDE_START\nTITLE: <title>\nBULLETS:\n- <bullet>\n- <bullet>\n- <bullet>\nSLIDE_END\n\nResponse to convert:\n' + cleaned.slice(0, 1000)
+            }],
+            clientId,
           })
-          const reformatData = await reformatRes.json()
           const reformatText = reformatData.content?.map(b => b.text ?? '').join('') ?? ''
           slides = parseSlides(reformatText, imageMap)
         } catch { /* silent — original response still shown */ }
