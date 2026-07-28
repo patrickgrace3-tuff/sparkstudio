@@ -213,16 +213,36 @@ function extractMediaplanTerms(file) {
   return terms
 }
 
+// Stop words to ignore when comparing
+const STOP_WORDS = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'in', 'for', 'to', 'with', 'by', 'at', 'on'])
+
+function sigWords(str) {
+  return str.toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 1 && !STOP_WORDS.has(w))
+}
+
+// Match: substring OR ≥2 significant words in common
+function termMatchesItem(termWords, itemWords) {
+  const itemSet = new Set(itemWords)
+  const overlap = termWords.filter(w => itemSet.has(w)).length
+  return overlap >= 2 || (overlap >= 1 && itemWords.length === 1)
+}
+
 // Match extracted terms against all funnel items — returns { stageId: { item: 'on'|false } }
 function buildFunnelFromTerms(terms) {
   const result = {}
-  const termList = [...terms].map(t => t.toLowerCase())
+  const termWordsList = [...terms].map(t => ({ raw: t.toLowerCase(), words: sigWords(t) }))
 
   for (const stage of FUNNEL_STAGES) {
     result[stage.id] = {}
     for (const item of stage.items) {
       const itemLower = item.toLowerCase()
-      const matched = termList.some(t => itemLower.includes(t) || t.includes(itemLower))
+      const itemWords = sigWords(item)
+      const matched = termWordsList.some(({ raw, words }) =>
+        itemLower.includes(raw) || raw.includes(itemLower) || termMatchesItem(words, itemWords)
+      )
       result[stage.id][item] = matched ? 'on' : false
     }
   }
