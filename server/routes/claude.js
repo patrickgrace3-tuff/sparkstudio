@@ -1,8 +1,10 @@
 import { Router } from 'express'
+import express from 'express'
 import { query } from '../db.js'
 import { requireAuth } from '../auth.js'
 
 const router = Router()
+router.use(express.json({ limit: '50mb' })) // PDFs and images sent as base64 can be large
 router.use(requireAuth)
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages'
