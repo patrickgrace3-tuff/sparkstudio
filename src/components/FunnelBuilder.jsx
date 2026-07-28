@@ -225,6 +225,13 @@ function extractMediaplanTerms(file) {
   return { terms, forceOn }
 }
 
+// Explicit aliases: mediaplan term pattern → funnel item name
+// Add entries here whenever a mediaplan term doesn't match by name but maps to a known item.
+const TERM_ALIASES = [
+  { pattern: /social.?marketing/i,        funnelItem: 'Social Media Content' },
+  { pattern: /facebook.?content.?boost/i, funnelItem: 'Social Engagement Ads' },
+]
+
 // Stop words to ignore when comparing
 const STOP_WORDS = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'in', 'for', 'to', 'with', 'by', 'at', 'on'])
 
@@ -244,6 +251,14 @@ function termMatchesItem(termWords, itemWords) {
 
 // Match extracted terms against all funnel items — returns { stageId: { item: 'on'|false } }
 function buildFunnelFromTerms(terms, forceOn = new Set()) {
+  // Apply explicit aliases: if any term matches an alias pattern, force that funnel item on
+  const aliasForced = new Set(forceOn)
+  for (const term of terms) {
+    for (const { pattern, funnelItem } of TERM_ALIASES) {
+      if (pattern.test(term)) aliasForced.add(funnelItem)
+    }
+  }
+
   const result = {}
   const termWordsList = [...terms].map(t => ({ raw: t.toLowerCase(), words: sigWords(t) }))
 
@@ -252,7 +267,7 @@ function buildFunnelFromTerms(terms, forceOn = new Set()) {
     for (const item of stage.items) {
       const itemLower = item.toLowerCase()
       const itemWords = sigWords(item)
-      const matched = forceOn.has(item) || termWordsList.some(({ raw, words }) =>
+      const matched = aliasForced.has(item) || termWordsList.some(({ raw, words }) =>
         itemLower.includes(raw) || raw.includes(itemLower) || termMatchesItem(words, itemWords)
       )
       result[stage.id][item] = matched ? 'on' : false
