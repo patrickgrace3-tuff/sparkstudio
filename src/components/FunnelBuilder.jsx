@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { FUNNEL_STAGES, loadFunnelConfig, loadFunnelConfigRemote, saveFunnelConfig, cycleItemState } from '../lib/funnel.js'
+import { loadGlobalFilesRemote } from '../lib/files.js'
 
 // Item state color map
 const STATE_COLOR   = { on: '#CD2F37', inhouse: '#1A6FA8', off: '#444' }
@@ -172,14 +173,107 @@ function pill(sk) {
 }
 
 // ── Main FunnelBuilder modal ──────────────────────────────────────────────────
+// ── Parse mediaplan terms from a global file ──────────────────────────────────
+function extractMediaplanTerms(file) {
+  const terms = new Set()
+
+  if (file.type === 'excel') {
+    const { headers = [], rows = [] } = file.content ?? {}
+    const vendorIdx = headers.findIndex(h => /vendor.?name/i.test(h))
+    const sourceIdx = headers.findIndex(h => /media.?source/i.test(h))
+    for (const row of rows) {
+      if (vendorIdx >= 0 && row[vendorIdx]) terms.add(String(row[vendorIdx]).trim())
+      if (sourceIdx >= 0 && row[sourceIdx]) terms.add(String(row[sourceIdx]).trim())
+    }
+    return terms
+  }
+
+  if (file.type === 'upload') {
+    const b64 = file.content?.base64
+    if (!b64) return terms
+    try {
+      const raw = atob(b64.includes(',') ? b64.split(',')[1] : b64)
+      const lines = raw.trim().split(/\r?\n/).filter(Boolean)
+      if (lines.length < 2) return terms
+
+      // Auto-detect delimiter
+      const delim = lines[0].includes('\t') ? '\t' : ','
+      const headers = lines[0].split(delim).map(h => h.replace(/^"|"$/g, '').trim())
+      const vendorIdx = headers.findIndex(h => /vendor.?name/i.test(h))
+      const sourceIdx = headers.findIndex(h => /media.?source/i.test(h))
+
+      for (const line of lines.slice(1)) {
+        const cols = line.split(delim).map(c => c.replace(/^"|"$/g, '').trim())
+        if (vendorIdx >= 0 && cols[vendorIdx]) terms.add(cols[vendorIdx])
+        if (sourceIdx >= 0 && cols[sourceIdx]) terms.add(cols[sourceIdx])
+      }
+    } catch { /* unparseable */ }
+  }
+
+  return terms
+}
+
+// Match extracted terms against all funnel items — returns { stageId: { item: 'on'|false } }
+function buildFunnelFromTerms(terms) {
+  const result = {}
+  const termList = [...terms].map(t => t.toLowerCase())
+
+  for (const stage of FUNNEL_STAGES) {
+    result[stage.id] = {}
+    for (const item of stage.items) {
+      const itemLower = item.toLowerCase()
+      const matched = termList.some(t => itemLower.includes(t) || t.includes(itemLower))
+      result[stage.id][item] = matched ? 'on' : false
+    }
+  }
+  return result
+}
+
 export default function FunnelBuilder({ onClose, clientId }) {
   const [config, setConfig] = useState(loadFunnelConfig)
   const [activeTab, setActiveTab] = useState('current')
   const [saved, setSaved] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [importMsg, setImportMsg] = useState('')
 
   useEffect(() => {
     if (clientId) loadFunnelConfigRemote(clientId).then(setConfig)
   }, [clientId])
+
+  async function handleMediaplanImport() {
+    setImporting(true)
+    setImportMsg('')
+    try {
+      const globalData = await loadGlobalFilesRemote(clientId)
+      const files = globalData?.files ?? []
+      const mediaplanFile = files.find(f => /mediaplan/i.test(f.name))
+
+      if (!mediaplanFile) {
+        setImportMsg('No file with "Mediaplan" in its name found in Global Files.')
+        return
+      }
+
+      const terms = extractMediaplanTerms(mediaplanFile)
+      if (terms.size === 0) {
+        setImportMsg(`Found "${mediaplanFile.name}" but couldn't read Vendor Name / Media Source columns.`)
+        return
+      }
+
+      const funnelData = buildFunnelFromTerms(terms)
+      setConfig(prev => ({ ...prev, [activeTab]: funnelData }))
+      setSaved(false)
+
+      const matched = FUNNEL_STAGES.flatMap(s =>
+        s.items.filter(i => funnelData[s.id]?.[i] === 'on')
+      ).length
+      setImportMsg(`Imported from "${mediaplanFile.name}" — ${matched} items turned on from ${terms.size} unique terms.`)
+    } catch (e) {
+      setImportMsg('Import failed: ' + e.message)
+    } finally {
+      setImporting(false)
+      setTimeout(() => setImportMsg(''), 6000)
+    }
+  }
 
   const activeFunnel = config[activeTab] || {}
 
@@ -228,18 +322,36 @@ export default function FunnelBuilder({ onClose, clientId }) {
             <span style={S.title}>Funnel Builder</span>
             <span style={S.sub}>Configure your current and target funnel states</span>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <div style={S.legend}>
               <LegendChip color="#CD2F37" label="Conversion Managed" />
               <LegendChip color="#1A6FA8" label="In-House" />
               <LegendChip color="#555" label="Off" dim />
             </div>
+            <button style={S.importBtn} onClick={handleMediaplanImport} disabled={importing} title="Auto-toggle items from a Mediaplan file in Global Files">
+              {importing ? 'Importing…' : '↑ Import Mediaplan'}
+            </button>
             <button style={S.saveBtn} onClick={handleSave}>
               {saved ? '✓ Saved' : 'Save'}
             </button>
             <button style={S.closeBtn} onClick={onClose}>✕ Close</button>
           </div>
         </div>
+
+        {/* Import status message */}
+        {importMsg && (
+          <div style={{
+            padding: '8px 18px', fontSize: 12, fontWeight: 500,
+            background: importMsg.startsWith('Import failed') || importMsg.startsWith('No file') || importMsg.includes("couldn't")
+              ? '#ef444412' : '#1D9E7512',
+            color: importMsg.startsWith('Import failed') || importMsg.startsWith('No file') || importMsg.includes("couldn't")
+              ? '#ef4444' : '#1D9E75',
+            borderBottom: '0.5px solid var(--color-border)',
+            flexShrink: 0,
+          }}>
+            {importMsg}
+          </div>
+        )}
 
         {/* Tab bar */}
         <div style={S.tabBar}>
@@ -350,6 +462,7 @@ const S = {
   title:       { fontSize: 15, fontWeight: 700, color: 'var(--color-text-primary)' },
   sub:         { fontSize: 12, color: 'var(--color-text-muted)' },
   legend:      { display: 'flex', gap: 12, alignItems: 'center', padding: '6px 12px', background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-sm)', border: '0.5px solid var(--color-border)' },
+  importBtn:   { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: 'var(--color-text-secondary)' },
   saveBtn:     { background: 'var(--color-accent)', color: '#fff', border: 'none', borderRadius: 'var(--radius-pill)', padding: '7px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
   closeBtn:    { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '7px 14px', fontSize: 13, cursor: 'pointer', color: 'var(--color-text-secondary)' },
   tabBar:      { display: 'flex', alignItems: 'center', gap: 0, padding: '0 18px', borderBottom: '0.5px solid var(--color-border)', flexShrink: 0, background: 'var(--color-bg-secondary)' },
