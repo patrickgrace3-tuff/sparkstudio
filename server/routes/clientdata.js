@@ -1,16 +1,18 @@
 import { Router } from 'express'
+import express from 'express'
 import { query } from '../db.js'
 import { requireAuth } from '../auth.js'
 
 const router = Router()
 router.use(requireAuth)
+router.use(express.json({ limit: '5mb' }))
 
-const ALLOWED_KEYS = new Set(['funnel', 'team', 'checklist', 'looker', 'files', 'presentation'])
+const ALLOWED_KEY_PREFIXES = ['funnel', 'team', 'checklist', 'looker', 'files', 'presentation']
 
 function validateKey(req, res, next) {
-  if (!ALLOWED_KEYS.has(req.params.dataKey)) {
-    return res.status(400).json({ error: 'Invalid data key' })
-  }
+  const key = req.params.dataKey
+  const valid = ALLOWED_KEY_PREFIXES.some(p => key === p || key.startsWith(p + ':'))
+  if (!valid) return res.status(400).json({ error: 'Invalid data key' })
   next()
 }
 
