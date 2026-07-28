@@ -210,10 +210,13 @@ export default function App() {
           ...genSlide,
           // Always restore the original title so the AI cannot rename saved slides
           title: original.title || genSlide.title,
-          // Restore saved bullets when the slide has been edited — if bullets aren't set,
-          // the AI-generated ones are kept (slide was added but never edited in SlideEditor)
-          ...(original.bullets?.length ? { bullets: original.bullets } : {}),
-          ...(original.table  ? { table:  original.table }  : {}),
+          // Restore saved bullets when the slide has been edited (bullets key exists, even if
+          // intentionally empty). Slides added but never opened in SlideEditor have no bullets
+          // key at all — those keep AI-generated bullets.
+          ...('bullets' in original ? { bullets: original.bullets } : {}),
+          // Always restore the saved table when the slide has been edited.
+          // null means the user explicitly removed it; undefined means never edited — let AI decide.
+          ...('table' in original ? { table: original.table } : {}),
           // Merge styles: AI-assigned images/layout take priority, then original style fills gaps
           style: { ...(original.style ?? {}), ...(genSlide.style ?? {}) },
           ...(original.source ? { source: original.source } : {}),
