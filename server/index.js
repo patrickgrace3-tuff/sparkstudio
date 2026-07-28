@@ -31,8 +31,8 @@ app.use(cors({
   credentials: true,
 }))
 
-// 1 MB default; upload routes declare their own higher limits inline
-app.use(express.json({ limit: '1mb' }))
+// 50 MB to handle base64-encoded PDFs and images sent to the Claude proxy
+app.use(express.json({ limit: '50mb' }))
 
 app.use('/api/auth',          authRoutes)
 app.use('/api/clients',       clientRoutes)
