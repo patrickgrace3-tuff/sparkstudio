@@ -208,6 +208,11 @@ export default function App() {
         if (!original) return genSlide
         return {
           ...genSlide,
+          // Always restore the original title so the AI cannot rename saved slides
+          title: original.title || genSlide.title,
+          // Restore saved bullets when the slide has been edited — if bullets aren't set,
+          // the AI-generated ones are kept (slide was added but never edited in SlideEditor)
+          ...(original.bullets?.length ? { bullets: original.bullets } : {}),
           ...(original.table  ? { table:  original.table }  : {}),
           // Merge styles: AI-assigned images/layout take priority, then original style fills gaps
           style: { ...(original.style ?? {}), ...(genSlide.style ?? {}) },
