@@ -174,43 +174,55 @@ function pill(sk) {
 
 // ── Main FunnelBuilder modal ──────────────────────────────────────────────────
 // ── Parse mediaplan terms from a global file ──────────────────────────────────
+// Returns { terms: Set<string>, forceOn: Set<string> }
+// forceOn contains funnel item names that should be forced on due to code-based signals
+// (e.g. Sales Class Code starting with "job" → "Job Boards")
 function extractMediaplanTerms(file) {
-  const terms = new Set()
+  const terms   = new Set()
+  const forceOn = new Set()
+
+  function checkSalesClass(val) {
+    if (val && /^job/i.test(String(val).trim())) forceOn.add('Job Boards')
+  }
 
   if (file.type === 'excel') {
     const { headers = [], rows = [] } = file.content ?? {}
     const vendorIdx = headers.findIndex(h => /vendor.?name/i.test(h))
     const sourceIdx = headers.findIndex(h => /media.?source/i.test(h))
+    const salesIdx  = headers.findIndex(h => /sales.?class/i.test(h))
     for (const row of rows) {
       if (vendorIdx >= 0 && row[vendorIdx]) terms.add(String(row[vendorIdx]).trim())
       if (sourceIdx >= 0 && row[sourceIdx]) terms.add(String(row[sourceIdx]).trim())
+      if (salesIdx  >= 0) checkSalesClass(row[salesIdx])
     }
-    return terms
+    return { terms, forceOn }
   }
 
   if (file.type === 'upload') {
     const b64 = file.content?.base64
-    if (!b64) return terms
+    if (!b64) return { terms, forceOn }
     try {
       const raw = atob(b64.includes(',') ? b64.split(',')[1] : b64)
       const lines = raw.trim().split(/\r?\n/).filter(Boolean)
-      if (lines.length < 2) return terms
+      if (lines.length < 2) return { terms, forceOn }
 
       // Auto-detect delimiter
       const delim = lines[0].includes('\t') ? '\t' : ','
       const headers = lines[0].split(delim).map(h => h.replace(/^"|"$/g, '').trim())
       const vendorIdx = headers.findIndex(h => /vendor.?name/i.test(h))
       const sourceIdx = headers.findIndex(h => /media.?source/i.test(h))
+      const salesIdx  = headers.findIndex(h => /sales.?class/i.test(h))
 
       for (const line of lines.slice(1)) {
         const cols = line.split(delim).map(c => c.replace(/^"|"$/g, '').trim())
         if (vendorIdx >= 0 && cols[vendorIdx]) terms.add(cols[vendorIdx])
         if (sourceIdx >= 0 && cols[sourceIdx]) terms.add(cols[sourceIdx])
+        if (salesIdx  >= 0) checkSalesClass(cols[salesIdx])
       }
     } catch { /* unparseable */ }
   }
 
-  return terms
+  return { terms, forceOn }
 }
 
 // Stop words to ignore when comparing
@@ -231,7 +243,7 @@ function termMatchesItem(termWords, itemWords) {
 }
 
 // Match extracted terms against all funnel items — returns { stageId: { item: 'on'|false } }
-function buildFunnelFromTerms(terms) {
+function buildFunnelFromTerms(terms, forceOn = new Set()) {
   const result = {}
   const termWordsList = [...terms].map(t => ({ raw: t.toLowerCase(), words: sigWords(t) }))
 
@@ -240,7 +252,7 @@ function buildFunnelFromTerms(terms) {
     for (const item of stage.items) {
       const itemLower = item.toLowerCase()
       const itemWords = sigWords(item)
-      const matched = termWordsList.some(({ raw, words }) =>
+      const matched = forceOn.has(item) || termWordsList.some(({ raw, words }) =>
         itemLower.includes(raw) || raw.includes(itemLower) || termMatchesItem(words, itemWords)
       )
       result[stage.id][item] = matched ? 'on' : false
@@ -273,13 +285,13 @@ export default function FunnelBuilder({ onClose, clientId }) {
         return
       }
 
-      const terms = extractMediaplanTerms(mediaplanFile)
-      if (terms.size === 0) {
+      const { terms, forceOn } = extractMediaplanTerms(mediaplanFile)
+      if (terms.size === 0 && forceOn.size === 0) {
         setImportMsg(`Found "${mediaplanFile.name}" but couldn't read Vendor Name / Media Source columns.`)
         return
       }
 
-      const funnelData = buildFunnelFromTerms(terms)
+      const funnelData = buildFunnelFromTerms(terms, forceOn)
       setConfig(prev => ({ ...prev, [activeTab]: funnelData }))
       setSaved(false)
 
