@@ -3,7 +3,7 @@ import { api } from './apiClient.js'
 
 // All Anthropic calls are proxied through the backend (/api/claude/messages).
 // The API key lives only in server/.env — it is never bundled into the frontend.
-export async function callClaude(userPrompt, system = '', maxTokens = 1500, { imageFiles = [], pdfFiles = [], model = ANTHROPIC_MODEL, clientId = null } = {}) {
+export async function callClaude(userPrompt, system = '', maxTokens = 1500, { imageFiles = [], pdfFiles = [], model = ANTHROPIC_MODEL, clientId = null, workerIndex = null } = {}) {
   // Build multimodal content: images first, then PDFs, then the text prompt
   const content = []
 
@@ -32,6 +32,7 @@ export async function callClaude(userPrompt, system = '', maxTokens = 1500, { im
     clientId,
   }
   if (system) payload.system = system
+  if (workerIndex != null) payload.workerIndex = workerIndex
 
   const data = await api.callClaude(payload)
   return data.content?.map(b => b.text ?? '').join('') ?? ''
@@ -66,7 +67,7 @@ function parseTableFromBlock(block) {
 
 // Generate a single slide using the AI Assistant format (SLIDE_START/END).
 // Returns { title, bullets, table } or null on failure.
-async function preGenerateSlide({ instruction, clientName, fileSummary, pdfFiles, imageFiles, clientId }) {
+async function preGenerateSlide({ instruction, clientName, fileSummary, pdfFiles, imageFiles, clientId, workerIndex = null }) {
   // Truncate clientName to prevent prompt injection / context overflow
   const safeName = String(clientName ?? '').slice(0, 100)
 
@@ -97,7 +98,7 @@ Rules:
 ${fileSummary || 'See attached PDFs.'}`
 
   try {
-    const raw = await callClaude(instruction, system, 1200, { pdfFiles, imageFiles, model: ANTHROPIC_MODEL_DECK, clientId })
+    const raw = await callClaude(instruction, system, 1200, { pdfFiles, imageFiles, model: ANTHROPIC_MODEL_DECK, clientId, workerIndex })
     const blockMatch = raw.match(/SLIDE_START([\s\S]*?)SLIDE_END/)
     if (!blockMatch) return null
     const block   = blockMatch[1]
@@ -146,26 +147,28 @@ export async function generateDeck(deptContributions, clientName = "", clientId 
   // AI Assistant approach (SLIDE_START/END format). Keyed by slide._id.
   const TABLE_KEYWORDS = /\btable\b|\bcolumns?\b|\brows?\b|rating|comparison|breakdown|\bmatrix\b/i
   const preGenMap = {}
+  const preGenTasks = deptContributions.flatMap(contrib =>
+    contrib.slides
+      .filter(s => TABLE_KEYWORDS.test(s.body ?? ''))
+      .map(s => ({ s, contrib }))
+  )
   await Promise.all(
-    deptContributions.flatMap(contrib =>
-      contrib.slides
-        .filter(s => TABLE_KEYWORDS.test(s.body ?? ''))
-        .map(async s => {
-          const fileSummary = [
-            globalSummary ? `Shared context:\n${globalSummary}` : '',
-            (contrib.deptSummary ?? contrib.fileSummary ?? '') ? `Department files:\n${contrib.deptSummary ?? contrib.fileSummary}` : '',
-          ].filter(Boolean).join('\n\n')
-          const result = await preGenerateSlide({
-            instruction: s.body ?? '',
-            clientName,
-            fileSummary,
-            pdfFiles: allPdfFiles,
-            imageFiles: allImageFiles,
-            clientId,
-          })
-          if (result) preGenMap[s._id] = result
-        })
-    )
+    preGenTasks.map(async ({ s, contrib }, taskIdx) => {
+      const fileSummary = [
+        globalSummary ? `Shared context:\n${globalSummary}` : '',
+        (contrib.deptSummary ?? contrib.fileSummary ?? '') ? `Department files:\n${contrib.deptSummary ?? contrib.fileSummary}` : '',
+      ].filter(Boolean).join('\n\n')
+      const result = await preGenerateSlide({
+        instruction: s.body ?? '',
+        clientName,
+        fileSummary,
+        pdfFiles: allPdfFiles,
+        imageFiles: allImageFiles,
+        clientId,
+        workerIndex: taskIdx, // each task gets a different key for true parallelism
+      })
+      if (result) preGenMap[s._id] = result
+    })
   )
 
   const safeName = String(clientName ?? '').slice(0, 100)
