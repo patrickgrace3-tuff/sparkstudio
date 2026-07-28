@@ -173,28 +173,7 @@ export async function generateDeck(deptContributions, clientName = "", clientId 
 
   const safeName = String(clientName ?? '').slice(0, 100)
 
-  const slideData = deptContributions
-    .map(({ dept, slides, deptSummary, fileSummary }) => {
-      const slideText = slides.map(s => {
-        const rawBody  = s.body ?? ''
-        const wantsImg = rawBody.includes('[images]')
-        const cleanBody = rawBody.replace(/\[images\]/gi, '').trim()
-        const preGen = preGenMap[s._id]
-        const instructions = preGen
-          ? `\n  Pre-computed content — copy EXACTLY into bullets and table fields, do not change:\n  bullets: ${JSON.stringify(preGen.bullets)}\n  table: ${JSON.stringify(preGen.table)}`
-          : cleanBody ? `\n  Instructions: ${cleanBody}` : ''
-        const imgHint = wantsImg && allImageFiles.length ? `\n  IMAGE REQUIRED: You MUST include an "imageFile" field for this slide — pick the most relevant image from the available images list.` : ''
-        return `  Id: ${s._id}\n  Title: ${s.title}${instructions}${imgHint}`
-      }).join('\n')
-      const summary  = deptSummary ?? fileSummary ?? ''
-      const fileText = summary ? `\nDepartment files:\n${summary}` : ''
-      return `Department: ${dept}\nSlides:\n${slideText}${fileText}`
-    })
-    .join('\n\n')
-
   const system = `You are an AI agent that assembles executive presentations from department slide submissions. Return structured JSON only.`.trim()
-
-  const deptList = allowedDepts.join(', ')
 
   const imageList = allImageFiles.length
     ? `\nAvailable images (you may reference one per slide by exact filename):\n${allImageFiles.map(i => `- ${i.name}`).join('\n')}`
@@ -204,45 +183,74 @@ export async function generateDeck(deptContributions, clientName = "", clientId 
     ? `\nShared company context (applies to all departments):\n${globalSummary}\n`
     : ''
 
-  const prompt = `Create a presentation for client: ${safeName}.
+  const slideRules = (dept) => `Create slides for the "${dept}" department of client: ${safeName}.
 ${globalSection}
 RULES — follow exactly:
-- Only create slides for these departments: ${deptList}
-- The "dept" field on every slide must exactly match one of: ${deptList}
+- The "dept" field on every slide must be exactly: ${dept}
 - Do NOT create any slide with dept "All", "Overview", "Introduction", "Closing", "Conclusion", or "Summary"
 - Do NOT create intro slides or closing slides — those are added automatically
-- Only output content slides for the listed departments
-- CRITICAL: You must generate exactly one output slide for EVERY input slide listed under each department. Do NOT merge multiple input slides into one. Do NOT skip any input slide. Each input slide gets its own output slide.
+- CRITICAL: You must generate exactly one output slide for EVERY input slide listed. Do NOT merge or skip any input slide.
 - Each input slide has an "Id" — every output slide must include a "sourceId" field that exactly copies the Id of the input slide it was generated from (verbatim, unchanged).
-- Each slide has "Instructions" — follow them exactly to produce the slide content. The instructions tell you what to create: bullets, a table, both, or specific data to pull from files. Treat them like a direct request, not a summary to paraphrase.
-- Review ALL supporting file content (both global shared files and department-specific files) to fulfil each slide's instructions. Extract specific data, numbers, and facts — do not rely on generic statements.
-- If instructions describe tabular data (a table with rows and columns, platform comparisons, rating breakdowns, etc.), output a "table" field with "headers" and "rows". Fill in any placeholder like "[from file]" with the real value from the files, and any "[calculate]" with the computed result.
-- Bullets: use only for narrative context not covered by the table. NO MORE than 4 bullet points. If content overflows, add a continuation slide with " (cont'd)" appended to the title sharing the same "sourceId".${allImageFiles.length ? `\n- If an image from the available images list is relevant or would enhance a slide, include an "imageFile" field with the exact filename and an "imagePlacement" field. Choose the placement that makes the image look most natural: "bottom" stretches the image across the full content width below the bullets (best for charts, graphs, tables, timelines — use this by default for data visuals), "right" places the image on the right side with text on the left (best for product shots, logos, or portrait images). Only use one image per slide. Omit both fields if no image fits.` : ''}
+- Each slide has "Instructions" — follow them exactly to produce the slide content.
+- Review ALL supporting file content to fulfil each slide's instructions. Extract specific data, numbers, and facts.
+- If instructions describe tabular data, output a "table" field with "headers" and "rows". Fill in any [from file] or [calculate] placeholders.
+- Bullets: use only for narrative context not covered by the table. NO MORE than 4 bullet points. If content overflows, add a continuation slide with " (cont'd)" appended to the title sharing the same "sourceId".${allImageFiles.length ? `\n- If an image is relevant, include "imageFile" (exact filename) and "imagePlacement" ("bottom" for charts/data, "right" for product/portrait). One image per slide max.` : ''}
 ${imageList}
 
 Return ONLY valid JSON, no markdown:
 {
-  "title": "Presentation title including client name",
   "slides": [
     {
       "num": 1,
       "title": "Slide title",
-      "dept": "Exact department name",
-      "bullets": ["narrative context only — omit if table covers everything"],
+      "dept": "${dept}",
+      "bullets": ["narrative context only"],
       "table": { "headers": ["Col A", "Col B"], "rows": [["r1c1", "r1c2"]] },
-      "sourceId": "the input slide's exact Id"${allImageFiles.length ? ',\n      "imageFile": "optional-filename.png (omit if no image)",\n      "imagePlacement": "bottom or right (omit if no image)"' : ''}
+      "sourceId": "the input slide's exact Id"${allImageFiles.length ? ',\n      "imageFile": "optional-filename.png",\n      "imagePlacement": "bottom or right"' : ''}
     }
   ]
 }
 
-Omit "table" if the slide has no tabular data. Omit "bullets" if the table is self-explanatory.
+Omit "table" if no tabular data. Omit "bullets" if table is self-explanatory.
 
-Department submissions:
-${slideData}`.trim()
+Department slides:
+`
 
-  const raw   = await callClaude(prompt, system, 4000, { imageFiles: allImageFiles, pdfFiles: allPdfFiles, model: ANTHROPIC_MODEL_DECK, clientId })
-  const clean = raw.replace(/```json|```/g, '').trim()
-  const deck  = JSON.parse(clean)
+  // Run each department in parallel on its own worker key
+  const deptResults = await Promise.all(
+    deptContributions.map(async ({ dept, slides, deptSummary, fileSummary }, deptIdx) => {
+      const slideText = slides.map(s => {
+        const rawBody   = s.body ?? ''
+        const wantsImg  = rawBody.includes('[images]')
+        const cleanBody = rawBody.replace(/\[images\]/gi, '').trim()
+        const preGen    = preGenMap[s._id]
+        const instructions = preGen
+          ? `\n  Pre-computed content — copy EXACTLY into bullets and table fields, do not change:\n  bullets: ${JSON.stringify(preGen.bullets)}\n  table: ${JSON.stringify(preGen.table)}`
+          : cleanBody ? `\n  Instructions: ${cleanBody}` : ''
+        const imgHint = wantsImg && allImageFiles.length ? `\n  IMAGE REQUIRED: include an "imageFile" field for this slide.` : ''
+        return `  Id: ${s._id}\n  Title: ${s.title}${instructions}${imgHint}`
+      }).join('\n')
+
+      const summary  = deptSummary ?? fileSummary ?? ''
+      const fileText = summary ? `\nDepartment files:\n${summary}` : ''
+      const prompt   = slideRules(dept) + slideText + fileText
+
+      try {
+        const raw   = await callClaude(prompt, system, 4000, { imageFiles: allImageFiles, pdfFiles: allPdfFiles, model: ANTHROPIC_MODEL_DECK, clientId, workerIndex: deptIdx })
+        const clean = raw.replace(/```json|```/g, '').trim()
+        const parsed = JSON.parse(clean)
+        return parsed.slides ?? []
+      } catch (err) {
+        console.error(`Worker ${deptIdx} failed for dept "${dept}":`, err)
+        return []
+      }
+    })
+  )
+
+  const deck = {
+    title: `${safeName} Presentation`,
+    slides: deptResults.flat(),
+  }
 
   // Filter out any slides the AI sneaked in with non-dept values
   const forbidden = ['all', 'overview', 'introduction', 'intro', 'closing', 'conclusion', 'summary', 'general']
