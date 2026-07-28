@@ -57,7 +57,7 @@ export const DEPT_REQUIREMENTS = {
 
 export const ANTHROPIC_MODEL      = 'claude-sonnet-4-6'
 export const ANTHROPIC_MODEL_FAST = 'claude-haiku-4-5-20251001'
-export const ANTHROPIC_MODEL_DECK = 'claude-sonnet-4-6'
+export const ANTHROPIC_MODEL_DECK = 'claude-sonnet-5'
  
 // ─── Storage key ────────────────────────────────────────────────────────────
 // Key used in localStorage to persist slide data between sessions.
