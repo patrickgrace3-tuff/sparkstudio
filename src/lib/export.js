@@ -309,7 +309,39 @@ ${bulletXml}
     }
   )
 
-  // 3. Inject table shape before </p:spTree> if table data provided
+  // 3a. Inject extra bullet box shapes (additional column areas from SlideEditor)
+  const extraBulletBoxes = slide.extraBulletBoxes ?? []
+  for (const eb of extraBulletBoxes) {
+    if (!eb.bullets?.length) continue
+    const ebBulletXml = buildBulletParagraphs(eb.bullets, accentHex)
+    const box = eb.box || { x: 0.5, y: 0.19, w: 0.4, h: 0.63 }
+    const ebX  = Math.round(box.x * SLIDE_W)
+    const ebY  = Math.round(box.y * SLIDE_H)
+    const ebCx = Math.round(box.w * SLIDE_W)
+    const ebCy = Math.round(box.h * SLIDE_H)
+    const shapeXml = `<p:sp>
+      <p:nvSpPr>
+        <p:cNvPr id="${_nextShapeId++}" name="ExtraBullets"/>
+        <p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr>
+        <p:nvPr/>
+      </p:nvSpPr>
+      <p:spPr>
+        <a:xfrm><a:off x="${ebX}" y="${ebY}"/><a:ext cx="${ebCx}" cy="${ebCy}"/></a:xfrm>
+        <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+        <a:noFill/>
+      </p:spPr>
+      <p:txBody>
+        <a:bodyPr anchorCtr="0" anchor="t" bIns="45700" lIns="91425" spcFirstLastPara="1" rIns="91425" wrap="square" tIns="45700">
+          <a:spAutoFit/>
+        </a:bodyPr>
+        <a:lstStyle/>
+${ebBulletXml}
+      </p:txBody>
+    </p:sp>`
+    out = out.replace('</p:spTree>', `${shapeXml}\n</p:spTree>`)
+  }
+
+  // 3b. Inject table shape before </p:spTree> if table data provided
   if (table && table.headers?.length > 0 && table.rows?.length > 0) {
     const tableXml = buildTableShapeXml(table, accentHex)
     out = out.replace('</p:spTree>', `${tableXml}\n</p:spTree>`)
