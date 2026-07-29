@@ -221,6 +221,8 @@ export default function App() {
           style: { ...(original.style ?? {}), ...(genSlide.style ?? {}) },
           ...(original.source ? { source: original.source } : {}),
           ...(original.notes  ? { notes:  original.notes }  : {}),
+          // Restore extra bullet boxes (additional column areas added in SlideEditor)
+          ...('extraBulletBoxes' in original ? { extraBulletBoxes: original.extraBulletBoxes } : {}),
         }
       })
 
