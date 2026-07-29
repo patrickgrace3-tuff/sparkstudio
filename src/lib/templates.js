@@ -25,22 +25,27 @@ export function createTemplate(name, description = '') {
   }
 }
 
-// A template slide shell: title + layout + content guidance (AI fills bullets)
-export function createSlideShell(title = '', layout = 'title-top', content = '') {
-  return { title, layout, content }
+// A template slide shell: title + content guidance + guardrails (AI fills bullets)
+export function createSlideShell(title = '', content = '') {
+  return { title, content, doThis: '', dontDoThis: '' }
 }
 
 // Build seed slides from a template for a given dept name
 // Returns an array of slide objects ready to inject into the deck
 export function buildSeedSlides(template, deptName) {
   const shells = template.departments[deptName] || []
-  return shells.map(shell => ({
-    title: shell.title || `${deptName} Overview`,
-    body: shell.content || '',
-    bullets: [],
-    layout: shell.layout || 'title-top',
-    style: { layout: shell.layout || 'title-top' },
-    dept: deptName,
-    _fromTemplate: true,
-  }))
+  return shells.map(shell => {
+    const parts = []
+    if (shell.content) parts.push(shell.content)
+    if (shell.doThis?.trim())     parts.push(`Do this: ${shell.doThis.trim()}`)
+    if (shell.dontDoThis?.trim()) parts.push(`Do NOT do this: ${shell.dontDoThis.trim()}`)
+    return {
+      title:  shell.title || `${deptName} Overview`,
+      body:   parts.join('\n'),
+      bullets: [],
+      style:  { layout: 'title-top' },
+      dept:   deptName,
+      _fromTemplate: true,
+    }
+  })
 }

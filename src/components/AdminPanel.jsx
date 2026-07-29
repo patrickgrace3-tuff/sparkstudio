@@ -3,14 +3,6 @@ import { DEPARTMENTS } from '../lib/constants.js'
 import { createTemplate, createSlideShell } from '../lib/templates.js'
 import { api } from '../lib/apiClient.js'
 
-const LAYOUTS = [
-  { id: 'title-top',   label: 'Title Top' },
-  { id: 'title-left',  label: 'Title Left' },
-  { id: 'split',       label: 'Two Column' },
-  { id: 'centered',    label: 'Centered' },
-  { id: 'image-right', label: 'Image Right' },
-]
-
 // ── Single slide shell editor row ────────────────────────────────────────────
 function SlideShellRow({ shell, onChange, onRemove, index }) {
   return (
@@ -23,13 +15,6 @@ function SlideShellRow({ shell, onChange, onRemove, index }) {
           onChange={e => onChange({ ...shell, title: e.target.value })}
           placeholder="Slide title"
         />
-        <select
-          style={S.shellSelect}
-          value={shell.layout}
-          onChange={e => onChange({ ...shell, layout: e.target.value })}
-        >
-          {LAYOUTS.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}
-        </select>
         <button style={S.removeBtn} onClick={onRemove}>✕</button>
       </div>
       <div style={S.shellBottom}>
@@ -38,9 +23,34 @@ function SlideShellRow({ shell, onChange, onRemove, index }) {
           style={S.shellTextarea}
           value={shell.content || ''}
           onChange={e => onChange({ ...shell, content: e.target.value })}
-          placeholder="Content for this slide — AI will use this along with company files to generate bullets"
+          placeholder="Content / instructions for this slide — AI will use this along with company files to generate bullets"
           rows={2}
         />
+      </div>
+      <div style={S.shellGuardrails}>
+        <span style={S.shellIdx} />
+        <div style={S.guardrailPair}>
+          <div style={S.guardrailField}>
+            <span style={{ ...S.guardrailLabel, color: '#16a34a' }}>Do This</span>
+            <textarea
+              style={{ ...S.shellTextarea, borderColor: '#16a34a44' }}
+              value={shell.doThis || ''}
+              onChange={e => onChange({ ...shell, doThis: e.target.value })}
+              placeholder="e.g. Use year-over-year comparisons. Always include a percentage change."
+              rows={2}
+            />
+          </div>
+          <div style={S.guardrailField}>
+            <span style={{ ...S.guardrailLabel, color: '#dc2626' }}>Don't Do This</span>
+            <textarea
+              style={{ ...S.shellTextarea, borderColor: '#dc262644' }}
+              value={shell.dontDoThis || ''}
+              onChange={e => onChange({ ...shell, dontDoThis: e.target.value })}
+              placeholder="e.g. Do not use vague language. Do not list more than 4 bullets."
+              rows={2}
+            />
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -336,8 +346,11 @@ const S = {
   shellBottom:  { display: 'flex', alignItems: 'flex-start', gap: 8 },
   shellIdx:     { fontSize: 10, color: 'var(--color-text-muted)', width: 18, flexShrink: 0, textAlign: 'center', paddingTop: 2 },
   shellInput:   { flex: 1, background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 6, padding: '5px 8px', fontSize: 12, color: 'var(--color-text-primary)', outline: 'none' },
-  shellTextarea:{ flex: 1, background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 6, padding: '5px 8px', fontSize: 11, color: 'var(--color-text-secondary)', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 },
-  shellSelect:  { background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 6, padding: '5px 8px', fontSize: 11, color: 'var(--color-text-muted)', outline: 'none', cursor: 'pointer' },
+  shellTextarea:  { flex: 1, background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 6, padding: '5px 8px', fontSize: 11, color: 'var(--color-text-secondary)', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 },
+  shellGuardrails:{ display: 'flex', alignItems: 'flex-start', gap: 8 },
+  guardrailPair:  { flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
+  guardrailField: { display: 'flex', flexDirection: 'column', gap: 3 },
+  guardrailLabel: { fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' },
   removeBtn:    { background: 'none', border: 'none', color: 'var(--color-text-muted)', fontSize: 12, cursor: 'pointer', padding: '2px 4px', flexShrink: 0 },
   emptyHint:    { fontSize: 11, color: 'var(--color-text-muted)', padding: '10px 14px', margin: 0, fontStyle: 'italic' },
 }
