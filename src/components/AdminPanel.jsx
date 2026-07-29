@@ -3,10 +3,78 @@ import { DEPARTMENTS } from '../lib/constants.js'
 import { createTemplate, createSlideShell } from '../lib/templates.js'
 import { api } from '../lib/apiClient.js'
 
+// ── Writing tips modal ────────────────────────────────────────────────────────
+function TipsModal({ onClose }) {
+  return (
+    <div style={S.tipsOverlay} onClick={onClose}>
+      <div style={S.tipsModal} onClick={e => e.stopPropagation()}>
+        <div style={S.tipsHeader}>
+          <span style={S.tipsTitle}>Tips for Best AI Slide Outcomes</span>
+          <button style={S.tipsClose} onClick={onClose}>✕</button>
+        </div>
+        <div style={S.tipsBody}>
+
+          <div style={S.tipsSection}>
+            <div style={S.tipsSectionTitle}>Slide Instructions (Content Field)</div>
+            <ul style={S.tipsList}>
+              <li>Be specific about <strong>what data to show</strong> — name the report, metric, or file the AI should pull from (e.g. "Use the Looker Social report").</li>
+              <li>Tell the AI the <strong>format you want</strong> — bullets only, a table, or both. Example: "Create a table showing platform performance side by side."</li>
+              <li>Mention the <strong>time frame</strong> — "year-over-year", "last 12 months", "Q3 2025 vs Q3 2024".</li>
+              <li>Name the <strong>specific columns or rows</strong> you expect when asking for a table (e.g. "Header columns: Platform, Rating, Reviews").</li>
+              <li>If you want numbers pre-calculated, say so — "Calculate the % change between this year and last year."</li>
+            </ul>
+          </div>
+
+          <div style={S.tipsSectionDivider} />
+
+          <div style={S.tipsSection}>
+            <div style={{ ...S.tipsSectionTitle, color: '#16a34a' }}>Do This — Examples</div>
+            <ul style={S.tipsList}>
+              <li>"Always include a year-over-year percentage change column."</li>
+              <li>"Highlight the top-performing metric in the first bullet."</li>
+              <li>"Reference the client by name in at least one bullet."</li>
+              <li>"Keep bullets concise — one idea per bullet, under 20 words."</li>
+              <li>"If data shows improvement, lead with the positive."</li>
+            </ul>
+          </div>
+
+          <div style={S.tipsSectionDivider} />
+
+          <div style={S.tipsSection}>
+            <div style={{ ...S.tipsSectionTitle, color: '#dc2626' }}>Don't Do This — Examples</div>
+            <ul style={S.tipsList}>
+              <li>"Do not use vague phrases like 'strong performance' without a number."</li>
+              <li>"Do not list more than 4 bullets."</li>
+              <li>"Do not create an intro or closing sentence — bullets only."</li>
+              <li>"Do not include data from other departments on this slide."</li>
+              <li>"Do not show raw numbers without context or comparison."</li>
+            </ul>
+          </div>
+
+          <div style={S.tipsSectionDivider} />
+
+          <div style={S.tipsSection}>
+            <div style={S.tipsSectionTitle}>General Best Practices</div>
+            <ul style={S.tipsList}>
+              <li>The AI reads all uploaded department files — reference them by name or type so it knows exactly where to look.</li>
+              <li>One clear instruction per slide produces better results than a long paragraph of mixed directions.</li>
+              <li>Use "Do This" and "Don't Do This" to enforce your brand voice and presentation standards across every generated deck.</li>
+              <li>After generating, you can always edit slides manually in the deck editor before exporting.</li>
+            </ul>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Single slide shell editor row ────────────────────────────────────────────
 function SlideShellRow({ shell, onChange, onRemove, index }) {
+  const [showTips, setShowTips] = useState(false)
   return (
     <div style={S.shellRow}>
+      {showTips && <TipsModal onClose={() => setShowTips(false)} />}
       <div style={S.shellTop}>
         <span style={S.shellIdx}>{index + 1}</span>
         <input
@@ -19,13 +87,19 @@ function SlideShellRow({ shell, onChange, onRemove, index }) {
       </div>
       <div style={S.shellBottom}>
         <span style={S.shellIdx} />
-        <textarea
-          style={S.shellTextarea}
-          value={shell.content || ''}
-          onChange={e => onChange({ ...shell, content: e.target.value })}
-          placeholder="Content / instructions for this slide — AI will use this along with company files to generate bullets"
-          rows={2}
-        />
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={S.fieldLabelRow}>
+            <span style={S.fieldLabel}>Slide Instructions</span>
+            <button style={S.tipsBtn} onClick={() => setShowTips(true)}>? Tips for best results</button>
+          </div>
+          <textarea
+            style={S.shellTextarea}
+            value={shell.content || ''}
+            onChange={e => onChange({ ...shell, content: e.target.value })}
+            placeholder="Describe what this slide should cover — what data to pull, what format to use, and what story to tell. The AI will use this along with uploaded files to generate the slide content."
+            rows={3}
+          />
+        </div>
       </div>
       <div style={S.shellGuardrails}>
         <span style={S.shellIdx} />
@@ -36,7 +110,7 @@ function SlideShellRow({ shell, onChange, onRemove, index }) {
               style={{ ...S.shellTextarea, borderColor: '#16a34a44' }}
               value={shell.doThis || ''}
               onChange={e => onChange({ ...shell, doThis: e.target.value })}
-              placeholder="e.g. Use year-over-year comparisons. Always include a percentage change."
+              placeholder="e.g. Always include a year-over-year % change. Lead with the strongest metric."
               rows={2}
             />
           </div>
@@ -351,6 +425,21 @@ const S = {
   guardrailPair:  { flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
   guardrailField: { display: 'flex', flexDirection: 'column', gap: 3 },
   guardrailLabel: { fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' },
-  removeBtn:    { background: 'none', border: 'none', color: 'var(--color-text-muted)', fontSize: 12, cursor: 'pointer', padding: '2px 4px', flexShrink: 0 },
-  emptyHint:    { fontSize: 11, color: 'var(--color-text-muted)', padding: '10px 14px', margin: 0, fontStyle: 'italic' },
+  fieldLabelRow:  { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  fieldLabel:     { fontSize: 10, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' },
+  tipsBtn:        { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 10, padding: '1px 8px', fontSize: 10, color: 'var(--color-accent)', cursor: 'pointer', fontWeight: 600 },
+  removeBtn:      { background: 'none', border: 'none', color: 'var(--color-text-muted)', fontSize: 12, cursor: 'pointer', padding: '2px 4px', flexShrink: 0 },
+  emptyHint:      { fontSize: 11, color: 'var(--color-text-muted)', padding: '10px 14px', margin: 0, fontStyle: 'italic' },
+
+  // Tips modal
+  tipsOverlay:       { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  tipsModal:         { background: 'var(--color-bg)', borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: 640, maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' },
+  tipsHeader:        { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '0.5px solid var(--color-border)', flexShrink: 0 },
+  tipsTitle:         { fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)' },
+  tipsClose:         { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '4px 10px', fontSize: 12, cursor: 'pointer', color: 'var(--color-text-secondary)' },
+  tipsBody:          { flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 0 },
+  tipsSection:       { paddingBottom: 14 },
+  tipsSectionTitle:  { fontSize: 12, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' },
+  tipsSectionDivider:{ height: '0.5px', background: 'var(--color-border)', margin: '4px 0 14px' },
+  tipsList:          { margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.6 },
 }
