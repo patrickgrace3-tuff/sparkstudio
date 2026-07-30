@@ -4,10 +4,17 @@ import React from 'react'
 function SlideThumbnail({ slide }) {
   const style   = slide.style ?? {}
   const accent  = style.accent  ?? '#CD2F37'
-  const textCol = style.textCol ?? '#1a1a1a'
+  const textCol = slide.style?.textCol ?? '#1a1a1a'
   const bgImage = style.bgImage ?? null
   const bullets = slide.bullets ?? []
   const table   = slide.table   ?? null
+  const images  = style.images  ?? []
+
+  const hasBullets = bullets.length > 0
+  const hasTable   = table && table.headers?.length > 0
+  // If both bullets and table, bullets take top half, table takes bottom
+  const bulletTop = '19%'
+  const tableTop  = hasBullets ? '54%' : '19%'
 
   const bg = bgImage
     ? `url(${bgImage}) center/cover no-repeat`
@@ -15,46 +22,30 @@ function SlideThumbnail({ slide }) {
 
   return (
     <div style={{
-      width: '100%',
-      aspectRatio: '16/9',
-      background: bg,
-      position: 'relative',
-      overflow: 'hidden',
-      containerType: 'inline-size',
-      fontFamily: 'Arial, sans-serif',
-      borderRadius: 4,
+      width: '100%', aspectRatio: '16/9',
+      background: bg, position: 'relative', overflow: 'hidden',
+      containerType: 'inline-size', fontFamily: 'Arial, sans-serif', borderRadius: 4,
     }}>
       {bgImage && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }} />}
 
       {/* Title */}
       <div style={{
-        position: 'absolute',
-        left: '15.25%', top: '5.1%', width: '77.9%',
+        position: 'absolute', left: '15.25%', top: '5.1%', width: '77.9%',
         fontSize: '2.8cqw', fontWeight: 400,
         color: bgImage ? '#fff' : accent,
-        lineHeight: 1.3,
-        overflow: 'hidden',
-        display: '-webkit-box',
-        WebkitLineClamp: 2,
-        WebkitBoxOrient: 'vertical',
+        lineHeight: 1.3, overflow: 'hidden',
+        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
       }}>{slide.title}</div>
 
       {/* Bullets */}
-      {bullets.length > 0 && (
-        <div style={{
-          position: 'absolute',
-          left: '4.5%', top: '19%', width: '82.9%',
-        }}>
+      {hasBullets && (
+        <div style={{ position: 'absolute', left: '4.5%', top: bulletTop, width: hasTable ? '82.9%' : '82.9%' }}>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            {bullets.slice(0, 6).map((b, i) => (
+            {bullets.slice(0, hasTable ? 3 : 6).map((b, i) => (
               <li key={i} style={{
-                color: bgImage ? '#fff' : textCol,
-                fontSize: '1.7cqw', lineHeight: 1.5,
-                display: 'flex', gap: '0.4cqw',
-                marginBottom: '0.4em',
-                overflow: 'hidden',
-                whiteSpace: 'nowrap',
-                textOverflow: 'ellipsis',
+                color: bgImage ? '#fff' : textCol, fontSize: '1.7cqw', lineHeight: 1.45,
+                display: 'flex', gap: '0.4cqw', marginBottom: '0.3em',
+                overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
               }}>
                 <span style={{ color: accent, fontWeight: 700, flexShrink: 0 }}>•</span>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{b}</span>
@@ -64,17 +55,64 @@ function SlideThumbnail({ slide }) {
         </div>
       )}
 
-      {/* Table indicator */}
-      {table && table.headers?.length > 0 && (
+      {/* Table */}
+      {hasTable && (
         <div style={{
-          position: 'absolute',
-          left: '4.5%', top: bullets.length > 0 ? '56%' : '22%', width: '82.9%',
-          fontSize: '1.4cqw', color: bgImage ? 'rgba(255,255,255,0.7)' : textCol,
-          opacity: 0.8,
+          position: 'absolute', left: '4.5%', top: tableTop, width: '82.9%',
+          overflow: 'hidden',
         }}>
-          📊 {table.headers.join(' · ')}
+          <table style={{
+            width: '100%', borderCollapse: 'collapse',
+            fontSize: '1.3cqw', tableLayout: 'fixed',
+          }}>
+            <thead>
+              <tr style={{ background: accent }}>
+                {table.headers.map((h, i) => (
+                  <th key={i} style={{
+                    color: '#fff', padding: '0.3cqw 0.5cqw',
+                    fontWeight: 700, textAlign: 'left',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    border: '0.5px solid rgba(255,255,255,0.3)',
+                  }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {(table.rows ?? []).slice(0, 4).map((row, ri) => (
+                <tr key={ri} style={{ background: ri % 2 === 0 ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)' }}>
+                  {table.headers.map((_, ci) => (
+                    <td key={ci} style={{
+                      color: bgImage ? '#fff' : textCol,
+                      padding: '0.25cqw 0.5cqw',
+                      border: '0.5px solid rgba(128,128,128,0.25)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>{row[ci] ?? ''}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {table.rows?.length > 4 && (
+            <div style={{ fontSize: '1.1cqw', color: bgImage ? 'rgba(255,255,255,0.5)' : textCol, opacity: 0.6, marginTop: '0.2cqw' }}>
+              +{table.rows.length - 4} more rows
+            </div>
+          )}
         </div>
       )}
+
+      {/* Free-positioned images */}
+      {images.map((img, i) => (
+        <div key={i} style={{
+          position: 'absolute',
+          left:   `${img.x * 100}%`,
+          top:    `${img.y * 100}%`,
+          width:  `${img.w * 100}%`,
+          height: `${img.h * 100}%`,
+          backgroundImage: `url(${img.src})`,
+          backgroundSize: '100% 100%',
+          backgroundRepeat: 'no-repeat',
+        }} />
+      ))}
     </div>
   )
 }
