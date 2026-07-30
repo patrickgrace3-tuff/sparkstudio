@@ -10,6 +10,7 @@ function SlideThumbnail({ slide }) {
   const table   = slide.table   ?? null
   const images  = style.images  ?? []
   const extraBulletBoxes = slide.extraBulletBoxes ?? []
+  const freeTextBoxes    = slide.freeTextBoxes    ?? []
 
   const hasTable = table && table.headers?.length > 0
 
@@ -87,6 +88,18 @@ function SlideThumbnail({ slide }) {
           </div>
         )
       ))}
+
+      {/* Free text boxes */}
+      {freeTextBoxes.map((ft, fi) => ft.text ? (
+        <div key={fi} style={{
+          position: 'absolute',
+          left: `${(ft.box?.x ?? 0.045) * 100}%`, top: `${(ft.box?.y ?? 0.55) * 100}%`,
+          width: `${(ft.box?.w ?? 0.829) * 100}%`, height: `${(ft.box?.h ?? 0.25) * 100}%`,
+          overflow: 'hidden',
+        }}>
+          <p style={{ margin: 0, fontSize: `${(ft.fontSize ?? 14) * 0.115}cqw`, color: bgImage ? '#fff' : textCol, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{ft.text}</p>
+        </div>
+      ) : null)}
 
       {/* Table — positioned using tableBox, same as editor */}
       {hasTable && (

@@ -341,7 +341,41 @@ ${ebBulletXml}
     out = out.replace('</p:spTree>', `${shapeXml}\n</p:spTree>`)
   }
 
-  // 3b. Inject table shape before </p:spTree> if table data provided
+  // 3b. Inject free text box shapes
+  const freeTextBoxes = slide.freeTextBoxes ?? []
+  for (const ft of freeTextBoxes) {
+    if (!ft.text?.trim()) continue
+    const box  = ft.box || { x: 0.045, y: 0.55, w: 0.829, h: 0.25 }
+    const ftX  = Math.round(box.x * SLIDE_W)
+    const ftY  = Math.round(box.y * SLIDE_H)
+    const ftCx = Math.round(box.w * SLIDE_W)
+    const ftCy = Math.round(box.h * SLIDE_H)
+    const ptSize = Math.round((ft.fontSize ?? 14) * 100) // hundredths of a point
+    const lines  = ft.text.split('\n')
+    const paraXml = lines.map(line => `        <a:p><a:r><a:rPr lang="en-US" sz="${ptSize}" dirty="0"/><a:t>${line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</a:t></a:r></a:p>`).join('\n')
+    const ftShape = `<p:sp>
+      <p:nvSpPr>
+        <p:cNvPr id="${_nextShapeId++}" name="FreeText"/>
+        <p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr>
+        <p:nvPr/>
+      </p:nvSpPr>
+      <p:spPr>
+        <a:xfrm><a:off x="${ftX}" y="${ftY}"/><a:ext cx="${ftCx}" cy="${ftCy}"/></a:xfrm>
+        <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+        <a:noFill/>
+      </p:spPr>
+      <p:txBody>
+        <a:bodyPr anchorCtr="0" anchor="t" wrap="square" bIns="45700" lIns="91425" rIns="91425" tIns="45700">
+          <a:spAutoFit/>
+        </a:bodyPr>
+        <a:lstStyle/>
+${paraXml}
+      </p:txBody>
+    </p:sp>`
+    out = out.replace('</p:spTree>', `${ftShape}\n</p:spTree>`)
+  }
+
+  // 3c. Inject table shape before </p:spTree> if table data provided
   if (table && table.headers?.length > 0 && table.rows?.length > 0) {
     const tableXml = buildTableShapeXml(table, accentHex)
     out = out.replace('</p:spTree>', `${tableXml}\n</p:spTree>`)
