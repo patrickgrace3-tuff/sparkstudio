@@ -348,7 +348,7 @@ const S = {
   grid:           { flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16, alignContent: 'start' },
   slideWrapper:   { display: 'flex', flexDirection: 'column', gap: 5, cursor: 'pointer' },
   slideLabel:     { fontSize: 11, color: 'var(--color-text-muted)', fontWeight: 500 },
-  slideTile:      { width: '100%', aspectRatio: '16 / 9', borderRadius: 'var(--radius-sm)', overflow: 'hidden', border: '0.5px solid var(--color-border)' },
+  slideTile:      { width: '100%', aspectRatio: '16 / 9', borderRadius: 'var(--radius-sm)', overflow: 'hidden', border: '0.5px solid var(--color-border)', display: 'flex' },
   slide:          { width: '100%', height: '100%', boxSizing: 'border-box' },
   center:         { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 },
   spinner:        { width: 20, height: 20, border: '2px solid var(--color-border)', borderTopColor: 'var(--color-accent)', borderRadius: '50%', animation: 'spin 0.7s linear infinite' },

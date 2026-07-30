@@ -214,9 +214,10 @@ export default function App() {
           // intentionally empty). Slides added but never opened in SlideEditor have no bullets
           // key at all — those keep AI-generated bullets.
           ...('bullets' in original ? { bullets: original.bullets } : {}),
-          // Always restore the saved table when the slide has been edited.
-          // null means the user explicitly removed it; undefined means never edited — let AI decide.
-          ...('table' in original ? { table: original.table } : {}),
+          // Restore saved table only when it has real content.
+          // After the DB migration all slides have table: null in the DB by default,
+          // so checking 'table' in original is no longer a reliable signal — use non-null instead.
+          ...(original.table != null ? { table: original.table } : {}),
           // Merge styles: AI-assigned images/layout take priority, then original style fills gaps
           style: { ...(original.style ?? {}), ...(genSlide.style ?? {}) },
           ...(original.source ? { source: original.source } : {}),
