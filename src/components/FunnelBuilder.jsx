@@ -34,7 +34,8 @@ export function FunnelSlidePreview({ config, label }) {
   return (
     <div style={{
       width: '100%',
-      aspectRatio: '16/9',
+      flex: 1,
+      minHeight: 0,
       background: 'radial-gradient(ellipse at 70% 50%, #5a0a14 0%, #2a0508 40%, #0a0205 100%)',
       position: 'relative',
       overflow: 'hidden',
@@ -526,8 +527,8 @@ const S = {
   itemGrid:    { display: 'flex', flexDirection: 'column', gap: 2 },
   itemRow:     { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '5px 8px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', transition: 'background 0.1s, opacity 0.1s', paddingLeft: 8 },
   itemText:    { fontSize: 11, color: 'var(--color-text-secondary)', flex: 1, userSelect: 'none' },
-  preview:     { flex: 1, display: 'flex', flexDirection: 'column', padding: '14px 20px', gap: 16, background: 'var(--color-bg-secondary)', overflowY: 'auto' },
-  previewBlock:{ display: 'flex', flexDirection: 'column', gap: 6 },
+  preview:     { flex: 1, display: 'flex', flexDirection: 'column', padding: '14px 20px', gap: 10, background: 'var(--color-bg-secondary)', overflow: 'hidden', minWidth: 0 },
+  previewBlock:{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minHeight: 0 },
   previewLabel:{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' },
   previewHint: { fontSize: 11, color: 'var(--color-text-muted)', textAlign: 'center', marginTop: 4 },
 }
