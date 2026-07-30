@@ -1,0 +1,2 @@
+ALTER TABLE slides
+  ADD COLUMN IF NOT EXISTS free_text_boxes JSONB DEFAULT NULL;

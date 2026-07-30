@@ -11,10 +11,11 @@ router.use(requireAuth)
 function rowToSlide(row) {
   return {
     ...row,
-    table:            row.table            ?? null,
-    source:           row.source           ?? '',
-    notes:            row.notes            ?? '',
+    table:            row.table             ?? null,
+    source:           row.source            ?? '',
+    notes:            row.notes             ?? '',
     extraBulletBoxes: row.extra_bullet_boxes ?? null,
+    freeTextBoxes:    row.free_text_boxes    ?? null,
   }
 }
 
@@ -39,18 +40,19 @@ router.get('/:clientId', async (req, res) => {
 
 // POST /api/slides/:clientId  — add one slide
 router.post('/:clientId', async (req, res) => {
-  const { dept_id, title, body, bullets, style, sort_order, table, source, notes, extraBulletBoxes } = req.body
+  const { dept_id, title, body, bullets, style, sort_order, table, source, notes, extraBulletBoxes, freeTextBoxes } = req.body
   if (!dept_id) return res.status(400).json({ error: 'dept_id required' })
   try {
     const result = await query(
-      `INSERT INTO slides (client_id, dept_id, title, body, bullets, style, sort_order, "table", source, notes, extra_bullet_boxes, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      `INSERT INTO slides (client_id, dept_id, title, body, bullets, style, sort_order, "table", source, notes, extra_bullet_boxes, free_text_boxes, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
       [req.params.clientId, dept_id, title ?? '', body ?? '',
        JSON.stringify(bullets ?? []), JSON.stringify(style ?? {}),
        sort_order ?? 0,
        table != null ? JSON.stringify(table) : null,
        source ?? '', notes ?? '',
        extraBulletBoxes != null ? JSON.stringify(extraBulletBoxes) : null,
+       freeTextBoxes    != null ? JSON.stringify(freeTextBoxes)    : null,
        req.user.id]
     )
     res.status(201).json(rowToSlide(result.rows[0]))
@@ -62,29 +64,31 @@ router.post('/:clientId', async (req, res) => {
 
 // PATCH /api/slides/:clientId/:slideId — update one slide
 router.patch('/:clientId/:slideId', async (req, res) => {
-  const { title, body, bullets, style, sort_order, table, source, notes, extraBulletBoxes } = req.body
+  const { title, body, bullets, style, sort_order, table, source, notes, extraBulletBoxes, freeTextBoxes } = req.body
   try {
     const result = await query(
       `UPDATE slides SET
-        title             = COALESCE($1, title),
-        body              = COALESCE($2, body),
-        bullets           = COALESCE($3, bullets),
-        style             = COALESCE($4, style),
-        sort_order        = COALESCE($5, sort_order),
-        "table"           = CASE WHEN $6::text IS NOT NULL THEN $6::jsonb ELSE "table" END,
-        source            = COALESCE($7, source),
-        notes             = COALESCE($8, notes),
-        extra_bullet_boxes = CASE WHEN $9::text IS NOT NULL THEN $9::jsonb ELSE extra_bullet_boxes END,
-        updated_at        = NOW()
-       WHERE id = $10 AND client_id = $11 RETURNING *`,
+        title              = COALESCE($1, title),
+        body               = COALESCE($2, body),
+        bullets            = COALESCE($3, bullets),
+        style              = COALESCE($4, style),
+        sort_order         = COALESCE($5, sort_order),
+        "table"            = CASE WHEN $6::text IS NOT NULL THEN $6::jsonb ELSE "table" END,
+        source             = COALESCE($7, source),
+        notes              = COALESCE($8, notes),
+        extra_bullet_boxes = CASE WHEN $9::text  IS NOT NULL THEN $9::jsonb  ELSE extra_bullet_boxes END,
+        free_text_boxes    = CASE WHEN $10::text IS NOT NULL THEN $10::jsonb ELSE free_text_boxes    END,
+        updated_at         = NOW()
+       WHERE id = $11 AND client_id = $12 RETURNING *`,
       [title, body,
-       bullets != null ? JSON.stringify(bullets) : null,
-       style   != null ? JSON.stringify(style)   : null,
+       bullets          != null ? JSON.stringify(bullets)          : null,
+       style            != null ? JSON.stringify(style)            : null,
        sort_order,
        table            != null ? JSON.stringify(table)            : null,
        source ?? null,
        notes  ?? null,
        extraBulletBoxes != null ? JSON.stringify(extraBulletBoxes) : null,
+       freeTextBoxes    != null ? JSON.stringify(freeTextBoxes)    : null,
        req.params.slideId, req.params.clientId]
     )
     if (!result.rows.length) return res.status(404).json({ error: 'Not found' })
@@ -117,19 +121,20 @@ router.put('/:clientId/bulk', async (req, res) => {
     )
     for (const s of allSlides) {
       await query(
-        `INSERT INTO slides (id, client_id, dept_id, title, body, bullets, style, sort_order, "table", source, notes, extra_bullet_boxes, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        `INSERT INTO slides (id, client_id, dept_id, title, body, bullets, style, sort_order, "table", source, notes, extra_bullet_boxes, free_text_boxes, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
          ON CONFLICT (id) DO UPDATE SET
-           title             = $4,
-           body              = $5,
-           bullets           = $6,
-           style             = $7,
-           sort_order        = $8,
-           "table"           = $9,
-           source            = $10,
-           notes             = $11,
+           title              = $4,
+           body               = $5,
+           bullets            = $6,
+           style              = $7,
+           sort_order         = $8,
+           "table"            = $9,
+           source             = $10,
+           notes              = $11,
            extra_bullet_boxes = $12,
-           updated_at        = NOW()`,
+           free_text_boxes    = $13,
+           updated_at         = NOW()`,
         [
           s.id ?? (s._id?.match(/^[0-9a-f-]{36}$/) ? s._id : randomUUID()),
           req.params.clientId, s.dept_id,
@@ -141,6 +146,7 @@ router.put('/:clientId/bulk', async (req, res) => {
           s.source           ?? '',
           s.notes            ?? '',
           s.extraBulletBoxes != null ? JSON.stringify(s.extraBulletBoxes) : null,
+          s.freeTextBoxes    != null ? JSON.stringify(s.freeTextBoxes)    : null,
           req.user.id,
         ]
       )
