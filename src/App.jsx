@@ -353,6 +353,7 @@ export default function App() {
           onOpenTeam={() => setShowTeam(true)}
           onOpenAdmin={() => setShowAdmin(true)}
           onOpenAdminDashboard={() => setShowAdminDashboard(true)}
+          currentUser={currentUser}
         />
 
         <div style={styles.main}>
