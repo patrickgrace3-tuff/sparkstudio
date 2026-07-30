@@ -80,7 +80,7 @@ function ContentSlidePreview({ slide }) {
           <tr>{table.headers.map((h, i) => <th key={i} style={{ background: accent, color: '#fff', padding: '0.3em 0.6em', border: '0.5px solid rgba(255,255,255,0.2)', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>)}</tr>
         </thead>
         <tbody>
-          {table.rows.slice(0, 5).map((row, ri) => (
+          {(table.rows ?? []).slice(0, 5).map((row, ri) => (
             <tr key={ri} style={{ background: ri % 2 === 0 ? 'rgba(0,0,0,0.04)' : 'transparent' }}>
               {table.headers.map((_, ci) => <td key={ci} style={{ color: tc, padding: '0.3em 0.6em', border: '0.5px solid rgba(128,128,128,0.2)', whiteSpace: 'nowrap' }}>{row[ci] ?? ''}</td>)}
             </tr>
