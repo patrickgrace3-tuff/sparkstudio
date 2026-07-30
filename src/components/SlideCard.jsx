@@ -147,7 +147,7 @@ function SlideThumbnail({ slide }) {
   )
 }
 
-export default function SlideCard({ slide, index, deptColor, onDelete, onEdit }) {
+export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, onUseAsTemplate }) {
   return (
     <div style={styles.card}>
       <div style={{ ...styles.accent, background: deptColor }} />
@@ -193,6 +193,11 @@ export default function SlideCard({ slide, index, deptColor, onDelete, onEdit })
       {/* Actions */}
       <div style={styles.actions}>
         <button style={styles.editBtn} onClick={() => onEdit(index)}>Edit</button>
+        {onUseAsTemplate && (
+          <button style={styles.templateBtn} onClick={() => onUseAsTemplate(slide)} title="Save this slide as a reusable template">
+            + Template
+          </button>
+        )}
         <button style={styles.deleteBtn} onClick={() => onDelete(index)}>✕</button>
       </div>
     </div>
@@ -223,5 +228,6 @@ const styles = {
   previewWrap: { width: 240, flexShrink: 0, display: 'flex', alignItems: 'center' },
   actions: { display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0, justifyContent: 'flex-start' },
   editBtn: { background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '4px 10px', fontSize: 11, fontWeight: 500, color: 'var(--color-text-primary)', cursor: 'pointer' },
+  templateBtn: { background: 'none', border: '0.5px solid var(--color-accent)', borderRadius: 'var(--radius-pill)', padding: '4px 8px', fontSize: 10, fontWeight: 600, color: 'var(--color-accent)', cursor: 'pointer' },
   deleteBtn: { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '4px 8px', fontSize: 10, color: 'var(--color-text-muted)', cursor: 'pointer' },
 }
