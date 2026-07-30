@@ -289,9 +289,9 @@ function stopForEdit(e) {
 function SlideCanvas({
   slide, bgImage, table, onImagesChange, onBodyBoxChange, onTableBoxChange,
   onTitleChange, onBulletChange, onTableHeaderChange, onTableCellChange, onSourceChange,
-  onExtraBoxChange, onExtraBulletChange,
+  onExtraBoxChange, onExtraBulletChange, onFreeTextBoxChange, onFreeTextChange,
 }) {
-  const { title, bullets, source, style = {}, extraBulletBoxes = [] } = slide
+  const { title, bullets, source, style = {}, extraBulletBoxes = [], freeTextBoxes = [] } = slide
   const font    = style.font    ?? FONTS[0].value
   const layout  = style.layout  ?? 'title-top'
   const bg      = style.bg      ?? '#FFFFFF'
@@ -540,6 +540,26 @@ function SlideCanvas({
           </ul>
         </DraggableBox>
       ))}
+      {freeTextBoxes.map((ft, fi) => (
+        <DraggableBox key={`ft${fi}`} box={ft.box} onChange={box => onFreeTextBoxChange?.(fi, { box })}>
+          <div
+            contentEditable={!!onFreeTextChange}
+            suppressContentEditableWarning
+            onPointerDown={stopForEdit}
+            onBlur={e => onFreeTextChange?.(fi, e.currentTarget.innerText)}
+            style={{
+              color: bgImage ? '#fff' : textCol,
+              fontSize: `${(ft.fontSize ?? 14) * 0.115}cqw`,
+              lineHeight: 1.6,
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              outline: 'none',
+              cursor: onFreeTextChange ? 'text' : 'default',
+              textShadow: bgImage ? '0 1px 3px rgba(0,0,0,0.6)' : 'none',
+            }}
+          >{ft.text}</div>
+        </DraggableBox>
+      ))}
       <div style={{ position: 'absolute', left: '1.8%', top: '90.4%', width: '48.4%', fontSize: '1.2cqw', fontStyle: 'italic', color: bgImage ? 'rgba(255,255,255,0.7)' : '#7F7F7F', display: 'flex', gap: '0.3em' }}>
         <span style={{ flexShrink: 0 }}>Source:</span>
         <span
@@ -569,6 +589,8 @@ export default function SlideEditor({ slide, onSave, onClose }) {
       : (slide.body ?? '').split('\n').filter(Boolean),
     // extraBulletBoxes: array of { bullets: string[], box: {x,y,w,h} }
     extraBulletBoxes: slide.extraBulletBoxes ? slide.extraBulletBoxes.map(eb => ({ ...eb, bullets: [...eb.bullets] })) : [],
+    // freeTextBoxes: array of { text: string, box: {x,y,w,h}, fontSize: number }
+    freeTextBoxes: slide.freeTextBoxes ? slide.freeTextBoxes.map(ft => ({ ...ft })) : [],
     style: {
       // Spread all existing style fields first so nothing (tableBox, bgImage, etc.)
       // is silently dropped when the editor opens and saves without touching that field.
@@ -681,6 +703,23 @@ export default function SlideEditor({ slide, onSave, onClose }) {
       i === bi ? { ...eb, bullets: eb.bullets.filter((_, j) => j !== li) } : eb
     )
     update('extraBulletBoxes', next)
+  }
+
+  // ── Free text box helpers ─────────────────────────────────────────────────
+  function addFreeTextBox() {
+    update('freeTextBoxes', [...draft.freeTextBoxes, {
+      text: '',
+      box: { x: 0.045, y: 0.55, w: 0.829, h: 0.25 },
+      fontSize: 14,
+    }])
+  }
+
+  function removeFreeTextBox(fi) {
+    update('freeTextBoxes', draft.freeTextBoxes.filter((_, i) => i !== fi))
+  }
+
+  function updateFreeTextBox(fi, patch) {
+    update('freeTextBoxes', draft.freeTextBoxes.map((ft, i) => i === fi ? { ...ft, ...patch } : ft))
   }
 
   // Wrap the selected text of bullet `i` in markdown-style markers (** for
@@ -806,6 +845,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
       extraBulletBoxes: draft.extraBulletBoxes
         .filter(eb => eb.bullets.some(Boolean))
         .map(eb => ({ ...eb, bullets: eb.bullets.filter(Boolean) })),
+      freeTextBoxes: draft.freeTextBoxes.filter(ft => ft.text.trim()),
     }
     onSave(saved)
     clearTimeout(savedTimerRef.current)
@@ -913,6 +953,36 @@ export default function SlideEditor({ slide, onSave, onClose }) {
                       ))}
                       <button style={styles.addBulletBtn} onClick={() => addExtraBullet(bi)}>+ Add bullet</button>
                     </div>
+                  </div>
+                ))}
+
+                {/* ── Free text boxes ── */}
+                <div style={styles.tableSectionHeader}>
+                  <label style={styles.label}>Freeform text areas</label>
+                  <button style={styles.microBtn} onClick={addFreeTextBox}>+ Add text</button>
+                </div>
+                {draft.freeTextBoxes.map((ft, fi) => (
+                  <div key={fi} style={{ border: '0.5px solid var(--color-border)', borderRadius: 6, padding: '8px 10px', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)' }}>Text {fi + 1}</span>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <label style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Size</label>
+                        <input
+                          type="number"
+                          min={8} max={72}
+                          style={{ ...styles.bulletInput, width: 52, padding: '3px 6px' }}
+                          value={ft.fontSize ?? 14}
+                          onChange={e => updateFreeTextBox(fi, { fontSize: Number(e.target.value) })}
+                        />
+                        <button style={{ ...styles.microBtn, color: '#ef4444', borderColor: '#ef444466' }} onClick={() => removeFreeTextBox(fi)}>Remove</button>
+                      </div>
+                    </div>
+                    <textarea
+                      style={{ ...styles.bulletInput, width: '100%', boxSizing: 'border-box', minHeight: 80, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5, padding: '6px 8px' }}
+                      value={ft.text}
+                      onChange={e => updateFreeTextBox(fi, { text: e.target.value })}
+                      placeholder="Enter freeform text…"
+                    />
                   </div>
                 ))}
 
@@ -1076,6 +1146,8 @@ export default function SlideEditor({ slide, onSave, onClose }) {
                 onSourceChange={text => update('source', text.trim())}
                 onExtraBoxChange={updateExtraBox}
                 onExtraBulletChange={(bi, li, text) => updateExtraBullet(bi, li, text.trim())}
+                onFreeTextBoxChange={(fi, patch) => updateFreeTextBox(fi, patch)}
+                onFreeTextChange={(fi, text) => updateFreeTextBox(fi, { text: text.trim() })}
               />
               <div style={styles.previewHint}>
                 {draft.bullets.length} bullet{draft.bullets.length !== 1 ? 's' : ''}

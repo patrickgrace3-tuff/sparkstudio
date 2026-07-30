@@ -43,6 +43,7 @@ function ContentSlidePreview({ slide }) {
   const rawStyle  = slide.style  ?? {}
   const bullets   = slide.bullets ?? []
   const extraBulletBoxes = slide.extraBulletBoxes ?? []
+  const freeTextBoxes    = slide.freeTextBoxes    ?? []
   const { title, table, source } = slide
   const style = rawStyle
   const tc     = style.textCol || '#1A1A1A'
@@ -120,6 +121,14 @@ function ContentSlidePreview({ slide }) {
                 </li>
               ))}
             </ul>
+          </div>
+        )
+      })}
+      {freeTextBoxes.map((ft, fi) => {
+        const box = ft.box || { x: 0.045, y: 0.55, w: 0.829, h: 0.25 }
+        return (
+          <div key={fi} style={{ position: 'absolute', left: `${box.x * 100}%`, top: `${box.y * 100}%`, width: `${box.w * 100}%`, height: `${box.h * 100}%`, overflow: 'hidden' }}>
+            <p style={{ margin: 0, fontSize: `${(ft.fontSize ?? 14) * 0.115}cqw`, color: bgImg ? '#fff' : tc, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{ft.text}</p>
           </div>
         )
       })}
