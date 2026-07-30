@@ -1,20 +1,21 @@
 import React from 'react'
 
-// Lightweight read-only slide thumbnail — no DraggableBox, no event handlers
+// Lightweight read-only slide thumbnail — mirrors the exact positions the editor uses
 function SlideThumbnail({ slide }) {
   const style   = slide.style ?? {}
   const accent  = style.accent  ?? '#CD2F37'
-  const textCol = slide.style?.textCol ?? '#1a1a1a'
+  const textCol = style.textCol ?? '#1a1a1a'
   const bgImage = style.bgImage ?? null
   const bullets = slide.bullets ?? []
   const table   = slide.table   ?? null
   const images  = style.images  ?? []
+  const extraBulletBoxes = slide.extraBulletBoxes ?? []
 
-  const hasBullets = bullets.length > 0
-  const hasTable   = table && table.headers?.length > 0
-  // If both bullets and table, bullets take top half, table takes bottom
-  const bulletTop = '19%'
-  const tableTop  = hasBullets ? '54%' : '19%'
+  const hasTable = table && table.headers?.length > 0
+
+  // Use same defaults as SlideEditor's DraggableBox calls
+  const bodyBox  = style.bodyBox  ?? { x: 0.045, y: 0.19,  w: 0.829, h: hasTable ? 0.4 : 0.63 }
+  const tableBox = style.tableBox ?? { x: 0.045, y: 0.55,  w: 0.829, h: 0.32 }
 
   const bg = bgImage
     ? `url(${bgImage}) center/cover no-repeat`
@@ -28,7 +29,7 @@ function SlideThumbnail({ slide }) {
     }}>
       {bgImage && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }} />}
 
-      {/* Title */}
+      {/* Title — same position as editor */}
       <div style={{
         position: 'absolute', left: '15.25%', top: '5.1%', width: '77.9%',
         fontSize: '2.8cqw', fontWeight: 400,
@@ -37,14 +38,20 @@ function SlideThumbnail({ slide }) {
         display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
       }}>{slide.title}</div>
 
-      {/* Bullets */}
-      {hasBullets && (
-        <div style={{ position: 'absolute', left: '4.5%', top: bulletTop, width: hasTable ? '82.9%' : '82.9%' }}>
+      {/* Bullets — positioned using bodyBox, same as editor */}
+      {bullets.length > 0 && (
+        <div style={{
+          position: 'absolute',
+          left: `${bodyBox.x * 100}%`, top: `${bodyBox.y * 100}%`,
+          width: `${bodyBox.w * 100}%`, height: `${bodyBox.h * 100}%`,
+          overflow: 'hidden',
+        }}>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            {bullets.slice(0, hasTable ? 3 : 6).map((b, i) => (
+            {bullets.slice(0, 8).map((b, i) => (
               <li key={i} style={{
-                color: bgImage ? '#fff' : textCol, fontSize: '1.7cqw', lineHeight: 1.45,
-                display: 'flex', gap: '0.4cqw', marginBottom: '0.3em',
+                color: bgImage ? '#fff' : textCol,
+                fontSize: '1.7cqw', lineHeight: 1.5,
+                display: 'flex', gap: '0.4cqw', marginBottom: '0.4em',
                 overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
               }}>
                 <span style={{ color: accent, fontWeight: 700, flexShrink: 0 }}>•</span>
@@ -55,16 +62,41 @@ function SlideThumbnail({ slide }) {
         </div>
       )}
 
-      {/* Table */}
+      {/* Extra bullet columns — same x/y/w/h as editor */}
+      {extraBulletBoxes.map((eb, bi) => (
+        eb.bullets?.length > 0 && (
+          <div key={bi} style={{
+            position: 'absolute',
+            left: `${eb.box.x * 100}%`, top: `${eb.box.y * 100}%`,
+            width: `${eb.box.w * 100}%`, height: `${eb.box.h * 100}%`,
+            overflow: 'hidden',
+          }}>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              {eb.bullets.map((b, i) => (
+                <li key={i} style={{
+                  color: bgImage ? '#fff' : textCol,
+                  fontSize: '1.7cqw', lineHeight: 1.5,
+                  display: 'flex', gap: '0.4cqw', marginBottom: '0.4em',
+                  overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+                }}>
+                  <span style={{ color: accent, fontWeight: 700, flexShrink: 0 }}>•</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{b}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )
+      ))}
+
+      {/* Table — positioned using tableBox, same as editor */}
       {hasTable && (
         <div style={{
-          position: 'absolute', left: '4.5%', top: tableTop, width: '82.9%',
+          position: 'absolute',
+          left: `${tableBox.x * 100}%`, top: `${tableBox.y * 100}%`,
+          width: `${tableBox.w * 100}%`, height: `${tableBox.h * 100}%`,
           overflow: 'hidden',
         }}>
-          <table style={{
-            width: '100%', borderCollapse: 'collapse',
-            fontSize: '1.3cqw', tableLayout: 'fixed',
-          }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '1.3cqw', tableLayout: 'fixed' }}>
             <thead>
               <tr style={{ background: accent }}>
                 {table.headers.map((h, i) => (
@@ -78,7 +110,7 @@ function SlideThumbnail({ slide }) {
               </tr>
             </thead>
             <tbody>
-              {(table.rows ?? []).slice(0, 4).map((row, ri) => (
+              {(table.rows ?? []).slice(0, 5).map((row, ri) => (
                 <tr key={ri} style={{ background: ri % 2 === 0 ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)' }}>
                   {table.headers.map((_, ci) => (
                     <td key={ci} style={{
@@ -92,22 +124,20 @@ function SlideThumbnail({ slide }) {
               ))}
             </tbody>
           </table>
-          {table.rows?.length > 4 && (
+          {table.rows?.length > 5 && (
             <div style={{ fontSize: '1.1cqw', color: bgImage ? 'rgba(255,255,255,0.5)' : textCol, opacity: 0.6, marginTop: '0.2cqw' }}>
-              +{table.rows.length - 4} more rows
+              +{table.rows.length - 5} more rows
             </div>
           )}
         </div>
       )}
 
-      {/* Free-positioned images */}
+      {/* Free-positioned images — exact x/y/w/h from editor */}
       {images.map((img, i) => (
         <div key={i} style={{
           position: 'absolute',
-          left:   `${img.x * 100}%`,
-          top:    `${img.y * 100}%`,
-          width:  `${img.w * 100}%`,
-          height: `${img.h * 100}%`,
+          left: `${img.x * 100}%`, top: `${img.y * 100}%`,
+          width: `${img.w * 100}%`, height: `${img.h * 100}%`,
           backgroundImage: `url(${img.src})`,
           backgroundSize: '100% 100%',
           backgroundRepeat: 'no-repeat',
