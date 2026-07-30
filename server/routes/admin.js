@@ -15,8 +15,22 @@ router.use(requireAdmin)
 // GET /api/admin/users
 router.get('/users', async (req, res) => {
   try {
-    const result = await query('SELECT id, email, name, role, created_at FROM users ORDER BY created_at ASC')
-    res.json(result.rows)
+    const result = await query(`
+      SELECT
+        u.id, u.email, u.name, u.role, u.created_at, u.last_login,
+        COUNT(DISTINCT s.id)                                    AS slides_count,
+        COALESCE(SUM(tl.input_tokens + tl.output_tokens), 0)   AS tokens_used
+      FROM users u
+      LEFT JOIN slides     s  ON s.created_by  = u.id
+      LEFT JOIN token_logs tl ON tl.user_id    = u.id
+      GROUP BY u.id
+      ORDER BY u.created_at ASC
+    `)
+    res.json(result.rows.map(r => ({
+      ...r,
+      slides_count: parseInt(r.slides_count),
+      tokens_used:  parseInt(r.tokens_used),
+    })))
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Server error' })

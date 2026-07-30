@@ -100,7 +100,7 @@ function UsersTab({ currentUserId }) {
       <table style={S.table}>
         <thead>
           <tr>
-            {['Name', 'Email', 'Role', 'Created', 'Actions'].map(h => (
+            {['Name', 'Email', 'Role', 'Created', 'Last Login', 'Slides', 'Tokens', 'Actions'].map(h => (
               <th key={h} style={S.th}>{h}</th>
             ))}
           </tr>
@@ -119,6 +119,13 @@ function UsersTab({ currentUserId }) {
                 </span>
               </td>
               <td style={S.td}>{new Date(u.created_at).toLocaleDateString()}</td>
+              <td style={{ ...S.td, color: u.last_login ? 'var(--color-text-primary)' : 'var(--color-text-muted)', fontStyle: u.last_login ? 'normal' : 'italic' }}>
+                {u.last_login ? new Date(u.last_login).toLocaleDateString() : 'Never'}
+              </td>
+              <td style={{ ...S.td, fontVariantNumeric: 'tabular-nums' }}>{u.slides_count ?? 0}</td>
+              <td style={{ ...S.td, fontVariantNumeric: 'tabular-nums' }}>
+                {u.tokens_used >= 1000 ? `${(u.tokens_used / 1000).toFixed(1)}k` : (u.tokens_used ?? 0)}
+              </td>
               <td style={S.td}>
                 <div style={S.actions}>
                   {u.id !== currentUserId && (

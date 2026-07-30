@@ -61,6 +61,7 @@ router.post('/login', authLimiter, async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' })
     }
 
+    await query('UPDATE users SET last_login = NOW() WHERE id = $1', [user.id])
     const token = signToken({ id: user.id, email: user.email, name: user.name, role: user.role })
     res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role } })
   } catch (err) {
