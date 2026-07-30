@@ -251,6 +251,8 @@ export default function App() {
           ...(original.notes  ? { notes:  original.notes }  : {}),
           // Restore extra bullet boxes (additional column areas added in SlideEditor)
           ...('extraBulletBoxes' in original ? { extraBulletBoxes: original.extraBulletBoxes } : {}),
+          // Restore freeform text boxes added in SlideEditor
+          ...(original.freeTextBoxes?.length ? { freeTextBoxes: original.freeTextBoxes } : {}),
         }
       })
 

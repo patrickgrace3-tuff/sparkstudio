@@ -76,46 +76,50 @@ function ContentSlidePreview({ slide }) {
     </ul>
   )
 
-  const bodyBox = style.bodyBox || { x: 0.045, y: 0.19, w: 0.829, h: 0.63 }
-
-  const tableEl = table?.headers?.length > 0 ? (
-    <div style={{ overflowX: 'auto', marginTop: '0.8cqw' }}>
-      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '1.2cqw' }}>
-        <thead>
-          <tr>{table.headers.map((h, i) => <th key={i} style={{ background: accent, color: '#fff', padding: '0.3em 0.6em', border: '0.5px solid rgba(255,255,255,0.2)', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>)}</tr>
-        </thead>
-        <tbody>
-          {(table.rows ?? []).slice(0, 5).map((row, ri) => (
-            <tr key={ri} style={{ background: ri % 2 === 0 ? 'rgba(0,0,0,0.04)' : 'transparent' }}>
-              {table.headers.map((_, ci) => <td key={ci} style={{ color: tc, padding: '0.3em 0.6em', border: '0.5px solid rgba(128,128,128,0.2)', whiteSpace: 'nowrap' }}>{row[ci] ?? ''}</td>)}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  ) : null
-
-  const sourceEl = (
-    <div style={{ position: 'absolute', left: '1.8%', top: '90.4%', width: '48.4%', fontSize: '1.2cqw', fontStyle: 'italic', color: '#7F7F7F' }}>Source: {source}</div>
-  )
+  const bodyBox  = style.bodyBox  || { x: 0.045, y: 0.19, w: 0.829, h: 0.63 }
+  const tableBox = style.tableBox || { x: 0.045, y: 0.55, w: 0.829, h: 0.32 }
+  const hasTable = table?.headers?.length > 0
 
   return (
     <div style={wrap}>
       {bgImg && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }} />}
       {titleEl}
+
+      {/* Bullet body — at bodyBox position, same as editor */}
       <div style={{ position: 'absolute', left: `${bodyBox.x * 100}%`, top: `${bodyBox.y * 100}%`, width: showContentImage ? '52%' : `${bodyBox.w * 100}%`, height: `${bodyBox.h * 100}%`, overflow: 'hidden' }}>
-        {bulletEls}{tableEl}
+        {bulletEls}
       </div>
+
       {showContentImage && (
         <div style={{ position: 'absolute', right: '3%', top: '19%', width: '38%', height: '63%', background: `url(${style.contentImage}) center/cover`, borderRadius: 4 }} />
       )}
+
+      {/* Table — at its own tableBox position, same as editor */}
+      {hasTable && (
+        <div style={{ position: 'absolute', left: `${tableBox.x * 100}%`, top: `${tableBox.y * 100}%`, width: `${tableBox.w * 100}%`, height: `${tableBox.h * 100}%`, overflow: 'hidden' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '1.2cqw' }}>
+            <thead>
+              <tr>{table.headers.map((h, i) => <th key={i} style={{ background: accent, color: '#fff', padding: '0.3em 0.6em', border: '0.5px solid rgba(255,255,255,0.2)', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {(table.rows ?? []).slice(0, 20).map((row, ri) => (
+                <tr key={ri} style={{ background: ri % 2 === 0 ? 'rgba(0,0,0,0.04)' : 'transparent' }}>
+                  {table.headers.map((_, ci) => <td key={ci} style={{ color: tc, padding: '0.3em 0.6em', border: '0.5px solid rgba(128,128,128,0.2)', whiteSpace: 'nowrap' }}>{row[ci] ?? ''}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Extra bullet boxes — at their own positions */}
       {extraBulletBoxes.map((eb, bi) => {
         const ebBox = eb.box || { x: 0.5, y: 0.19, w: 0.37, h: 0.35 }
         return (
           <div key={bi} style={{ position: 'absolute', left: `${ebBox.x * 100}%`, top: `${ebBox.y * 100}%`, width: `${ebBox.w * 100}%`, height: `${ebBox.h * 100}%`, overflow: 'hidden' }}>
             <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
               {(eb.bullets || []).map((b, li) => (
-                <li key={li} style={{ fontSize: '1.7cqw', color: tc, padding: '0.2em 0 0.2em 1.1em', position: 'relative', lineHeight: 1.4 }}>
+                <li key={li} style={{ fontSize: '1.7cqw', color: bgImg ? '#fff' : tc, padding: '0.2em 0 0.2em 1.1em', position: 'relative', lineHeight: 1.4 }}>
                   <span style={{ position: 'absolute', left: 0, color: accent }}>•</span>
                   <RichText text={b.replace(/^[-–•]\s*/, '')} />
                 </li>
@@ -124,6 +128,8 @@ function ContentSlidePreview({ slide }) {
           </div>
         )
       })}
+
+      {/* Freeform text boxes — at their own positions */}
       {freeTextBoxes.map((ft, fi) => {
         const box = ft.box || { x: 0.045, y: 0.55, w: 0.829, h: 0.25 }
         return (
@@ -132,21 +138,32 @@ function ContentSlidePreview({ slide }) {
           </div>
         )
       })}
-      {sourceEl}
-      {(style.images || []).map((img, i) => (
-        <img
-          key={i}
-          src={img.src}
-          style={{
-            position: 'absolute',
-            left: `${img.x * 100}%`,
-            top: `${img.y * 100}%`,
-            width: `${img.w * 100}%`,
-            height: `${img.h * 100}%`,
-            objectFit: 'cover',
-          }}
-        />
-      ))}
+
+      {/* Source */}
+      <div style={{ position: 'absolute', left: '1.8%', top: '90.4%', width: '48.4%', fontSize: '1.2cqw', fontStyle: 'italic', color: bgImg ? 'rgba(255,255,255,0.7)' : '#7F7F7F' }}>Source: {source}</div>
+
+      {/* Overlay images — match editor backgroundSize/crop logic */}
+      {(style.images || []).map((img, i) => {
+        const isCrop = img.mode === 'crop'
+        const bgX    = img.bgX ?? 50
+        const bgY    = img.bgY ?? 50
+        return (
+          <div
+            key={i}
+            style={{
+              position: 'absolute',
+              left: `${img.x * 100}%`,
+              top: `${img.y * 100}%`,
+              width: `${img.w * 100}%`,
+              height: `${img.h * 100}%`,
+              backgroundImage: `url(${img.src})`,
+              backgroundSize: isCrop ? 'cover' : '100% 100%',
+              backgroundPosition: isCrop ? `${bgX}% ${bgY}%` : 'center',
+              backgroundRepeat: 'no-repeat',
+            }}
+          />
+        )
+      })}
     </div>
   )
 }
