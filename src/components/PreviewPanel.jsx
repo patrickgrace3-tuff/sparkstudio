@@ -177,10 +177,26 @@ function buildSlideList(deck, funnelConfig, teamConfig) {
   return list
 }
 
+function DividerSlidePreview({ text }) {
+  return (
+    <div style={{
+      width: '100%', height: '100%', flex: 1,
+      background: `url(/branding/section-bg.jpg) center/cover no-repeat`,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      containerType: 'inline-size',
+    }}>
+      <span style={{ fontSize: '5.8cqw', fontWeight: 800, color: '#fff', letterSpacing: 0.5, textAlign: 'center', width: '91%' }}>
+        {text || 'Section Title'}
+      </span>
+    </div>
+  )
+}
+
 function renderSlide(item) {
   switch (item.kind) {
     case 'cover':   return <CoverSlidePreview />
     case 'section': return <SectionSlidePreview dept={item.dept} />
+    case 'divider': return <DividerSlidePreview text={item.text} />
     case 'closing': return <ClosingSlidePreview />
     case 'funnel':  return <FunnelSlidePreview config={item.funnelConfig} label={item.funnelLabel} />
     case 'team':    return <TeamSlidePreview config={item.teamConfig} />
@@ -220,9 +236,11 @@ function PresenterView({ slides, startIndex, onClose }) {
 }
 
 export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerating, onExport, isExporting, onEditSlide }) {
-  const [presenting,  setPresenting]  = useState(false)
-  const [startIndex,  setStartIndex]  = useState(0)
-  const [order,       setOrder]       = useState(null)
+  const [presenting,   setPresenting]   = useState(false)
+  const [startIndex,   setStartIndex]   = useState(0)
+  const [slidesList,   setSlidesList]   = useState(null)  // null = use baseSlides
+  const [editingDiv,   setEditingDiv]   = useState(null)  // id of divider being edited
+  const [dividerDraft, setDividerDraft] = useState('')
   const dragIdx = useRef(null)
   const overIdx = useRef(null)
 
@@ -244,7 +262,7 @@ export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerat
   }
 
   const baseSlides = buildSlideList(deck, funnelConfig, teamConfig)
-  const slides = order ? order.map(i => baseSlides[i]) : baseSlides
+  const slides = slidesList ?? baseSlides
 
   function onDragStart(e, i) {
     dragIdx.current = i
@@ -261,11 +279,10 @@ export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerat
     e.preventDefault()
     const from = dragIdx.current
     if (from === null || from === i) return
-    const base = order || baseSlides.map((_, idx) => idx)
-    const next = [...base]
+    const next = [...slides]
     const [moved] = next.splice(from, 1)
     next.splice(i, 0, moved)
-    setOrder(next)
+    setSlidesList(next)
     dragIdx.current = null
     overIdx.current = null
   }
@@ -275,6 +292,23 @@ export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerat
     overIdx.current = null
   }
 
+  function addDivider() {
+    const id = `div-${Date.now()}`
+    const divider = { kind: 'divider', label: 'Section Divider', text: 'Section Title', id }
+    setSlidesList([...slides, divider])
+    setEditingDiv(id)
+    setDividerDraft('Section Title')
+  }
+
+  function removeDivider(id) {
+    setSlidesList(slides.filter(s => s.id !== id))
+  }
+
+  function saveDividerText(id) {
+    setSlidesList(slides.map(s => s.id === id ? { ...s, text: dividerDraft } : s))
+    setEditingDiv(null)
+  }
+
   return (
     <div style={S.wrapper}>
       <div style={S.toolbar}>
@@ -282,6 +316,7 @@ export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerat
           {slides.length} slides · Spark Studio template
         </span>
         <div style={{ display: 'flex', gap: 10 }}>
+          <button style={S.dividerBtn} onClick={addDivider}>＋ Section Divider</button>
           <button
             style={S.presentBtn}
             onClick={() => { setStartIndex(0); setPresenting(true) }}
@@ -301,7 +336,7 @@ export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerat
       <div style={S.grid}>
         {slides.map((item, i) => (
           <div
-            key={`${item.kind}-${i}`}
+            key={item.id ?? `${item.kind}-${i}`}
             draggable
             onDragStart={e => onDragStart(e, i)}
             onDragOver={e => onDragOver(e, i)}
@@ -312,6 +347,32 @@ export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerat
           >
             <div style={S.slideLabel}>Slide {i + 1} · {item.label}</div>
             <div style={S.slideTile}>{renderSlide(item)}</div>
+
+            {item.kind === 'divider' && (
+              <div style={S.notesStrip} onClick={e => e.stopPropagation()}>
+                {editingDiv === item.id ? (
+                  <>
+                    <input
+                      autoFocus
+                      value={dividerDraft}
+                      onChange={e => setDividerDraft(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') saveDividerText(item.id); if (e.key === 'Escape') setEditingDiv(null) }}
+                      style={S.dividerInput}
+                      placeholder="Section title…"
+                    />
+                    <button style={S.notesEditBtn} onClick={() => saveDividerText(item.id)}>Save</button>
+                    <button style={{ ...S.notesEditBtn, color: '#CD2F37' }} onClick={() => removeDivider(item.id)}>Remove</button>
+                  </>
+                ) : (
+                  <>
+                    <span style={{ ...S.notesText, fontStyle: 'normal' }}>{item.text}</span>
+                    <button style={S.notesEditBtn} onClick={() => { setEditingDiv(item.id); setDividerDraft(item.text) }}>Edit</button>
+                    <button style={{ ...S.notesEditBtn, color: '#CD2F37' }} onClick={() => removeDivider(item.id)}>✕</button>
+                  </>
+                )}
+              </div>
+            )}
+
             {item.kind === 'content' && (
               <div style={S.notesStrip}>
                 {item.slide?.notes?.trim()
@@ -343,8 +404,10 @@ export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerat
 const S = {
   wrapper:        { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' },
   toolbar:        { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', borderBottom: '0.5px solid var(--color-border)' },
+  dividerBtn:     { background: 'transparent', color: 'var(--color-text-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '8px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer' },
   presentBtn:     { background: 'transparent', color: 'var(--color-text-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
   exportBtn:      { background: 'var(--color-accent)', color: '#fff', border: 'none', borderRadius: 'var(--radius-pill)', padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+  dividerInput:   { flex: 1, fontSize: 11, border: 'none', outline: 'none', background: 'transparent', color: 'var(--color-text-primary)', padding: 0 },
   grid:           { flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16, alignContent: 'start' },
   slideWrapper:   { display: 'flex', flexDirection: 'column', gap: 5, cursor: 'pointer' },
   slideLabel:     { fontSize: 11, color: 'var(--color-text-muted)', fontWeight: 500 },
