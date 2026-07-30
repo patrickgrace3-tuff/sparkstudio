@@ -624,11 +624,12 @@ export async function exportToPptx(orderedSlides, deck) {
   for (const item of orderedSlides) {
     if (item.kind === 'cover') continue   // slide1 is kept as-is from template
 
-    if (item.kind === 'section') {
+    if (item.kind === 'section' || item.kind === 'divider') {
+      const label = item.kind === 'divider' ? (item.text || 'Section Title') : item.dept
       newSlides.push({
         filename:     `ppt/slides/slide${idx}.xml`,
         relsFilename: `ppt/slides/_rels/slide${idx}.xml.rels`,
-        xml:          rewriteShapeIds(patchSectionSlide(slide2Xml, item.dept)),
+        xml:          rewriteShapeIds(patchSectionSlide(slide2Xml, label)),
         relsXml:      slide2Rels,
       })
       idx++
