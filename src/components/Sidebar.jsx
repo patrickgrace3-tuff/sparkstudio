@@ -12,6 +12,7 @@ export default function Sidebar({
   onOpenTeam,
   onOpenAdmin,
   onOpenAdminDashboard,
+  currentUser,
 }) {
   const totalSlides = Object.values(allSlides).reduce((a, b) => a + b.length, 0)
 
@@ -61,17 +62,21 @@ export default function Sidebar({
         <span style={styles.globalLabel}>My Team</span>
       </button>
 
-      {/* Templates */}
-      <button style={styles.funnelBtn} onClick={onOpenAdmin}>
-        <span style={styles.globalIcon}>📋</span>
-        <span style={styles.globalLabel}>Templates</span>
-      </button>
+      {/* Templates — admin only */}
+      {currentUser?.role === 'admin' && (
+        <button style={styles.funnelBtn} onClick={onOpenAdmin}>
+          <span style={styles.globalIcon}>📋</span>
+          <span style={styles.globalLabel}>Templates</span>
+        </button>
+      )}
 
-      {/* Admin Dashboard */}
-      <button style={styles.funnelBtn} onClick={onOpenAdminDashboard}>
-        <span style={styles.globalIcon}>⚙️</span>
-        <span style={styles.globalLabel}>Admin</span>
-      </button>
+      {/* Admin Dashboard — admin only */}
+      {currentUser?.role === 'admin' && (
+        <button style={styles.funnelBtn} onClick={onOpenAdminDashboard}>
+          <span style={styles.globalIcon}>⚙️</span>
+          <span style={styles.globalLabel}>Admin</span>
+        </button>
+      )}
 
       <div style={styles.footer}>
         <p style={styles.totalLabel}>{totalSlides} slide{totalSlides !== 1 ? 's' : ''} total</p>
