@@ -19,6 +19,7 @@ import { buildSeedSlides } from './lib/templates.js'
 import { loadFiles, loadFilesRemote, buildAIContext, loadGlobalFiles, loadGlobalFilesRemote } from './lib/files.js'
 import { enhanceSlideBody, generateDeck } from './lib/api.js'
 import { exportToPptx } from './lib/export.js'
+import { importSlidesFromPptx } from './lib/importPptx.js'
 import { api, setToken } from './lib/apiClient.js'
 
 export default function App() {
@@ -36,6 +37,8 @@ export default function App() {
   const [isGenerating,   setIsGenerating]   = useState(false)
   const [isEnhancing,    setIsEnhancing]    = useState(false)
   const [isExporting,    setIsExporting]    = useState(false)
+  const [isImporting,    setIsImporting]    = useState(false)
+  const importInputRef = useRef(null)
   const [editingSlide,   setEditingSlide]   = useState(null)
   const [showGlobal,     setShowGlobal]     = useState(false)
   const [showFunnel,     setShowFunnel]     = useState(false)
@@ -175,6 +178,28 @@ export default function App() {
   function saveEditedSlide(index, updated) {
     const updatedList = deptSlides.map((s, i) => i === index ? updated : s)
     setSlides({ ...allSlides, [activeDeptId]: updatedList })
+  }
+
+  // ── PPTX Import ───────────────────────────────────────────────────────────
+  async function handleImportPptx(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setIsImporting(true)
+    try {
+      const imported = await importSlidesFromPptx(file)
+      if (!imported.length) { alert('No slides found in this file.'); return }
+      const withIds = imported.map(s => ({
+        ...s,
+        _id: `s${Date.now()}${Math.random().toString(36).slice(2)}`,
+        style: {},
+      }))
+      setSlides({ ...allSlides, [activeDeptId]: [...deptSlides, ...withIds] })
+    } catch (err) {
+      alert('Import failed: ' + err.message)
+    } finally {
+      setIsImporting(false)
+    }
   }
 
   // ── AI ─────────────────────────────────────────────────────────────────────
@@ -505,6 +530,20 @@ export default function App() {
                       {t.label}
                     </button>
                   ))}
+                  <button
+                    style={styles.importBtn}
+                    onClick={() => importInputRef.current?.click()}
+                    disabled={isImporting}
+                  >
+                    {isImporting ? 'Importing…' : '↑ Import PPTX'}
+                  </button>
+                  <input
+                    ref={importInputRef}
+                    type="file"
+                    accept=".pptx"
+                    style={{ display: 'none' }}
+                    onChange={handleImportPptx}
+                  />
                 </div>
               </div>
 
@@ -659,6 +698,7 @@ const styles = {
   subTab:          { background: 'none', border: '0.5px solid transparent', borderRadius: 'var(--radius-pill)', padding: '4px 12px', fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'pointer' },
   subTabActive:    { background: 'var(--color-accent-tint)', border: '0.5px solid var(--color-border)', color: 'var(--color-accent-dark)', fontWeight: 500 },
   subTabAI:        { color: '#1D9E75' },
+  importBtn:       { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '4px 12px', fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'pointer', marginLeft: 4 },
   slideList:       { flex: 1, overflowY: 'auto', padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 8 },
   emptyMsg:        { fontSize: 14, color: 'var(--color-text-muted)', margin: 'auto', alignSelf: 'center', paddingTop: 40 },
   addArea:         { padding: '0 20px 18px' },
