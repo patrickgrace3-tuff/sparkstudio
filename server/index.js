@@ -12,8 +12,9 @@ import presentationRoutes from './routes/presentations.js'
 import templateRoutes     from './routes/templates.js'
 import clientDataRoutes   from './routes/clientdata.js'
 import adminRoutes        from './routes/admin.js'
-import tokenLogRoutes    from './routes/tokenlogs.js'
-import claudeRoutes       from './routes/claude.js'
+import tokenLogRoutes      from './routes/tokenlogs.js'
+import claudeRoutes        from './routes/claude.js'
+import slideRequestRoutes  from './routes/slideRequests.js'
 
 const app  = express()
 const PORT = process.env.PORT || 3001
@@ -30,8 +31,8 @@ app.use(cors({
   credentials: true,
 }))
 
-// 1 MB default; upload routes declare their own higher limits inline
-app.use(express.json({ limit: '1mb' }))
+// 50 MB to handle base64-encoded PDFs and images sent to the Claude proxy
+app.use(express.json({ limit: '50mb' }))
 
 app.use('/api/auth',          authRoutes)
 app.use('/api/clients',       clientRoutes)
@@ -40,18 +41,19 @@ app.use('/api/presentations', presentationRoutes)
 app.use('/api/templates',     templateRoutes)
 app.use('/api/clientdata',    clientDataRoutes)
 app.use('/api/admin',         adminRoutes)
-app.use('/api/tokenlogs',     tokenLogRoutes)
-app.use('/api/claude',        claudeRoutes)
+app.use('/api/tokenlogs',      tokenLogRoutes)
+app.use('/api/claude',         claudeRoutes)
+app.use('/api/slide-requests', slideRequestRoutes)
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }))
 
 // Run migrations on every startup (all statements use IF NOT EXISTS — safe to repeat)
 async function start() {
   try {
-    const sql001 = readFileSync('./migrations/001_initial.sql', 'utf8')
-    await pool.query(sql001)
-    const sql002 = readFileSync('./migrations/002_slides_table_field.sql', 'utf8')
-    await pool.query(sql002)
+    for (const file of ['001_initial.sql', '002_slide_requests.sql', '003_slides_table_field.sql']) {
+      const sql = readFileSync(`./migrations/${file}`, 'utf8')
+      await pool.query(sql)
+    }
     console.log('Migrations up to date.')
   } catch (err) {
     console.error('Migration error:', err.message)

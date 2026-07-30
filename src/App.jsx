@@ -208,11 +208,21 @@ export default function App() {
         if (!original) return genSlide
         return {
           ...genSlide,
-          ...(original.table  ? { table:  original.table }  : {}),
+          // Always restore the original title so the AI cannot rename saved slides
+          title: original.title || genSlide.title,
+          // Restore saved bullets when the slide has been edited (bullets key exists, even if
+          // intentionally empty). Slides added but never opened in SlideEditor have no bullets
+          // key at all — those keep AI-generated bullets.
+          ...('bullets' in original ? { bullets: original.bullets } : {}),
+          // Always restore the saved table when the slide has been edited.
+          // null means the user explicitly removed it; undefined means never edited — let AI decide.
+          ...('table' in original ? { table: original.table } : {}),
           // Merge styles: AI-assigned images/layout take priority, then original style fills gaps
           style: { ...(original.style ?? {}), ...(genSlide.style ?? {}) },
           ...(original.source ? { source: original.source } : {}),
           ...(original.notes  ? { notes:  original.notes }  : {}),
+          // Restore extra bullet boxes (additional column areas added in SlideEditor)
+          ...('extraBulletBoxes' in original ? { extraBulletBoxes: original.extraBulletBoxes } : {}),
         }
       })
 
@@ -409,7 +419,7 @@ export default function App() {
                 Preview deck
               </button>
             )}
-            <div style={styles.templatePicker}>
+            {currentUser?.role === 'admin' && <div style={styles.templatePicker}>
               <span style={styles.templateLabel}>Template:</span>
               <select
                 style={styles.templateSelect}
@@ -471,7 +481,7 @@ export default function App() {
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
-            </div>
+            </div>}
           </div>
 
           {activeTab === 'input' && (
@@ -541,6 +551,8 @@ export default function App() {
                   deptName={activeDept?.name}
                   deptColor={activeDept?.color}
                   allSlides={allSlides}
+                  currentUser={currentUser}
+                  totalSlides={totalSlides}
                   onAddSlide={slide => {
                     addSlide(slide)
                     setDeptTab('slides')
@@ -584,17 +596,19 @@ export default function App() {
                   ? `↑ Push Changes${elapsedTime ? `  ·  ${elapsedTime}` : ''}`
                   : '↑ Push Changes'}
             </button>
-            <button
-              style={{
-                ...styles.generateBtn,
-                opacity: (isGenerating || totalSlides === 0) ? 0.45 : 1,
-                cursor:  (isGenerating || totalSlides === 0) ? 'not-allowed' : 'pointer',
-              }}
-              onClick={handleGenerate}
-              disabled={isGenerating || totalSlides === 0}
-            >
-              {isGenerating ? 'Generating…' : 'Generate Presentation →'}
-            </button>
+            {currentUser?.role === 'admin' && (
+              <button
+                style={{
+                  ...styles.generateBtn,
+                  opacity: (isGenerating || totalSlides === 0) ? 0.45 : 1,
+                  cursor:  (isGenerating || totalSlides === 0) ? 'not-allowed' : 'pointer',
+                }}
+                onClick={handleGenerate}
+                disabled={isGenerating || totalSlides === 0}
+              >
+                {isGenerating ? 'Generating…' : 'Generate Presentation →'}
+              </button>
+            )}
           </div>
         </div>
       </div>

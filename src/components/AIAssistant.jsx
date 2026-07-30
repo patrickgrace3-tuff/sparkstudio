@@ -13,15 +13,44 @@ function getSuggestions(clientName) {
   ]
 }
 
-export default function AIAssistant({ clientId, clientName, deptId, deptName, deptColor, allSlides, onAddSlide }) {
+export default function AIAssistant({ clientId, clientName, deptId, deptName, deptColor, allSlides, currentUser, totalSlides, onAddSlide }) {
   const [messages,       setMessages]       = useState([])
   const [input,          setInput]          = useState('')
   const [loading,        setLoading]        = useState(false)
   const [selectedImages, setSelectedImages] = useState([])
   const [showFiles,      setShowFiles]      = useState(false)
-  const [excludedFiles,  setExcludedFiles]  = useState(new Set())  // filenames to exclude
+  const [excludedFiles,  setExcludedFiles]  = useState(new Set())
+  const [slideLimit,     setSlideLimit]     = useState(null)   // null = loading
+  const [requestStatus,  setRequestStatus]  = useState(null)   // null | 'pending' | 'sent' | 'error'
+  const [requestNote,    setRequestNote]    = useState('')
+  const [showRequestForm, setShowRequestForm] = useState(false)
   const bottomRef  = useRef(null)
   const inputRef   = useRef(null)
+
+  const isAdmin = currentUser?.role === 'admin'
+
+  // Fetch the user's current slide limit for this client
+  useEffect(() => {
+    if (!clientId || isAdmin) { setSlideLimit({ limit: -1, isAdmin: true }); return }
+    api.getMySlideLimit(clientId)
+      .then(setSlideLimit)
+      .catch(() => setSlideLimit({ limit: 5, isAdmin: false }))
+  }, [clientId, isAdmin])
+
+  const effectiveLimit = isAdmin ? -1 : (slideLimit?.limit ?? 5)
+  const atLimit        = !isAdmin && effectiveLimit >= 0 && (totalSlides ?? 0) >= effectiveLimit
+
+  async function handleRequestMore() {
+    setRequestStatus('pending')
+    try {
+      await api.requestMoreSlides(clientId, 10, requestNote)
+      setRequestStatus('sent')
+      setShowRequestForm(false)
+    } catch (e) {
+      if (e.message?.includes('already have a pending')) setRequestStatus('already_pending')
+      else setRequestStatus('error')
+    }
+  }
 
   // All available files (dept + global) for the checkbox panel
   function getAllFiles() {
@@ -209,31 +238,15 @@ ${existingSlides || 'No slides added yet.'}
         return { role: 'user', content: m.text }
       })
 
-      const { ANTHROPIC_API_KEY, ANTHROPIC_MODEL } = await import('../lib/constants.js')
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
-          'anthropic-beta': 'pdfs-2024-09-25',
-        },
-        body: JSON.stringify({
-          model: ANTHROPIC_MODEL,
-          max_tokens: 1500,
-          system,
-          messages: convo,
-        }),
+      const { ANTHROPIC_MODEL } = await import('../lib/constants.js')
+      const data = await api.callClaude({
+        model: ANTHROPIC_MODEL,
+        max_tokens: 1500,
+        system,
+        messages: convo,
+        clientId,
       })
-
-      const data  = await res.json()
       const reply = data.content?.map(b => b.text ?? '').join('') ?? ''
-
-      // Log token usage (fire-and-forget)
-      if (data.usage) {
-        api.logTokens(clientId, ANTHROPIC_MODEL, data.usage.input_tokens ?? 0, data.usage.output_tokens ?? 0).catch(() => {})
-      }
 
       // Build image map so parseSlides can resolve base64
       const imageMap = Object.fromEntries(attachedImages.map(i => [i.name, i]))
@@ -253,24 +266,15 @@ ${existingSlides || 'No slides added yet.'}
       // Last resort — if still no slides, ask Claude to reformat
       if (slides.length === 0 && cleaned.length > 50) {
         try {
-          const reformatRes = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': ANTHROPIC_API_KEY,
-              'anthropic-version': '2023-06-01',
-              'anthropic-dangerous-direct-browser-access': 'true',
-            },
-            body: JSON.stringify({
-              model: ANTHROPIC_MODEL,
-              max_tokens: 600,
-              messages: [{
-                role: 'user',
-                content: 'Convert this response into a slide using EXACTLY this format and nothing else:\n\nSLIDE_START\nTITLE: <title>\nBULLETS:\n- <bullet>\n- <bullet>\n- <bullet>\nSLIDE_END\n\nResponse to convert:\n' + cleaned.slice(0, 1000)
-              }]
-            }),
+          const reformatData = await api.callClaude({
+            model: ANTHROPIC_MODEL,
+            max_tokens: 600,
+            messages: [{
+              role: 'user',
+              content: 'Convert this response into a slide using EXACTLY this format and nothing else:\n\nSLIDE_START\nTITLE: <title>\nBULLETS:\n- <bullet>\n- <bullet>\n- <bullet>\nSLIDE_END\n\nResponse to convert:\n' + cleaned.slice(0, 1000)
+            }],
+            clientId,
           })
-          const reformatData = await reformatRes.json()
           const reformatText = reformatData.content?.map(b => b.text ?? '').join('') ?? ''
           slides = parseSlides(reformatText, imageMap)
         } catch { /* silent — original response still shown */ }
@@ -387,6 +391,50 @@ ${existingSlides || 'No slides added yet.'}
         {clientName && <span style={styles.clientPill}>{clientName}</span>}
       </div>
 
+      {/* Slide limit banner */}
+      {!isAdmin && slideLimit && (
+        <div style={{
+          padding: '8px 14px',
+          background: atLimit ? 'rgba(239,68,68,0.08)' : 'rgba(0,0,0,0.04)',
+          borderBottom: '0.5px solid var(--color-border)',
+          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+        }}>
+          <span style={{ fontSize: 12, color: atLimit ? '#dc2626' : 'var(--color-text-muted)', flex: 1 }}>
+            {atLimit
+              ? `Slide limit reached: ${totalSlides ?? 0} / ${effectiveLimit} slides used.`
+              : `Slides used: ${totalSlides ?? 0} / ${effectiveLimit}`}
+          </span>
+          {atLimit && requestStatus !== 'sent' && requestStatus !== 'already_pending' && (
+            <button
+              style={{ fontSize: 11, padding: '4px 10px', background: 'var(--color-accent)', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}
+              onClick={() => setShowRequestForm(v => !v)}
+            >
+              {showRequestForm ? 'Cancel' : 'Request more slides'}
+            </button>
+          )}
+          {requestStatus === 'sent'            && <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 600 }}>✓ Request sent — awaiting admin approval</span>}
+          {requestStatus === 'already_pending' && <span style={{ fontSize: 11, color: '#d97706', fontWeight: 600 }}>You already have a pending request</span>}
+          {requestStatus === 'error'           && <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 600 }}>Failed to send request — try again</span>}
+          {showRequestForm && (
+            <div style={{ width: '100%', display: 'flex', gap: 8, marginTop: 4 }}>
+              <input
+                style={{ flex: 1, fontSize: 12, padding: '5px 8px', border: '0.5px solid var(--color-border)', borderRadius: 4, background: 'var(--color-bg)', color: 'var(--color-text-primary)' }}
+                placeholder="Optional note for the admin…"
+                value={requestNote}
+                onChange={e => setRequestNote(e.target.value)}
+              />
+              <button
+                style={{ fontSize: 12, padding: '5px 12px', background: 'var(--color-accent)', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}
+                disabled={requestStatus === 'pending'}
+                onClick={handleRequestMore}
+              >
+                {requestStatus === 'pending' ? 'Sending…' : 'Send request'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Messages */}
       <div style={styles.messages}>
         {/* Welcome */}
@@ -439,8 +487,11 @@ ${existingSlides || 'No slides added yet.'}
                     <div style={styles.slideCardHeader}>
                       <span style={styles.slideCardLabel}>Suggested slide</span>
                       <button
-                        style={styles.addSlideBtn}
+                        style={{ ...styles.addSlideBtn, ...(atLimit ? { opacity: 0.4, cursor: 'not-allowed' } : {}) }}
+                        disabled={atLimit}
+                        title={atLimit ? `Slide limit reached (${effectiveLimit}). Request admin approval for more.` : ''}
                         onClick={() => {
+                          if (atLimit) return
                           onAddSlide({ title: slide.title, body: slide.body, bullets: slide.bullets, table: slide.table ?? null, style: slide.style ?? {} })
                         }}
                       >

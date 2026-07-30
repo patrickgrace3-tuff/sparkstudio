@@ -68,6 +68,16 @@ export const api = {
   // Claude AI proxy — API key stays on the server; browser sends JWT only
   callClaude: (payload) => apiFetch('/api/claude/messages', { method: 'POST', body: payload }),
 
+  // Slide limit requests
+  getMySlideLimit:         (clientId)                       => apiFetch(`/api/slide-requests/my-limit/${clientId}`),
+  requestMoreSlides:       (clientId, requestedLimit, note) => apiFetch('/api/slide-requests', { method: 'POST', body: { clientId, requestedLimit, note } }),
+  adminGetSlideRequests:   ()                               => apiFetch('/api/slide-requests'),
+  adminReviewSlideRequest: (id, status, approvedLimit)      => apiFetch(`/api/slide-requests/${id}`, { method: 'PATCH', body: { status, approvedLimit } }),
+
+  // Token logging
+  logTokens: (clientId, model, inputTokens, outputTokens) =>
+    apiFetch('/api/tokenlogs', { method: 'POST', body: { clientId, model, inputTokens, outputTokens } }),
+
   // Admin
   adminStats:       ()              => apiFetch('/api/admin/stats'),
   adminGetUsers:    ()              => apiFetch('/api/admin/users'),

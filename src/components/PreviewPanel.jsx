@@ -40,7 +40,7 @@ function SectionSlidePreview({ dept }) {
 }
 
 function ContentSlidePreview({ slide }) {
-  const { title, bullets = [], style = {}, table, source } = slide
+  const { title, bullets = [], style = {}, table, source, extraBulletBoxes = [] } = slide
   const tc     = style.textCol || '#1A1A1A'
   const accent = style.accent  || '#CD2F37'
   const font   = style.font    || 'Arial, sans-serif'
@@ -104,6 +104,21 @@ function ContentSlidePreview({ slide }) {
       {showContentImage && (
         <div style={{ position: 'absolute', right: '3%', top: '19%', width: '38%', height: '63%', background: `url(${style.contentImage}) center/cover`, borderRadius: 4 }} />
       )}
+      {extraBulletBoxes.map((eb, bi) => {
+        const ebBox = eb.box || { x: 0.5, y: 0.19, w: 0.37, h: 0.35 }
+        return (
+          <div key={bi} style={{ position: 'absolute', left: `${ebBox.x * 100}%`, top: `${ebBox.y * 100}%`, width: `${ebBox.w * 100}%`, height: `${ebBox.h * 100}%`, overflow: 'hidden' }}>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              {(eb.bullets || []).map((b, li) => (
+                <li key={li} style={{ fontSize: '1.7cqw', color: tc, padding: '0.2em 0 0.2em 1.1em', position: 'relative', lineHeight: 1.4 }}>
+                  <span style={{ position: 'absolute', left: 0, color: accent }}>•</span>
+                  <RichText text={b.replace(/^[-–•]\s*/, '')} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        )
+      })}
       {sourceEl}
       {(style.images || []).map((img, i) => (
         <img
