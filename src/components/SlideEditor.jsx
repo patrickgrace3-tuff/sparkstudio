@@ -21,9 +21,17 @@ function clamp(v, min, max) {
 }
 
 // ── Freely positioned/resized images overlaid on the slide, PowerPoint-style ──
+// Scale mode (default): drag = move box, resize = aspect-locked (Shift to unlock)
+// Crop  mode:           drag = pan image inside box, ⊹ handle = move box, resize = free crop window
 function FreeImageLayer({ images, onChange }) {
   const containerRef = useRef(null)
   const dragRef = useRef(null)
+
+  function updateImage(idx, patch) {
+    const next = [...images]
+    next[idx] = { ...next[idx], ...patch }
+    onChange(next)
+  }
 
   function onPointerMove(e) {
     const d = dragRef.current
@@ -32,16 +40,37 @@ function FreeImageLayer({ images, onChange }) {
     const dx = (e.clientX - d.startX) / rect.width
     const dy = (e.clientY - d.startY) / rect.height
     const next = [...images]
-    if (d.mode === 'move') {
+    const img  = next[d.idx]
+    const isCrop = img.mode === 'crop'
+
+    if (d.mode === 'move-box') {
       next[d.idx] = {
-        ...next[d.idx],
+        ...img,
         x: clamp(d.orig.x + dx, 0, 1 - d.orig.w),
         y: clamp(d.orig.y + dy, 0, 1 - d.orig.h),
       }
-    } else {
-      const newW = clamp(d.orig.w + dx, 0.05, 1 - d.orig.x)
-      const newH = clamp(d.orig.h + dy, 0.05, 1 - d.orig.y)
-      next[d.idx] = { ...next[d.idx], w: newW, h: newH }
+    } else if (d.mode === 'pan') {
+      // Shift background position to pan image inside crop window
+      next[d.idx] = {
+        ...img,
+        bgX: clamp(d.orig.bgX - dx * 200, 0, 100),
+        bgY: clamp(d.orig.bgY - dy * 200, 0, 100),
+      }
+    } else if (d.mode === 'resize') {
+      if (isCrop || e.shiftKey) {
+        // Free resize: crop mode always free, or Shift held in scale mode
+        next[d.idx] = {
+          ...img,
+          w: clamp(d.orig.w + dx, 0.05, 1 - d.orig.x),
+          h: clamp(d.orig.h + dy, 0.05, 1 - d.orig.y),
+        }
+      } else {
+        // Aspect-locked scale (default)
+        const aspect = d.orig.aspect ?? (d.orig.w / d.orig.h)
+        const newW   = clamp(d.orig.w + dx, 0.05, 1 - d.orig.x)
+        const newH   = clamp(newW / aspect, 0.05, 1 - d.orig.y)
+        next[d.idx]  = { ...img, w: newW, h: newH }
+      }
     }
     onChange(next)
   }
@@ -55,7 +84,17 @@ function FreeImageLayer({ images, onChange }) {
   function startDrag(e, idx, mode) {
     e.stopPropagation()
     e.preventDefault()
-    dragRef.current = { idx, mode, startX: e.clientX, startY: e.clientY, orig: { ...images[idx] } }
+    const img = images[idx]
+    dragRef.current = {
+      idx, mode,
+      startX: e.clientX, startY: e.clientY,
+      orig: {
+        ...img,
+        bgX: img.bgX ?? 50,
+        bgY: img.bgY ?? 50,
+        aspect: img.aspect ?? (img.w / img.h),
+      },
+    }
     window.addEventListener('pointermove', onPointerMove)
     window.addEventListener('pointerup', onPointerUp)
   }
@@ -64,51 +103,95 @@ function FreeImageLayer({ images, onChange }) {
     onChange(images.filter((_, i) => i !== idx))
   }
 
+  function toggleMode(e, idx) {
+    e.stopPropagation()
+    const img  = images[idx]
+    const next = img.mode === 'crop' ? 'scale' : 'crop'
+    updateImage(idx, { mode: next })
+  }
+
   return (
     <div ref={containerRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-      {images.map((img, i) => (
-        <div
-          key={i}
-          onPointerDown={e => startDrag(e, i, 'move')}
-          style={{
-            position: 'absolute',
-            pointerEvents: 'auto',
-            left: `${img.x * 100}%`,
-            top: `${img.y * 100}%`,
-            width: `${img.w * 100}%`,
-            height: `${img.h * 100}%`,
-            backgroundImage: `url(${img.src})`,
-            backgroundSize: '100% 100%',
-            backgroundPosition: 'center',
-            backgroundRepeat: 'no-repeat',
-            border: '2px solid rgba(255,255,255,0.9)',
-            outline: '1px solid rgba(0,0,0,0.35)',
-            cursor: 'move',
-            boxSizing: 'border-box',
-            userSelect: 'none',
-          }}
-        >
-          {/* Remove button — inset so it's never clipped by the canvas overflow */}
-          <button
-            onPointerDown={e => e.stopPropagation()}
-            onClick={() => removeImage(i)}
-            style={{
-              position: 'absolute', top: 4, right: 4, width: 20, height: 20,
-              borderRadius: '50%', background: '#ef4444', color: '#fff', border: 'none',
-              fontSize: 11, cursor: 'pointer', lineHeight: 1, zIndex: 2,
-            }}
-          >✕</button>
-          {/* Resize handle — inset bottom-right corner so it stays inside the canvas overflow */}
+      {images.map((img, i) => {
+        const isCrop = img.mode === 'crop'
+        const bgX    = img.bgX ?? 50
+        const bgY    = img.bgY ?? 50
+        return (
           <div
-            onPointerDown={e => startDrag(e, i, 'resize')}
+            key={i}
+            onPointerDown={e => startDrag(e, i, isCrop ? 'pan' : 'move-box')}
             style={{
-              position: 'absolute', bottom: 4, right: 4, width: 14, height: 14,
-              background: '#fff', border: '2px solid var(--color-accent)', borderRadius: 3,
-              cursor: 'nwse-resize', zIndex: 2,
+              position: 'absolute',
+              pointerEvents: 'auto',
+              left: `${img.x * 100}%`,
+              top: `${img.y * 100}%`,
+              width: `${img.w * 100}%`,
+              height: `${img.h * 100}%`,
+              backgroundImage: `url(${img.src})`,
+              backgroundSize: isCrop ? 'cover' : '100% 100%',
+              backgroundPosition: isCrop ? `${bgX}% ${bgY}%` : 'center',
+              backgroundRepeat: 'no-repeat',
+              border: `2px solid ${isCrop ? '#a78bfa' : 'rgba(255,255,255,0.9)'}`,
+              outline: '1px solid rgba(0,0,0,0.35)',
+              cursor: isCrop ? 'grab' : 'move',
+              boxSizing: 'border-box',
+              userSelect: 'none',
+              overflow: 'hidden',
             }}
-          />
-        </div>
-      ))}
+          >
+            {/* Remove button */}
+            <button
+              onPointerDown={e => e.stopPropagation()}
+              onClick={() => removeImage(i)}
+              style={{
+                position: 'absolute', top: 4, right: 4, width: 20, height: 20,
+                borderRadius: '50%', background: '#ef4444', color: '#fff', border: 'none',
+                fontSize: 11, cursor: 'pointer', lineHeight: 1, zIndex: 3,
+              }}
+            >✕</button>
+
+            {/* Crop/Scale toggle */}
+            <button
+              onPointerDown={e => e.stopPropagation()}
+              onClick={e => toggleMode(e, i)}
+              title={isCrop ? 'Switch to Scale mode' : 'Switch to Crop mode'}
+              style={{
+                position: 'absolute', top: 4, left: 4,
+                padding: '2px 6px', fontSize: 9, fontWeight: 700,
+                background: isCrop ? '#7c3aed' : 'rgba(0,0,0,0.55)',
+                color: '#fff', border: 'none', borderRadius: 3,
+                cursor: 'pointer', letterSpacing: '0.04em', zIndex: 3,
+              }}
+            >{isCrop ? 'CROP' : 'SCALE'}</button>
+
+            {/* In crop mode: separate move-box handle so drag = pan */}
+            {isCrop && (
+              <div
+                onPointerDown={e => startDrag(e, i, 'move-box')}
+                title="Move image box"
+                style={{
+                  position: 'absolute', top: 4, left: '50%', transform: 'translateX(-50%)',
+                  width: 22, height: 22, borderRadius: '50%',
+                  background: 'rgba(0,0,0,0.55)', color: '#fff',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 13, cursor: 'move', zIndex: 3, userSelect: 'none',
+                }}
+              >⊹</div>
+            )}
+
+            {/* Resize handle */}
+            <div
+              onPointerDown={e => startDrag(e, i, 'resize')}
+              title={isCrop ? 'Resize crop window' : 'Resize (Shift = free aspect)'}
+              style={{
+                position: 'absolute', bottom: 4, right: 4, width: 14, height: 14,
+                background: '#fff', border: `2px solid ${isCrop ? '#7c3aed' : 'var(--color-accent)'}`,
+                borderRadius: 3, cursor: 'nwse-resize', zIndex: 3,
+              }}
+            />
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -689,8 +772,19 @@ export default function SlideEditor({ slide, onSave, onClose }) {
     if (!file) return
     const reader = new FileReader()
     reader.onload = ev => {
-      const next = [...(draft.style.images || []), { src: ev.target.result, x: 0.3, y: 0.3, w: 0.3, h: 0.3 }]
-      updateStyle('images', next)
+      const src = ev.target.result
+      const imgEl = new window.Image()
+      imgEl.onload = () => {
+        const aspect = imgEl.naturalWidth / (imgEl.naturalHeight || 1)
+        const w = 0.35
+        const h = w / aspect
+        const entry = { src, x: 0.3, y: 0.3, w, h: clamp(h, 0.05, 0.9), aspect, mode: 'scale' }
+        updateStyle('images', [...(draft.style.images || []), entry])
+      }
+      imgEl.onerror = () => {
+        updateStyle('images', [...(draft.style.images || []), { src, x: 0.3, y: 0.3, w: 0.3, h: 0.3, mode: 'scale' }])
+      }
+      imgEl.src = src
     }
     reader.readAsDataURL(file)
   }
@@ -898,7 +992,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
               <div style={styles.panel}>
                 <label style={styles.label}>Overlay images</label>
                 <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: 0 }}>
-                  Upload images and drag/resize them directly on the slide preview.
+                  Upload images and position them on the slide. Default drag scales with locked aspect ratio — hold <strong>Shift</strong> to resize freely.
                 </p>
                 <div style={styles.uploadRow}>
                   <button style={styles.uploadBtn} onClick={() => freeImgRef.current?.click()}>+ Add image</button>
@@ -906,13 +1000,25 @@ export default function SlideEditor({ slide, onSave, onClose }) {
                 </div>
                 {draft.style.images?.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {draft.style.images.map((img, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <img src={img.src} style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4, border: '0.5px solid var(--color-border)' }} />
-                        <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', flex: 1 }}>Image {i + 1}</span>
-                        <button style={styles.microBtn} onClick={() => removeFreeImage(i)}>✕ Remove</button>
-                      </div>
-                    ))}
+                    {draft.style.images.map((img, i) => {
+                      const isCrop = img.mode === 'crop'
+                      return (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <img src={img.src} style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4, border: '0.5px solid var(--color-border)', flexShrink: 0 }} />
+                          <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', flex: 1 }}>Image {i + 1}</span>
+                          <button
+                            style={{ ...styles.microBtn, color: isCrop ? '#7c3aed' : 'var(--color-text-secondary)', borderColor: isCrop ? '#7c3aed55' : undefined, fontSize: 10 }}
+                            title={isCrop ? 'Switch to Scale mode' : 'Switch to Crop mode'}
+                            onClick={() => {
+                              const next = [...draft.style.images]
+                              next[i] = { ...next[i], mode: isCrop ? 'scale' : 'crop' }
+                              updateStyle('images', next)
+                            }}
+                          >{isCrop ? 'Crop' : 'Scale'}</button>
+                          <button style={styles.microBtn} onClick={() => removeFreeImage(i)}>✕</button>
+                        </div>
+                      )
+                    })}
                   </div>
                 ) : (
                   <div style={{ fontSize: 12, color: 'var(--color-text-muted)', padding: '12px 0', textAlign: 'center', border: '0.5px dashed var(--color-border)', borderRadius: 6 }}>
