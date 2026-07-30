@@ -310,6 +310,15 @@ export default function App() {
     finally { setIsExporting(false) }
   }
 
+  async function handleDeletePresentation() {
+    if (!activeClientId) return
+    try {
+      if (presentations.length) await api.deletePresentation(activeClientId, presentations[0].id)
+    } catch { /* non-fatal — clear from UI regardless */ }
+    setDeckMap(prev => { const n = { ...prev }; delete n[activeClientId]; return n })
+    setPresentations([])
+  }
+
   async function handlePushChanges() {
     if (!activeClientId) return
     setIsPushing(true)
@@ -624,6 +633,7 @@ export default function App() {
               onExport={handleExport}
               isExporting={isExporting}
               onEditSlide={handleEditDeckSlide}
+              onDeletePresentation={handleDeletePresentation}
               onSlidesListChange={list => {
                 if (!deck) return
                 const newDeck = { ...deck, deckSlides: list }

@@ -261,12 +261,14 @@ function PresenterView({ slides, startIndex, onClose }) {
   )
 }
 
-export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerating, onExport, isExporting, onEditSlide, onSlidesListChange }) {
-  const [presenting,   setPresenting]   = useState(false)
-  const [startIndex,   setStartIndex]   = useState(0)
-  const [slidesList,   setSlidesList]   = useState(() => deck?.deckSlides ?? null)
-  const [editingDiv,   setEditingDiv]   = useState(null)  // id of divider being edited
-  const [dividerDraft, setDividerDraft] = useState('')
+export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerating, onExport, isExporting, onEditSlide, onSlidesListChange, onDeletePresentation }) {
+  const [presenting,    setPresenting]    = useState(false)
+  const [startIndex,    setStartIndex]    = useState(0)
+  const [slidesList,    setSlidesList]    = useState(() => deck?.deckSlides ?? null)
+  const [editingDiv,    setEditingDiv]    = useState(null)
+  const [dividerDraft,  setDividerDraft]  = useState('')
+  const [showDeleteDlg, setShowDeleteDlg] = useState(false)
+  const [deleteInput,   setDeleteInput]   = useState('')
   const dragIdx = useRef(null)
   const overIdx = useRef(null)
 
@@ -354,6 +356,11 @@ export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerat
           {slides.length} slides · Spark Studio template
         </span>
         <div style={{ display: 'flex', gap: 10 }}>
+          {onDeletePresentation && (
+            <button style={S.deleteBtn} onClick={() => { setDeleteInput(''); setShowDeleteDlg(true) }}>
+              ✕ Delete Presentation
+            </button>
+          )}
           <button style={S.dividerBtn} onClick={addDivider}>＋ Section Divider</button>
           <button
             style={S.presentBtn}
@@ -435,6 +442,36 @@ export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerat
       {presenting && (
         <PresenterView slides={slides} startIndex={startIndex} onClose={() => setPresenting(false)} />
       )}
+
+      {showDeleteDlg && (
+        <div style={S.dlgOverlay} onClick={() => setShowDeleteDlg(false)}>
+          <div style={S.dlgBox} onClick={e => e.stopPropagation()}>
+            <p style={S.dlgTitle}>Delete Presentation</p>
+            <p style={S.dlgBody}>
+              This will permanently remove the generated presentation. Your input slides are not affected.
+              <br /><br />
+              Type <strong>Delete</strong> to confirm.
+            </p>
+            <input
+              autoFocus
+              style={S.dlgInput}
+              value={deleteInput}
+              onChange={e => setDeleteInput(e.target.value)}
+              placeholder="Type Delete here"
+            />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+              <button style={S.dlgCancelBtn} onClick={() => setShowDeleteDlg(false)}>Cancel</button>
+              <button
+                style={{ ...S.dlgConfirmBtn, opacity: deleteInput === 'Delete' ? 1 : 0.4, cursor: deleteInput === 'Delete' ? 'pointer' : 'not-allowed' }}
+                disabled={deleteInput !== 'Delete'}
+                onClick={() => { setShowDeleteDlg(false); onDeletePresentation?.() }}
+              >
+                Delete Presentation
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -462,4 +499,12 @@ const S = {
   notesIcon:        { fontSize: 10, flexShrink: 0, lineHeight: 1.6 },
   notesText:        { fontSize: 10, color: 'var(--color-text-muted)', lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', flex: 1 },
   notesEditBtn:     { flexShrink: 0, fontSize: 9, background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 3, padding: '1px 6px', cursor: 'pointer', color: 'var(--color-text-muted)' },
+  deleteBtn:        { background: 'transparent', color: '#CD2F37', border: '0.5px solid #CD2F37', borderRadius: 'var(--radius-pill)', padding: '8px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer' },
+  dlgOverlay:       { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  dlgBox:           { background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 28, width: 420, maxWidth: '90vw', boxShadow: '0 8px 32px rgba(0,0,0,0.24)' },
+  dlgTitle:         { margin: '0 0 12px', fontSize: 16, fontWeight: 700, color: 'var(--color-text-primary)' },
+  dlgBody:          { margin: '0 0 16px', fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.6 },
+  dlgInput:         { width: '100%', boxSizing: 'border-box', padding: '8px 12px', fontSize: 13, border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)', outline: 'none' },
+  dlgCancelBtn:     { background: 'transparent', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '7px 16px', fontSize: 13, cursor: 'pointer', color: 'var(--color-text-secondary)' },
+  dlgConfirmBtn:    { background: '#CD2F37', color: '#fff', border: 'none', borderRadius: 'var(--radius-pill)', padding: '7px 16px', fontSize: 13, fontWeight: 600 },
 }
