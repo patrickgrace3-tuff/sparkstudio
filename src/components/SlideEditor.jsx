@@ -712,7 +712,6 @@ export default function SlideEditor({ slide, onSave, onClose }) {
         .map(eb => ({ ...eb, bullets: eb.bullets.filter(Boolean) })),
     }
     onSave(saved)
-    onClose()
   }
 
   return (
