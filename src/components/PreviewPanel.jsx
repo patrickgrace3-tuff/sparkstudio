@@ -353,7 +353,7 @@ const S = {
   center:         { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 },
   spinner:        { width: 20, height: 20, border: '2px solid var(--color-border)', borderTopColor: 'var(--color-accent)', borderRadius: '50%', animation: 'spin 0.7s linear infinite' },
   presenterOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  presenterStage:   { width: '85vw', maxWidth: 1280, aspectRatio: '16 / 9' },
+  presenterStage:   { width: '85vw', maxWidth: 1280, aspectRatio: '16 / 9', display: 'flex' },
   presenterClose:   { position: 'fixed', top: 20, right: 24, background: 'transparent', color: '#fff', border: '0.5px solid rgba(255,255,255,0.3)', borderRadius: 'var(--radius-pill)', padding: '6px 14px', fontSize: 13, cursor: 'pointer' },
   presenterNav:     { position: 'fixed', top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', borderRadius: '50%', width: 44, height: 44, fontSize: 22, cursor: 'pointer' },
   presenterCounter: { position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', color: 'rgba(255,255,255,0.7)', fontSize: 13 },

@@ -430,6 +430,7 @@ async function renderComponentToDataUrl(reactElement, width = 1280, height = 720
     `background:#fff`,
     `pointer-events:none`,
     `z-index:99999`,
+    `display:flex`,
   ].join(';')
   document.body.appendChild(container)
 
@@ -675,7 +676,7 @@ export async function exportToPptx(orderedSlides, deck) {
     } else if (item.kind === 'funnel' || item.kind === 'team') {
       // Render the visual component to a PNG and embed as a full-bleed image slide
       const element = item.kind === 'funnel'
-        ? createElement(FunnelSlidePreview, { config: item.funnelConfig })
+        ? createElement(FunnelSlidePreview, { config: item.funnelConfig, label: item.funnelLabel })
         : createElement(TeamSlidePreview,   { config: item.teamConfig })
 
       const dataUrl   = await renderComponentToDataUrl(element, 1280, 720)
