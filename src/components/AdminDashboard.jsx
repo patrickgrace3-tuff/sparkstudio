@@ -100,7 +100,7 @@ function UsersTab({ currentUserId }) {
       <table style={S.table}>
         <thead>
           <tr>
-            {['Name', 'Email', 'Role', 'Created', 'Last Login', 'Slides', 'Tokens', 'Actions'].map(h => (
+            {['Name', 'Email', 'Role', 'Created', 'Last Login', 'Slides', 'Tokens', 'Est. Cost', 'Actions'].map(h => (
               <th key={h} style={S.th}>{h}</th>
             ))}
           </tr>
@@ -124,8 +124,9 @@ function UsersTab({ currentUserId }) {
               </td>
               <td style={{ ...S.td, fontVariantNumeric: 'tabular-nums' }}>{u.slides_count ?? 0}</td>
               <td style={{ ...S.td, fontVariantNumeric: 'tabular-nums' }}>
-                {u.tokens_used >= 1000 ? `${(u.tokens_used / 1000).toFixed(1)}k` : (u.tokens_used ?? 0)}
+                {u.tokens_used >= 1_000_000 ? `${(u.tokens_used / 1_000_000).toFixed(1)}M` : u.tokens_used >= 1000 ? `${(u.tokens_used / 1000).toFixed(1)}k` : (u.tokens_used ?? 0)}
               </td>
+              <td style={{ ...S.td, fontVariantNumeric: 'tabular-nums' }}>{fmtCost(u.tokens_cost)}</td>
               <td style={S.td}>
                 <div style={S.actions}>
                   {u.id !== currentUserId && (
