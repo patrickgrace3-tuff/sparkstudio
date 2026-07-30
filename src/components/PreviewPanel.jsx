@@ -235,14 +235,19 @@ function PresenterView({ slides, startIndex, onClose }) {
   )
 }
 
-export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerating, onExport, isExporting, onEditSlide }) {
+export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerating, onExport, isExporting, onEditSlide, onSlidesListChange }) {
   const [presenting,   setPresenting]   = useState(false)
   const [startIndex,   setStartIndex]   = useState(0)
-  const [slidesList,   setSlidesList]   = useState(null)  // null = use baseSlides
+  const [slidesList,   setSlidesList]   = useState(() => deck?.deckSlides ?? null)
   const [editingDiv,   setEditingDiv]   = useState(null)  // id of divider being edited
   const [dividerDraft, setDividerDraft] = useState('')
   const dragIdx = useRef(null)
   const overIdx = useRef(null)
+
+  // Sync when deck changes (e.g. after regeneration, deckSlides is cleared)
+  useEffect(() => {
+    setSlidesList(deck?.deckSlides ?? null)
+  }, [deck])
 
   if (isGenerating) {
     return (
@@ -275,6 +280,11 @@ export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerat
     overIdx.current = i
   }
 
+  function updateList(next) {
+    setSlidesList(next)
+    onSlidesListChange?.(next)
+  }
+
   function onDrop(e, i) {
     e.preventDefault()
     const from = dragIdx.current
@@ -282,7 +292,7 @@ export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerat
     const next = [...slides]
     const [moved] = next.splice(from, 1)
     next.splice(i, 0, moved)
-    setSlidesList(next)
+    updateList(next)
     dragIdx.current = null
     overIdx.current = null
   }
@@ -295,17 +305,19 @@ export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerat
   function addDivider() {
     const id = `div-${Date.now()}`
     const divider = { kind: 'divider', label: 'Section Divider', text: 'Section Title', id }
-    setSlidesList([...slides, divider])
+    const next = [...slides, divider]
+    updateList(next)
     setEditingDiv(id)
     setDividerDraft('Section Title')
   }
 
   function removeDivider(id) {
-    setSlidesList(slides.filter(s => s.id !== id))
+    updateList(slides.filter(s => s.id !== id))
   }
 
   function saveDividerText(id) {
-    setSlidesList(slides.map(s => s.id === id ? { ...s, text: dividerDraft } : s))
+    const next = slides.map(s => s.id === id ? { ...s, text: dividerDraft } : s)
+    updateList(next)
     setEditingDiv(null)
   }
 

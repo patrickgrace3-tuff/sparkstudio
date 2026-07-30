@@ -573,7 +573,12 @@ export default function App() {
               onExport={handleExport}
               isExporting={isExporting}
               onEditSlide={handleEditDeckSlide}
-            />
+              onSlidesListChange={list => {
+                if (!deck) return
+                const newDeck = { ...deck, deckSlides: list }
+                setDeckMap(prev => ({ ...prev, [activeClientId]: newDeck }))
+                api.savePresentation(activeClientId, { title: newDeck.title, deck: newDeck }).catch(console.error)
+              }}
           )}
 
           <div style={styles.actionBar}>
