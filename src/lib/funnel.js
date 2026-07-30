@@ -100,9 +100,10 @@ export function saveFunnelConfig(cfg, clientId) {
   if (clientId) api.setClientData(clientId, 'funnel', cfg).catch(console.error)
 }
 
-// Cycle an item's state: 'on' → 'inhouse' → false → 'on'
+// Cycle an item's state: 'on' → 'inhouse' → 'recommend' → false → 'on'
 export function cycleItemState(current) {
   if (current === 'on') return 'inhouse'
-  if (current === 'inhouse') return false
+  if (current === 'inhouse') return 'recommend'
+  if (current === 'recommend') return false
   return 'on'
 }

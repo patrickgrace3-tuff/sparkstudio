@@ -3,12 +3,13 @@ import { FUNNEL_STAGES, loadFunnelConfig, loadFunnelConfigRemote, saveFunnelConf
 import { loadGlobalFilesRemote } from '../lib/files.js'
 
 // Item state color map
-const STATE_COLOR   = { on: '#CD2F37', inhouse: '#1A6FA8', off: '#444' }
-const STATE_OPACITY = { on: 1,         inhouse: 1,         off: 0.45 }
+const STATE_COLOR   = { on: '#CD2F37', inhouse: '#1A6FA8', recommend: '#7C3AED', off: '#444' }
+const STATE_OPACITY = { on: 1,         inhouse: 1,         recommend: 1,          off: 0.45 }
 
 function stateKey(val) {
   if (!val || val === false) return 'off'
   if (val === 'inhouse') return 'inhouse'
+  if (val === 'recommend') return 'recommend'
   return 'on'
 }
 
@@ -112,6 +113,7 @@ export function FunnelSlidePreview({ config, label }) {
       }}>
         <LegendDot color="#CD2F37" label="Conversion Managed" />
         <LegendDot color="#1A6FA8" label="In-House" />
+        <LegendDot color="#7C3AED" label="Recommend" />
       </div>
     </div>
   )
@@ -159,6 +161,9 @@ function StatePill({ value }) {
   )
   if (sk === 'inhouse') return (
     <span style={pill('inhouse')}>In-House</span>
+  )
+  if (sk === 'recommend') return (
+    <span style={pill('recommend')}>Recommend</span>
   )
   return <span style={pill('on')}>On</span>
 }
@@ -355,9 +360,10 @@ export default function FunnelBuilder({ onClose, clientId }) {
 
   // Count per stage for the active funnel
   function stageCounts(stage) {
-    const on      = stage.items.filter(i => activeFunnel[stage.id]?.[i] === 'on').length
-    const inhouse = stage.items.filter(i => activeFunnel[stage.id]?.[i] === 'inhouse').length
-    return { on, inhouse, total: stage.items.length }
+    const on        = stage.items.filter(i => activeFunnel[stage.id]?.[i] === 'on').length
+    const inhouse   = stage.items.filter(i => activeFunnel[stage.id]?.[i] === 'inhouse').length
+    const recommend = stage.items.filter(i => activeFunnel[stage.id]?.[i] === 'recommend').length
+    return { on, inhouse, recommend, total: stage.items.length }
   }
 
   return (
@@ -374,6 +380,7 @@ export default function FunnelBuilder({ onClose, clientId }) {
             <div style={S.legend}>
               <LegendChip color="#CD2F37" label="Conversion Managed" />
               <LegendChip color="#1A6FA8" label="In-House" />
+              <LegendChip color="#7C3AED" label="Recommend" />
               <LegendChip color="#555" label="Off" dim />
             </div>
             <button style={S.importBtn} onClick={handleMediaplanImport} disabled={importing} title="Auto-toggle items from a Mediaplan file in Global Files">
@@ -418,7 +425,7 @@ export default function FunnelBuilder({ onClose, clientId }) {
             <span style={S.tabHint}>Where we want to go</span>
           </button>
           <div style={S.tabHintGlobal}>
-            Click an item to cycle: <span style={{ color: '#CD2F37' }}>On</span> → <span style={{ color: '#1A6FA8' }}>In-House</span> → <strong>Off</strong>
+            Click an item to cycle: <span style={{ color: '#CD2F37' }}>On</span> → <span style={{ color: '#1A6FA8' }}>In-House</span> → <span style={{ color: '#7C3AED' }}>Recommend</span> → <strong>Off</strong>
           </div>
         </div>
 
@@ -428,7 +435,7 @@ export default function FunnelBuilder({ onClose, clientId }) {
           <div style={S.checklist}>
             {FUNNEL_STAGES.map(stage => {
               const counts = stageCounts(stage)
-              const allOff = counts.on + counts.inhouse === 0
+              const allOff = counts.on + counts.inhouse + counts.recommend === 0
               const allOn  = counts.on === stage.items.length
 
               return (
@@ -441,6 +448,9 @@ export default function FunnelBuilder({ onClose, clientId }) {
                       )}
                       {counts.inhouse > 0 && (
                         <span style={{ fontSize: 10, color: '#1A6FA8', fontWeight: 700 }}>{counts.inhouse} In-House</span>
+                      )}
+                      {counts.recommend > 0 && (
+                        <span style={{ fontSize: 10, color: '#7C3AED', fontWeight: 700 }}>{counts.recommend} Recommend</span>
                       )}
                       <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>/ {counts.total}</span>
                     </div>
