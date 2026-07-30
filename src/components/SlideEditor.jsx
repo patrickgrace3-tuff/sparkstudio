@@ -289,7 +289,7 @@ function stopForEdit(e) {
 function SlideCanvas({
   slide, bgImage, table, onImagesChange, onBodyBoxChange, onTableBoxChange,
   onTitleChange, onBulletChange, onTableHeaderChange, onTableCellChange, onSourceChange,
-  onExtraBoxChange, onExtraBulletChange, onFreeTextBoxChange, onFreeTextChange,
+  onExtraBoxChange, onExtraBulletChange, onFreeTextBoxChange, onFreeTextChange, freeTextRefs,
 }) {
   const { title, bullets, source, style = {}, extraBulletBoxes = [], freeTextBoxes = [] } = slide
   const font    = style.font    ?? FONTS[0].value
@@ -543,6 +543,7 @@ function SlideCanvas({
       {freeTextBoxes.map((ft, fi) => (
         <DraggableBox key={`ft${fi}`} box={ft.box} onChange={box => onFreeTextBoxChange?.(fi, { box })}>
           <div
+            ref={el => { if (freeTextRefs) freeTextRefs.current[fi] = el }}
             contentEditable={!!onFreeTextChange}
             suppressContentEditableWarning
             onPointerDown={stopForEdit}
@@ -578,7 +579,8 @@ function SlideCanvas({
 // ── Main editor modal ─────────────────────────────────────────────────────────
 export default function SlideEditor({ slide, onSave, onClose }) {
   const [savedFlash, setSavedFlash] = useState(false)
-  const savedTimerRef = useRef(null)
+  const savedTimerRef  = useRef(null)
+  const freeTextRefs   = useRef([])
   const [draft,    setDraft]    = useState({
     title:   slide.title   ?? '',
     body:    slide.body    ?? '',
@@ -833,6 +835,11 @@ export default function SlideEditor({ slide, onSave, onClose }) {
   }
 
   function handleSave() {
+    // Flush any freetext contentEditable boxes that haven't blurred yet
+    const flushedFreeText = draft.freeTextBoxes.map((ft, fi) => {
+      const el = freeTextRefs.current[fi]
+      return el ? { ...ft, text: el.innerText } : ft
+    })
     const saved = {
       ...slide,
       title:   draft.title,
@@ -845,7 +852,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
       extraBulletBoxes: draft.extraBulletBoxes
         .filter(eb => eb.bullets.some(Boolean))
         .map(eb => ({ ...eb, bullets: eb.bullets.filter(Boolean) })),
-      freeTextBoxes: draft.freeTextBoxes.filter(ft => ft.text.trim()),
+      freeTextBoxes: flushedFreeText.filter(ft => ft.text.trim()),
     }
     onSave(saved)
     clearTimeout(savedTimerRef.current)
@@ -1148,6 +1155,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
                 onExtraBulletChange={(bi, li, text) => updateExtraBullet(bi, li, text.trim())}
                 onFreeTextBoxChange={(fi, patch) => updateFreeTextBox(fi, patch)}
                 onFreeTextChange={(fi, text) => updateFreeTextBox(fi, { text: text.trim() })}
+                freeTextRefs={freeTextRefs}
               />
               <div style={styles.previewHint}>
                 {draft.bullets.length} bullet{draft.bullets.length !== 1 ? 's' : ''}
