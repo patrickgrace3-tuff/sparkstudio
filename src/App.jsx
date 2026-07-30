@@ -579,6 +579,7 @@ export default function App() {
                 setDeckMap(prev => ({ ...prev, [activeClientId]: newDeck }))
                 api.savePresentation(activeClientId, { title: newDeck.title, deck: newDeck }).catch(console.error)
               }}
+            />
           )}
 
           <div style={styles.actionBar}>
