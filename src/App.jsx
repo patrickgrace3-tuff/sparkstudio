@@ -9,7 +9,8 @@ import SlideEditor  from './components/SlideEditor.jsx'
 import AIAssistant  from './components/AIAssistant.jsx'
 import FunnelBuilder from './components/FunnelBuilder.jsx'
 import TeamBuilder   from './components/TeamBuilder.jsx'
-import AdminPanel       from './components/AdminPanel.jsx'
+import AdminPanel          from './components/AdminPanel.jsx'
+import SlideToTemplateModal from './components/SlideToTemplateModal.jsx'
 import AdminDashboard  from './components/AdminDashboard.jsx'
 import LoginScreen   from './components/LoginScreen.jsx'
 import { DEPARTMENTS } from './lib/constants.js'
@@ -45,6 +46,7 @@ export default function App() {
   const [showTeam,       setShowTeam]       = useState(false)
   const [showAdmin,         setShowAdmin]         = useState(false)
   const [showAdminDashboard, setShowAdminDashboard] = useState(false)
+  const [templateSlide,      setTemplateSlide]      = useState(null) // { slide, deptName }
   const [selectedTemplate,  setSelectedTemplate]  = useState(null)
   const [isApplyingTemplate, setIsApplyingTemplate] = useState(false)
   const [filesVersion,       setFilesVersion]       = useState(0)
@@ -561,6 +563,7 @@ export default function App() {
                           deptColor={activeDept?.color}
                           onDelete={deleteSlide}
                           onEdit={idx => setEditingSlide({ index: idx, slide: deptSlides[idx] })}
+                          onUseAsTemplate={currentUser?.role === 'admin' ? slide => setTemplateSlide({ slide, deptName: activeDept?.name }) : undefined}
                         />
                       ))
                     )}
@@ -668,6 +671,17 @@ export default function App() {
             else saveEditedSlide(editingSlide.index, updated)
           }}
           onClose={() => setEditingSlide(null)}
+        />
+      )}
+
+      {templateSlide && (
+        <SlideToTemplateModal
+          slide={templateSlide.slide}
+          deptName={templateSlide.deptName}
+          templates={templates}
+          clientId={activeClientId}
+          onClose={() => setTemplateSlide(null)}
+          onSaved={updated => setTemplates(updated)}
         />
       )}
 
