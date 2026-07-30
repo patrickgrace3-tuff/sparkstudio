@@ -346,6 +346,7 @@ export default function AdminPanel({ onClose, onTemplatesChange }) {
   }
 
   return (
+    <>
     <div style={S.overlay}>
       <div style={S.modal}>
 
@@ -398,6 +399,7 @@ export default function AdminPanel({ onClose, onTemplatesChange }) {
     </div>
 
     {showGuide && <TemplateGuideModal onClose={() => setShowGuide(false)} />}
+    </>
   )
 }
 
