@@ -39,11 +39,9 @@ function FreeImageLayer({ images, onChange }) {
         y: clamp(d.orig.y + dy, 0, 1 - d.orig.h),
       }
     } else {
-      next[d.idx] = {
-        ...next[d.idx],
-        w: clamp(d.orig.w + dx, 0.05, 1 - d.orig.x),
-        h: clamp(d.orig.h + dy, 0.05, 1 - d.orig.y),
-      }
+      const newW = clamp(d.orig.w + dx, 0.05, 1 - d.orig.x)
+      const newH = clamp(d.orig.h + dy, 0.05, 1 - d.orig.y)
+      next[d.idx] = { ...next[d.idx], w: newW, h: newH }
     }
     onChange(next)
   }
@@ -80,29 +78,33 @@ function FreeImageLayer({ images, onChange }) {
             width: `${img.w * 100}%`,
             height: `${img.h * 100}%`,
             backgroundImage: `url(${img.src})`,
-            backgroundSize: 'cover',
+            backgroundSize: '100% 100%',
             backgroundPosition: 'center',
-            border: '1px dashed rgba(255,255,255,0.8)',
-            outline: '1px dashed rgba(0,0,0,0.4)',
+            backgroundRepeat: 'no-repeat',
+            border: '2px solid rgba(255,255,255,0.9)',
+            outline: '1px solid rgba(0,0,0,0.35)',
             cursor: 'move',
             boxSizing: 'border-box',
+            userSelect: 'none',
           }}
         >
+          {/* Remove button — inset so it's never clipped by the canvas overflow */}
           <button
             onPointerDown={e => e.stopPropagation()}
             onClick={() => removeImage(i)}
             style={{
-              position: 'absolute', top: -10, right: -10, width: 20, height: 20,
+              position: 'absolute', top: 4, right: 4, width: 20, height: 20,
               borderRadius: '50%', background: '#ef4444', color: '#fff', border: 'none',
-              fontSize: 11, cursor: 'pointer', lineHeight: 1,
+              fontSize: 11, cursor: 'pointer', lineHeight: 1, zIndex: 2,
             }}
           >✕</button>
+          {/* Resize handle — inset bottom-right corner so it stays inside the canvas overflow */}
           <div
             onPointerDown={e => startDrag(e, i, 'resize')}
             style={{
-              position: 'absolute', bottom: -6, right: -6, width: 14, height: 14,
+              position: 'absolute', bottom: 4, right: 4, width: 14, height: 14,
               background: '#fff', border: '2px solid var(--color-accent)', borderRadius: 3,
-              cursor: 'nwse-resize',
+              cursor: 'nwse-resize', zIndex: 2,
             }}
           />
         </div>
