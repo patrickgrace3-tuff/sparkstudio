@@ -154,7 +154,8 @@ function ClientsTab({ onClientsChange }) {
   const [err,         setErr]         = useState('')
   const [newName,     setNewName]     = useState('')
   const [adding,      setAdding]      = useState(false)
-  const [confirmDel,  setConfirmDel]  = useState(null)
+  const [confirmDel,   setConfirmDel]   = useState(null)
+  const [confirmClear, setConfirmClear] = useState(null)
 
   useEffect(() => {
     api.adminGetClients().then(setClients).catch(e => setErr(e.message)).finally(() => setLoading(false))
@@ -180,6 +181,14 @@ function ClientsTab({ onClientsChange }) {
       setClients(updated)
       onClientsChange?.(updated)
       setConfirmDel(null)
+    } catch (e) { setErr(e.message) }
+  }
+
+  async function handleClearTokens(id) {
+    try {
+      await api.adminClearTokenLogs(id)
+      setClients(prev => prev.map(c => c.id === id ? { ...c, total_tokens: 0, input_tokens: 0, output_tokens: 0, estimated_cost: 0 } : c))
+      setConfirmClear(null)
     } catch (e) { setErr(e.message) }
   }
 
@@ -223,15 +232,26 @@ function ClientsTab({ onClientsChange }) {
               <td style={S.td}>{fmtCost(c.estimated_cost)}</td>
               <td style={S.td}>{new Date(c.created_at).toLocaleDateString()}</td>
               <td style={S.td}>
-                {confirmDel === c.id ? (
-                  <div style={S.actions}>
-                    <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Remove?</span>
-                    <button style={S.dangerBtn} onClick={() => handleDelete(c.id)}>Yes</button>
-                    <button style={S.ghostBtn}  onClick={() => setConfirmDel(null)}>No</button>
-                  </div>
-                ) : (
-                  <button style={S.dangerBtn} onClick={() => setConfirmDel(c.id)}>Remove</button>
-                )}
+                <div style={S.actions}>
+                  {confirmClear === c.id ? (
+                    <>
+                      <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Clear logs?</span>
+                      <button style={S.dangerBtn} onClick={() => handleClearTokens(c.id)}>Yes</button>
+                      <button style={S.ghostBtn}  onClick={() => setConfirmClear(null)}>No</button>
+                    </>
+                  ) : confirmDel === c.id ? (
+                    <>
+                      <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Remove?</span>
+                      <button style={S.dangerBtn} onClick={() => handleDelete(c.id)}>Yes</button>
+                      <button style={S.ghostBtn}  onClick={() => setConfirmDel(null)}>No</button>
+                    </>
+                  ) : (
+                    <>
+                      <button style={S.ghostBtn}  onClick={() => setConfirmClear(c.id)}>Clear Tokens</button>
+                      <button style={S.dangerBtn} onClick={() => setConfirmDel(c.id)}>Remove</button>
+                    </>
+                  )}
+                </div>
               </td>
             </tr>
           ))}

@@ -161,6 +161,17 @@ router.get('/clients', async (req, res) => {
   }
 })
 
+// DELETE /api/admin/clients/:id/token-logs — clear all token logs for a client
+router.delete('/clients/:id/token-logs', async (req, res) => {
+  try {
+    await query('DELETE FROM token_logs WHERE client_id = $1', [req.params.id])
+    res.json({ ok: true })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
 // GET /api/admin/template-info — metadata about the current template.pptx
 router.get('/template-info', (req, res) => {
   try {
