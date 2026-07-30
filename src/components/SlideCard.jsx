@@ -145,17 +145,21 @@ function SlideThumbnail({ slide }) {
         </div>
       )}
 
-      {/* Free-positioned images — exact x/y/w/h from editor */}
-      {images.map((img, i) => (
-        <div key={i} style={{
-          position: 'absolute',
-          left: `${img.x * 100}%`, top: `${img.y * 100}%`,
-          width: `${img.w * 100}%`, height: `${img.h * 100}%`,
-          backgroundImage: `url(${img.src})`,
-          backgroundSize: '100% 100%',
-          backgroundRepeat: 'no-repeat',
-        }} />
-      ))}
+      {/* Free-positioned images — match editor backgroundSize/crop logic */}
+      {images.map((img, i) => {
+        const isCrop = img.mode === 'crop'
+        return (
+          <div key={i} style={{
+            position: 'absolute',
+            left: `${img.x * 100}%`, top: `${img.y * 100}%`,
+            width: `${img.w * 100}%`, height: `${img.h * 100}%`,
+            backgroundImage: `url(${img.src})`,
+            backgroundSize: isCrop ? 'cover' : '100% 100%',
+            backgroundPosition: isCrop ? `${img.bgX ?? 50}% ${img.bgY ?? 50}%` : 'center',
+            backgroundRepeat: 'no-repeat',
+          }} />
+        )
+      })}
     </div>
   )
 }
