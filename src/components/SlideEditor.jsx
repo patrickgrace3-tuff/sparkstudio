@@ -647,7 +647,6 @@ export default function SlideEditor({ slide, onSave, onClose }) {
       table:   table && table.headers.length > 0 ? table : null,
     }
     onSave(saved)
-    onClose()
   }
 
   return (
