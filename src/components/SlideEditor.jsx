@@ -455,6 +455,8 @@ function SlideCanvas({
 
 // ── Main editor modal ─────────────────────────────────────────────────────────
 export default function SlideEditor({ slide, onSave, onClose }) {
+  const [savedFlash, setSavedFlash] = useState(false)
+  const savedTimerRef = useRef(null)
   const [draft,    setDraft]    = useState({
     title:   slide.title   ?? '',
     body:    slide.body    ?? '',
@@ -647,6 +649,9 @@ export default function SlideEditor({ slide, onSave, onClose }) {
       table:   table && table.headers.length > 0 ? table : null,
     }
     onSave(saved)
+    clearTimeout(savedTimerRef.current)
+    setSavedFlash(true)
+    savedTimerRef.current = setTimeout(() => setSavedFlash(false), 2500)
   }
 
   return (
@@ -660,6 +665,9 @@ export default function SlideEditor({ slide, onSave, onClose }) {
             <button style={styles.btnFullscreen} onClick={() => setFullscreen(f => !f)}>
               {fullscreen ? '⤡ Exit fullscreen' : '⤢ Fullscreen'}
             </button>
+            {savedFlash && (
+              <span style={styles.savedBadge}>✓ Saved</span>
+            )}
             <button style={styles.btnSave} onClick={handleSave}>Save changes</button>
             <button style={styles.btnClose} onClick={onClose}>✕</button>
           </div>
@@ -902,6 +910,7 @@ const styles = {
   header:           { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '0.5px solid var(--color-border)', flexShrink: 0 },
   headerTitle:      { fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: '0.03em', color: 'var(--color-text-primary)' },
   headerBtns:       { display: 'flex', gap: 8, alignItems: 'center' },
+  savedBadge:       { fontSize: 12, fontWeight: 600, color: '#16a34a', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 'var(--radius-pill)', padding: '5px 12px', whiteSpace: 'nowrap' },
   btnSave:          { background: 'var(--color-accent)', color: '#FFFFFF', border: 'none', borderRadius: 'var(--radius-pill)', padding: '7px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
   btnClose:         { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '7px 12px', fontSize: 13, cursor: 'pointer', color: 'var(--color-text-secondary)' },
   btnFullscreen:    { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '7px 14px', fontSize: 13, cursor: 'pointer', color: 'var(--color-text-secondary)' },
