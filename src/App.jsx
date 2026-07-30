@@ -224,7 +224,7 @@ export default function App() {
         const ctx = buildAIContext(fileData, d.name, globalData)
         return { dept: d.name, slides: allSlides[d.id] || [], deptSummary: ctx.deptSummary, globalSummary: ctx.globalSummary, imageFiles: ctx.imageFiles, pdfFiles: ctx.pdfFiles }
       })
-      const result = await generateDeck(withData, activeClient.name, activeClientId)
+      const result = await generateDeck(withData, activeClient.name, activeClientId, deck ?? null)
 
       const allSlidesFlat = Object.values(allSlides).flat()
       result.slides = result.slides.map(genSlide => {

@@ -55,7 +55,13 @@ No preamble, no markdown fences.
 }
 
 
-export async function generateDeck(deptContributions, clientName = "", clientId = null) {
+// Stable fingerprint for a department's input — used to detect changes between generations.
+function deptFingerprint(contrib) {
+  const slides = (contrib.slides ?? []).map(s => `${s._id}|${s.title}|${s.body ?? ''}`)
+  return JSON.stringify({ slides, summary: contrib.deptSummary ?? '' })
+}
+
+export async function generateDeck(deptContributions, clientName = "", clientId = null, existingDeck = null) {
   const allowedDepts = deptContributions.map(d => d.dept)
 
   // Collect all image files across departments (deduplicated by name)
@@ -130,9 +136,27 @@ Omit "table" if no tabular data. Omit "bullets" if table is self-explanatory.
 Department slides:
 `
 
+  // Build a lookup of existing AI-generated slides keyed by dept name (for incremental regen)
+  const existingFps   = existingDeck?._deptFingerprints ?? {}
+  const existingByDept = {}
+  if (existingDeck?.slides) {
+    for (const s of existingDeck.slides) {
+      if (s.dept) (existingByDept[s.dept] ??= []).push(s)
+    }
+  }
+
   // Run each department in parallel on its own worker key
   const deptResults = await Promise.all(
-    deptContributions.map(async ({ dept, slides, deptSummary, fileSummary }, deptIdx) => {
+    deptContributions.map(async (contrib, deptIdx) => {
+      const { dept, slides, deptSummary, fileSummary } = contrib
+
+      // Skip Claude if nothing changed for this department since last generation
+      const fp = deptFingerprint(contrib)
+      if (existingByDept[dept]?.length && existingFps[dept] === fp) {
+        console.log(`[generateDeck] Skipping "${dept}" — no changes detected`)
+        return existingByDept[dept]
+      }
+
       const slideText = slides.map(s => {
         const rawBody   = s.body ?? ''
         const wantsImg  = rawBody.includes('[images]')
@@ -161,9 +185,14 @@ Department slides:
     })
   )
 
+  // Record fingerprints for each dept so the next generation can skip unchanged ones
+  const newFps = {}
+  for (const contrib of deptContributions) newFps[contrib.dept] = deptFingerprint(contrib)
+
   const deck = {
     title: `${safeName} Presentation`,
     slides: deptResults.flat(),
+    _deptFingerprints: newFps,
   }
 
   // Filter out any slides the AI sneaked in with non-dept values
