@@ -203,7 +203,7 @@ function stopForEdit(e) {
 }
 
 // ── Live slide preview canvas ─────────────────────────────────────────────────
-export function SlideCanvas({
+function SlideCanvas({
   slide, bgImage, table, onImagesChange, onBodyBoxChange, onTableBoxChange,
   onTitleChange, onBulletChange, onTableHeaderChange, onTableCellChange, onSourceChange,
   onExtraBoxChange, onExtraBulletChange,
