@@ -40,7 +40,11 @@ function SectionSlidePreview({ dept }) {
 }
 
 function ContentSlidePreview({ slide }) {
-  const { title, bullets = [], style = {}, table, source, extraBulletBoxes = [] } = slide
+  const rawStyle  = slide.style  ?? {}
+  const bullets   = slide.bullets ?? []
+  const extraBulletBoxes = slide.extraBulletBoxes ?? []
+  const { title, table, source } = slide
+  const style = rawStyle
   const tc     = style.textCol || '#1A1A1A'
   const accent = style.accent  || '#CD2F37'
   const font   = style.font    || 'Arial, sans-serif'
