@@ -19,7 +19,11 @@ router.get('/users', async (req, res) => {
       SELECT
         u.id, u.email, u.name, u.role, u.created_at, u.last_login,
         COUNT(DISTINCT s.id)                                    AS slides_count,
-        COALESCE(SUM(tl.input_tokens + tl.output_tokens), 0)   AS tokens_used
+        COALESCE(SUM(tl.input_tokens + tl.output_tokens), 0)   AS tokens_used,
+        COALESCE(SUM(
+          tl.input_tokens  * CASE WHEN tl.model ILIKE '%haiku%' THEN 0.80 WHEN tl.model ILIKE '%opus%' THEN 15.0 ELSE 3.00 END / 1000000.0 +
+          tl.output_tokens * CASE WHEN tl.model ILIKE '%haiku%' THEN 4.00 WHEN tl.model ILIKE '%opus%' THEN 75.0 ELSE 15.00 END / 1000000.0
+        ), 0) AS tokens_cost
       FROM users u
       LEFT JOIN slides     s  ON s.created_by  = u.id
       LEFT JOIN token_logs tl ON tl.user_id    = u.id
@@ -30,6 +34,7 @@ router.get('/users', async (req, res) => {
       ...r,
       slides_count: parseInt(r.slides_count),
       tokens_used:  parseInt(r.tokens_used),
+      tokens_cost:  parseFloat(parseFloat(r.tokens_cost).toFixed(4)),
     })))
   } catch (err) {
     console.error(err)
@@ -98,7 +103,16 @@ router.get('/stats', async (req, res) => {
       query('SELECT COUNT(*) FROM clients'),
       query('SELECT COUNT(*) FROM templates'),
       query('SELECT COUNT(*) FROM slides'),
-      query('SELECT COALESCE(SUM(input_tokens),0) AS input, COALESCE(SUM(output_tokens),0) AS output FROM token_logs'),
+      query(`
+        SELECT
+          COALESCE(SUM(input_tokens),  0) AS input,
+          COALESCE(SUM(output_tokens), 0) AS output,
+          COALESCE(SUM(
+            input_tokens  * CASE WHEN model ILIKE '%haiku%' THEN 0.80 WHEN model ILIKE '%opus%' THEN 15.0 ELSE 3.00 END / 1000000.0 +
+            output_tokens * CASE WHEN model ILIKE '%haiku%' THEN 4.00 WHEN model ILIKE '%opus%' THEN 75.0 ELSE 15.00 END / 1000000.0
+          ), 0) AS cost
+        FROM token_logs
+      `),
     ])
     const input  = parseInt(tokens.rows[0].input)
     const output = parseInt(tokens.rows[0].output)
@@ -110,7 +124,7 @@ router.get('/stats', async (req, res) => {
       inputTokens:   input,
       outputTokens:  output,
       totalTokens:   input + output,
-      estimatedCost: calcCost('mixed', input, output),
+      estimatedCost: parseFloat(parseFloat(tokens.rows[0].cost).toFixed(4)),
     })
   } catch (err) {
     console.error(err)
@@ -125,9 +139,13 @@ router.get('/clients', async (req, res) => {
       SELECT c.id, c.name, c.created_at,
              COUNT(DISTINCT s.id)               AS slide_count,
              COALESCE(SUM(tl.input_tokens),  0) AS input_tokens,
-             COALESCE(SUM(tl.output_tokens), 0) AS output_tokens
+             COALESCE(SUM(tl.output_tokens), 0) AS output_tokens,
+             COALESCE(SUM(
+               tl.input_tokens  * CASE WHEN tl.model ILIKE '%haiku%' THEN 0.80 WHEN tl.model ILIKE '%opus%' THEN 15.0 ELSE 3.00 END / 1000000.0 +
+               tl.output_tokens * CASE WHEN tl.model ILIKE '%haiku%' THEN 4.00 WHEN tl.model ILIKE '%opus%' THEN 75.0 ELSE 15.00 END / 1000000.0
+             ), 0) AS estimated_cost
       FROM clients c
-      LEFT JOIN slides    s  ON s.client_id  = c.id
+      LEFT JOIN slides     s  ON s.client_id  = c.id
       LEFT JOIN token_logs tl ON tl.client_id = c.id
       GROUP BY c.id
       ORDER BY c.created_at ASC
@@ -135,7 +153,7 @@ router.get('/clients', async (req, res) => {
     res.json(result.rows.map(r => ({
       ...r,
       total_tokens:   parseInt(r.input_tokens) + parseInt(r.output_tokens),
-      estimated_cost: calcCost('mixed', parseInt(r.input_tokens), parseInt(r.output_tokens)),
+      estimated_cost: parseFloat(parseFloat(r.estimated_cost).toFixed(4)),
     })))
   } catch (err) {
     console.error(err)
@@ -214,10 +232,20 @@ router.put('/settings/:key', async (req, res) => {
 // Sonnet 4.6: $3/M input, $15/M output
 // Haiku 4.5:  $0.80/M input, $4/M output
 // Blended estimate weights ~70% haiku (deck gen) / 30% sonnet (AI assistant)
+// Per-model pricing (USD per token). Rates from Anthropic pricing page.
+// claude-sonnet-5 / claude-sonnet-4-6 / claude-sonnet-4-5 → Sonnet tier
+// claude-haiku-4-5 / claude-haiku-3   → Haiku tier
+// Everything else falls back to Sonnet tier (conservative).
+function modelRates(model = '') {
+  const m = model.toLowerCase()
+  if (m.includes('haiku'))  return { in: 0.80 / 1_000_000, out: 4.00  / 1_000_000 }
+  if (m.includes('opus'))   return { in: 15.0 / 1_000_000, out: 75.00 / 1_000_000 }
+  return                           { in: 3.00 / 1_000_000, out: 15.00 / 1_000_000 } // Sonnet default
+}
+
 function calcCost(model, input, output) {
-  const inRate  = (0.7 * 0.80 + 0.3 * 3.00)  / 1_000_000
-  const outRate = (0.7 * 4.00 + 0.3 * 15.00) / 1_000_000
-  return parseFloat((input * inRate + output * outRate).toFixed(4))
+  const r = modelRates(model)
+  return parseFloat((input * r.in + output * r.out).toFixed(4))
 }
 
 export default router
