@@ -48,8 +48,10 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }))
 // Run migrations on every startup (all statements use IF NOT EXISTS — safe to repeat)
 async function start() {
   try {
-    const sql = readFileSync('./migrations/001_initial.sql', 'utf8')
-    await pool.query(sql)
+    const sql001 = readFileSync('./migrations/001_initial.sql', 'utf8')
+    await pool.query(sql001)
+    const sql002 = readFileSync('./migrations/002_slides_table_field.sql', 'utf8')
+    await pool.query(sql002)
     console.log('Migrations up to date.')
   } catch (err) {
     console.error('Migration error:', err.message)
