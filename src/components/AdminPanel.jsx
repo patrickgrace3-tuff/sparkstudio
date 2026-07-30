@@ -264,11 +264,120 @@ function TemplateCard({ template, onEdit, onDelete, onDuplicate }) {
   )
 }
 
+// ── Template Guide modal ──────────────────────────────────────────────────────
+function TemplateGuideModal({ onClose: closeGuide }) {
+  return (
+    <div style={G.overlay} onClick={closeGuide}>
+      <div style={G.modal} onClick={e => e.stopPropagation()}>
+        <button style={G.closeBtn} onClick={closeGuide}>✕</button>
+        <div style={G.body}>
+
+          <div style={G.brandRule} />
+
+          <div style={G.docHeader}>
+            <div>
+              <div style={G.eyebrow}>Spark Studio · Admin</div>
+              <h2 style={G.docTitle}>Presentation Templates</h2>
+              <p style={G.docSubtitle}>Build reusable slide structures that guide the AI when generating client decks — so every presentation starts from your playbook, not a blank page.</p>
+            </div>
+          </div>
+
+          <div style={G.sectionLabel}>What is a Template?</div>
+          <p style={G.introP}>A template is a pre-defined set of slides for each department. When a user applies a template to a client, those slide shells are automatically added to each department's section — giving the AI a clear starting point: what the slide should cover, how to frame it, and what to avoid.</p>
+          <p style={{ ...G.introP, marginTop: 10 }}>Think of it as your agency's standard deck structure, baked in. Instead of every team starting from scratch, they start from your best practices.</p>
+
+          <div style={G.divider} />
+
+          <div style={G.sectionLabel}>How It Works</div>
+          <div style={G.steps}>
+            {[
+              { n: 1, title: 'Create a template', desc: 'Click "+ New template" and give it a name (e.g. "Q3 Client Review" or "New Business Pitch"). Templates are reusable across any client.' },
+              { n: 2, title: 'Add slides per department', desc: 'Each department gets its own section. Add one or more slide shells — each shell becomes a slide in that department\'s deck when the template is applied.' },
+              { n: 3, title: 'Write slide instructions', desc: 'For each shell, give it a title and content notes. The AI uses these as its brief when generating bullets — the more specific, the better the output.' },
+              { n: 4, title: 'Use guardrails to shape the AI', desc: '"Do This" tells the AI what to include or emphasize. "Don\'t Do This" tells it what to avoid. Both fields are injected directly into the AI prompt for that slide.' },
+              { n: 5, title: 'Apply to a client', desc: 'On the main deck builder, select a template from the Template dropdown. The slide shells are seeded into each department instantly — users can then edit and build on top of them.' },
+              { n: 6, title: 'Generate the deck', desc: 'When the team hits Generate Presentation, the AI uses each shell\'s title, instructions, and guardrails — alongside the department\'s uploaded files — to produce polished slides.' },
+            ].map(({ n, title, desc }) => (
+              <div key={n} style={G.step}>
+                <div style={G.stepNum}>{n}</div>
+                <div>
+                  <div style={G.stepTitle}>{title}</div>
+                  <div style={G.stepDesc}>{desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={G.divider} />
+
+          <div style={G.sectionLabel}>Slide Instructions — Tips for Best Results</div>
+          <div style={G.tipsGrid}>
+            {[
+              { label: 'Be specific about data', desc: 'Name the metrics you want surfaced — "include CTR, CPC, and conversion rate from the Looker report" gives the AI much better direction than "include performance data".' },
+              { label: 'Set the right tone', desc: 'Tell the AI how to frame the content — "position results as progress toward Q3 targets" vs "show raw numbers only". Framing instructions go in the Do This field.' },
+              { label: 'Use Don\'t Do This to block bad defaults', desc: 'If the AI tends to add filler bullets or vague summaries, block them: "Do NOT include generic statements like \'results were strong\'" — be specific about what to exclude.' },
+              { label: 'One slide, one job', desc: 'Each shell works best when it has a single clear purpose. A "Performance Overview" slide and a "Campaign Breakdown" slide should be separate shells, not one big one.' },
+              { label: 'Leave room for the AI', desc: 'Instructions are a brief, not a script. Give the AI enough direction to know what matters — then let it pull the specifics from the uploaded files.' },
+              { label: 'Iterate on guardrails', desc: 'After your first generation, review what the AI produced. If a slide missed the mark, tighten the Do This or Don\'t Do This fields and regenerate — it learns from the constraints.' },
+            ].map(({ label, desc }) => (
+              <div key={label} style={G.tipCard}>
+                <div style={G.tipLabel}>{label}</div>
+                <div style={G.tipDesc}>{desc}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={G.divider} />
+
+          <div style={G.callout}>
+            <p style={G.calloutP}><strong>Templates don't lock in content.</strong> They seed the deck — every generated slide can still be edited, rewritten, or deleted before export. Think of them as a structured first draft, not a fixed format.</p>
+          </div>
+
+          <div style={G.bottomRule} />
+          <p style={G.footerNote}>Spark Studio by Conversionia · Admin Reference · Internal Use Only</p>
+
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const RED = '#CD2F37'
+
+const G = {
+  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  modal:   { background: 'var(--color-bg)', borderRadius: 12, width: '100%', maxWidth: 720, maxHeight: '90vh', overflowY: 'auto', position: 'relative', boxShadow: '0 24px 60px rgba(0,0,0,0.3)' },
+  closeBtn: { position: 'sticky', top: 16, float: 'right', marginRight: 20, marginTop: 16, background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: '50%', width: 30, height: 30, fontSize: 13, cursor: 'pointer', color: 'var(--color-text-secondary)', zIndex: 10 },
+  body:     { padding: '28px 32px 36px', clear: 'both' },
+  brandRule: { height: 3, background: RED, borderRadius: 1, marginBottom: 24 },
+  docHeader: { marginBottom: 28 },
+  eyebrow:   { fontSize: 10, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: RED, marginBottom: 5 },
+  docTitle:  { fontSize: 24, fontWeight: 800, lineHeight: 1.1, letterSpacing: '-0.02em', color: 'var(--color-text-primary)', margin: 0 },
+  docSubtitle: { fontSize: 13, color: 'var(--color-text-muted)', marginTop: 6, lineHeight: 1.5, maxWidth: 560 },
+  sectionLabel: { fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: 12 },
+  introP:    { fontSize: 14, lineHeight: 1.7, color: 'var(--color-text-primary)' },
+  divider:   { borderTop: '1px solid var(--color-border)', margin: '24px 0' },
+  steps:     { display: 'flex', flexDirection: 'column', gap: 8 },
+  step:      { display: 'grid', gridTemplateColumns: '32px 1fr', gap: 12, alignItems: 'start', background: 'var(--color-bg-secondary)', borderRadius: 8, padding: '11px 14px' },
+  stepNum:   { width: 24, height: 24, background: RED, color: '#fff', fontSize: 11, fontWeight: 800, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 },
+  stepTitle: { fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 2 },
+  stepDesc:  { fontSize: 12, color: 'var(--color-text-muted)', lineHeight: 1.55 },
+  tipsGrid:  { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
+  tipCard:   { background: 'var(--color-bg-secondary)', borderRadius: 8, padding: '12px 14px' },
+  tipLabel:  { fontSize: 12, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 3 },
+  tipDesc:   { fontSize: 11, color: 'var(--color-text-muted)', lineHeight: 1.5 },
+  callout:   { background: 'var(--color-bg-secondary)', borderLeft: `3px solid ${RED}`, borderRadius: '0 8px 8px 0', padding: '14px 16px' },
+  calloutP:  { fontSize: 13, color: 'var(--color-text-primary)', lineHeight: 1.65 },
+  bottomRule: { height: 1, background: 'var(--color-border)', marginTop: 24 },
+  footerNote: { fontSize: 10, color: 'var(--color-text-muted)', marginTop: 10, textAlign: 'center', letterSpacing: '0.01em' },
+}
+
 // ── Main AdminPanel ───────────────────────────────────────────────────────────
 export default function AdminPanel({ onClose, onTemplatesChange }) {
-  const [templates, setTemplates] = useState([])
-  const [editing,   setEditing]   = useState(null)
-  const [saving,    setSaving]    = useState(false)
+  const [templates,  setTemplates]  = useState([])
+  const [editing,    setEditing]    = useState(null)
+  const [saving,     setSaving]     = useState(false)
+  const [showGuide,  setShowGuide]  = useState(false)
 
   useEffect(() => {
     api.getTemplates().then(setTemplates).catch(console.error)
@@ -330,6 +439,7 @@ export default function AdminPanel({ onClose, onTemplatesChange }) {
             <span style={S.sub}>Define reusable slide structures that seed AI-generated decks</span>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button style={S.guideBtn} onClick={() => setShowGuide(true)}>Template Guide</button>
             {!editing && (
               <button style={S.newBtn} onClick={handleNew}>+ New template</button>
             )}
@@ -370,6 +480,8 @@ export default function AdminPanel({ onClose, onTemplatesChange }) {
 
       </div>
     </div>
+
+    {showGuide && <TemplateGuideModal onClose={() => setShowGuide(false)} />}
   )
 }
 
@@ -379,6 +491,7 @@ const S = {
   header:       { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '0.5px solid var(--color-border)', flexShrink: 0, gap: 16 },
   title:        { display: 'block', fontSize: 15, fontWeight: 700, color: 'var(--color-text-primary)' },
   sub:          { display: 'block', fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 },
+  guideBtn:     { background: 'none', border: '1px solid #CD2F37', borderRadius: 'var(--radius-pill)', padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#CD2F37' },
   newBtn:       { background: 'var(--color-accent)', color: '#fff', border: 'none', borderRadius: 'var(--radius-pill)', padding: '7px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
   closeBtn:     { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '7px 14px', fontSize: 13, cursor: 'pointer', color: 'var(--color-text-secondary)' },
   body:         { flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' },
