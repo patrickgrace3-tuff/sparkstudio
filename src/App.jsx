@@ -230,6 +230,13 @@ export default function App() {
 
       const allSlidesFlat = Object.values(allSlides).flat()
       result.slides = result.slides.map(genSlide => {
+        // Slides carried over from an unchanged dept are already correctly merged and
+        // split from the previous generation — re-merging them would restore the full
+        // pre-split bullet list and cause geometric duplication on every regen.
+        if (genSlide._fromExisting) {
+          const { _fromExisting: _, ...clean } = genSlide
+          return clean
+        }
         const original = allSlidesFlat.find(s => s._id === genSlide.sourceId)
           ?? allSlidesFlat.find(s => s.title?.toLowerCase().trim() === genSlide.title?.toLowerCase().trim())
         if (!original) return genSlide

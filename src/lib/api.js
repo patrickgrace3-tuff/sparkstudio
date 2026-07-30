@@ -154,7 +154,8 @@ Department slides:
       const fp = deptFingerprint(contrib)
       if (existingByDept[dept]?.length && existingFps[dept] === fp) {
         console.log(`[generateDeck] Skipping "${dept}" — no changes detected`)
-        return existingByDept[dept]
+        // Mark slides so handleGenerate knows not to re-merge or re-split them
+        return existingByDept[dept].map(s => ({ ...s, _fromExisting: true }))
       }
 
       const slideText = slides.map(s => {
@@ -206,12 +207,13 @@ Department slides:
     return true
   })
 
-  // Safety net: split any slide that still has more than 4 bullets into continuations
+  // Safety net: split any slide that still has more than 4 bullets into continuations.
+  // Skip slides from unchanged depts — they're already correctly split from last gen.
   const MAX_BULLETS = 4
   const splitSlides = []
   for (const slide of deck.slides) {
     const bullets = slide.bullets ?? []
-    if (bullets.length <= MAX_BULLETS) {
+    if (slide._fromExisting || bullets.length <= MAX_BULLETS) {
       splitSlides.push(slide)
     } else {
       for (let i = 0; i < bullets.length; i += MAX_BULLETS) {
