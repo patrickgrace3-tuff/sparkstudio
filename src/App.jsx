@@ -252,8 +252,14 @@ export default function App() {
           // After the DB migration all slides have table: null in the DB by default,
           // so checking 'table' in original is no longer a reliable signal — use non-null instead.
           ...(original.table != null ? { table: original.table } : {}),
-          // Merge styles: AI-assigned images/layout take priority, then original style fills gaps
-          style: { ...(original.style ?? {}), ...(genSlide.style ?? {}) },
+          // Merge styles: AI-assigned images/layout take priority, then original style fills gaps.
+          // Preserve user-placed images (original.style.images) — never let the AI overwrite them.
+          style: (() => {
+            const merged = { ...(original.style ?? {}), ...(genSlide.style ?? {}) }
+            const userImgs = original.style?.images
+            if (Array.isArray(userImgs) && userImgs.length) merged.images = userImgs
+            return merged
+          })(),
           ...(original.source ? { source: original.source } : {}),
           ...(original.notes  ? { notes:  original.notes }  : {}),
           // Restore extra bullet boxes (additional column areas added in SlideEditor)
