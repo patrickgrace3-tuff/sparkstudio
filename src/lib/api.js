@@ -57,7 +57,7 @@ No preamble, no markdown fences.
 
 // Stable fingerprint for a department's input — used to detect changes between generations.
 function deptFingerprint(contrib) {
-  const slides = (contrib.slides ?? []).map(s => `${s._id}|${s.title}|${s.body ?? ''}`)
+  const slides = (contrib.slides ?? []).map(s => `${s._id}|${s.title}|${s.body ?? ''}|imgs:${(s.style?.images?.length ?? 0)}`)
   return JSON.stringify({ slides, summary: contrib.deptSummary ?? '' })
 }
 
