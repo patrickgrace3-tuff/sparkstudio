@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { callClaude } from '../lib/api.js'
 import { api } from '../lib/apiClient.js'
 
@@ -12,17 +12,14 @@ import { api } from '../lib/apiClient.js'
 //   onSaved    — called with updated templates array after save
 export default function SlideToTemplateModal({ slide, deptName, templates, clientId, onClose, onSaved }) {
   const [shell, setShell] = useState({ title: slide.title, content: '', doThis: '', dontDoThis: '' })
-  const [generating, setGenerating] = useState(true)
+  const [generating, setGenerating] = useState(false)
   const [mode, setMode] = useState('existing') // 'existing' | 'new'
   const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0]?.id ?? '')
   const [newTemplateName, setNewTemplateName] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  // Auto-generate shell fields when modal opens
-  useEffect(() => {
-    let cancelled = false
-    async function generate() {
+  async function handleGenerate() {
       const bullets = (slide.bullets ?? []).join('\n')
       const table   = slide.table ? `Table headers: ${slide.table.headers?.join(', ')}` : ''
       const body    = slide.body ?? ''
@@ -42,27 +39,22 @@ Return ONLY valid JSON (no markdown):
   "dontDoThis": "2-3 things to avoid that would make this slide weak or confusing."
 }`
 
-      try {
-        const raw    = await callClaude(prompt, '', 600, { clientId })
-        const clean  = raw.replace(/```json|```/g, '').trim()
-        const parsed = JSON.parse(clean)
-        if (!cancelled) {
-          setShell(s => ({
-            ...s,
-            content:    parsed.content    ?? '',
-            doThis:     parsed.doThis     ?? '',
-            dontDoThis: parsed.dontDoThis ?? '',
-          }))
-        }
-      } catch {
-        // Leave fields blank — user can fill them manually
-      } finally {
-        if (!cancelled) setGenerating(false)
-      }
+    try {
+      const raw    = await callClaude(prompt, '', 600, { clientId })
+      const clean  = raw.replace(/```json|```/g, '').trim()
+      const parsed = JSON.parse(clean)
+      setShell(s => ({
+        ...s,
+        content:    parsed.content    ?? '',
+        doThis:     parsed.doThis     ?? '',
+        dontDoThis: parsed.dontDoThis ?? '',
+      }))
+    } catch {
+      // Leave fields blank — user can fill them manually
+    } finally {
+      setGenerating(false)
     }
-    generate()
-    return () => { cancelled = true }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }
 
   async function handleSave() {
     setError('')
@@ -111,12 +103,18 @@ Return ONLY valid JSON (no markdown):
           <button style={S.closeBtn} onClick={onClose}>✕</button>
         </div>
 
-        {generating && (
-          <div style={S.genBanner}>
-            <div style={S.spinner} />
-            <span>AI is generating instructions, dos &amp; don'ts…</span>
-          </div>
-        )}
+        <div style={S.genBanner}>
+          {generating ? (
+            <>
+              <div style={S.spinner} />
+              <span>AI is generating instructions, dos &amp; don'ts…</span>
+            </>
+          ) : (
+            <button style={S.genBtn} onClick={handleGenerate}>
+              ✦ Generate with AI
+            </button>
+          )}
+        </div>
 
         <div style={S.fields}>
           <label style={S.label}>Slide Title</label>
@@ -206,7 +204,7 @@ Return ONLY valid JSON (no markdown):
 
         <div style={S.footer}>
           <button style={S.cancelBtn} onClick={onClose}>Cancel</button>
-          <button style={S.saveBtn} onClick={handleSave} disabled={saving || generating}>
+          <button style={S.saveBtn} onClick={handleSave} disabled={saving || generating} title={generating ? 'Wait for AI to finish' : ''}>
             {saving ? 'Saving…' : 'Save to Template'}
           </button>
         </div>
@@ -240,6 +238,11 @@ const S = {
     padding: '10px 20px', background: 'var(--color-bg-secondary)',
     borderBottom: '0.5px solid var(--color-border)',
     fontSize: 12, color: 'var(--color-text-secondary)',
+  },
+  genBtn: {
+    background: 'var(--color-accent)', border: 'none', borderRadius: 'var(--radius-pill)',
+    padding: '5px 14px', fontSize: 12, fontWeight: 600, color: '#fff', cursor: 'pointer',
+    fontFamily: 'inherit',
   },
   spinner: {
     width: 14, height: 14, borderRadius: '50%', flexShrink: 0,
