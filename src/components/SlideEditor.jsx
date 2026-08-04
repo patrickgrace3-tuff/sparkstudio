@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { DEPARTMENTS } from '../lib/constants.js'
 import { parseRichText } from '../lib/richtext.js'
 
@@ -283,6 +283,132 @@ function DraggableBox({ box, onChange, children }) {
 // triggering the parent DraggableBox's move-drag.
 function stopForEdit(e) {
   e.stopPropagation()
+}
+
+// ── Right-click context menu shown over the slide canvas ─────────────────────
+function SlideContextMenu({ x, y, onClose, onBold, onItalic, onAlignment, onAddBullet, onAddTextBox }) {
+  const ref = useRef(null)
+
+  // Close on outside click or Escape
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onClose() }
+    function onDown(e) { if (ref.current && !ref.current.contains(e.target)) onClose() }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('pointerdown', onDown)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('pointerdown', onDown)
+    }
+  }, [onClose])
+
+  function item(label, onClick, disabled = false, title = '') {
+    return (
+      <button
+        key={label}
+        style={{ ...CM.item, ...(disabled ? CM.itemDisabled : {}) }}
+        disabled={disabled}
+        title={title}
+        onPointerDown={e => e.stopPropagation()}
+        onClick={() => { if (!disabled) { onClick(); onClose() } }}
+      >{label}</button>
+    )
+  }
+
+  return (
+    <div ref={ref} style={{ ...CM.menu, left: x, top: y }}>
+      {/* Font group */}
+      <div style={CM.groupLabel}>Font</div>
+      <div style={CM.row}>
+        <button style={CM.fmtBtn} title="Bold — wraps selection in **" onPointerDown={e => e.stopPropagation()} onClick={() => { onBold(); onClose() }}><b>B</b></button>
+        <button style={{ ...CM.fmtBtn, fontStyle: 'italic' }} title="Italic — wraps selection in *" onPointerDown={e => e.stopPropagation()} onClick={() => { onItalic(); onClose() }}><i>I</i></button>
+        <button style={{ ...CM.fmtBtn, textDecoration: 'underline', opacity: 0.4 }} title="Underline (not supported in export)" disabled><u>U</u></button>
+        <button style={{ ...CM.fmtBtn, textDecoration: 'line-through', opacity: 0.4 }} title="Strikethrough (not supported in export)" disabled>S̶</button>
+        <button style={{ ...CM.fmtBtn, fontSize: 10, opacity: 0.4 }} title="Subscript (not supported)" disabled>x₂</button>
+        <button style={{ ...CM.fmtBtn, fontSize: 10, opacity: 0.4 }} title="Superscript (not supported)" disabled>x²</button>
+      </div>
+
+      <div style={CM.divider} />
+
+      {/* Paragraph group */}
+      <div style={CM.groupLabel}>Paragraph</div>
+      <div style={CM.row}>
+        <button style={CM.fmtBtn} title="Align left" onPointerDown={e => e.stopPropagation()} onClick={() => { onAlignment('left'); onClose() }}>
+          <AlignIcon type="left" />
+        </button>
+        <button style={CM.fmtBtn} title="Align center" onPointerDown={e => e.stopPropagation()} onClick={() => { onAlignment('center'); onClose() }}>
+          <AlignIcon type="center" />
+        </button>
+        <button style={CM.fmtBtn} title="Align right" onPointerDown={e => e.stopPropagation()} onClick={() => { onAlignment('right'); onClose() }}>
+          <AlignIcon type="right" />
+        </button>
+        <button style={CM.fmtBtn} title="Justify" onPointerDown={e => e.stopPropagation()} onClick={() => { onAlignment('justify'); onClose() }}>
+          <AlignIcon type="justify" />
+        </button>
+      </div>
+
+      <div style={CM.divider} />
+
+      {/* Slide actions */}
+      <div style={CM.groupLabel}>Slide</div>
+      {item('+ Add bullet point', onAddBullet)}
+      {item('+ Add text box', onAddTextBox)}
+    </div>
+  )
+}
+
+function AlignIcon({ type }) {
+  const lines = {
+    left:    [[2, 14], [2, 10], [2, 6]],
+    center:  [[3, 13], [4, 10], [2, 6]],
+    right:   [[2, 14], [6, 10], [2, 6]],
+    justify: [[2, 14], [2, 10], [2, 6]],
+  }
+  const widths = {
+    left:    [10, 7, 10],
+    center:  [10, 8, 10],
+    right:   [10, 6, 10],
+    justify: [10, 10, 10],
+  }
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+      {lines[type].map(([x, w], i) => (
+        <rect key={i} x={type === 'center' ? (16 - widths[type][i]) / 2 : type === 'right' ? 16 - widths[type][i] : x} y={2 + i * 4} width={widths[type][i]} height={2} rx={1} />
+      ))}
+    </svg>
+  )
+}
+
+const CM = {
+  menu: {
+    position: 'fixed', zIndex: 9999,
+    background: 'var(--color-bg)', border: '0.5px solid var(--color-border)',
+    borderRadius: 'var(--radius-md)', boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
+    padding: '8px 0', minWidth: 210, fontSize: 12,
+    fontFamily: 'var(--font-body, Arial, sans-serif)',
+    userSelect: 'none',
+  },
+  groupLabel: {
+    fontSize: 10, fontWeight: 700, color: 'var(--color-text-muted)',
+    textTransform: 'uppercase', letterSpacing: '0.07em',
+    padding: '2px 14px 4px',
+  },
+  row: {
+    display: 'flex', gap: 2, padding: '2px 10px 6px', flexWrap: 'wrap',
+  },
+  fmtBtn: {
+    background: 'none', border: '0.5px solid var(--color-border)',
+    borderRadius: 4, width: 28, height: 26,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: 12, cursor: 'pointer', color: 'var(--color-text-primary)',
+    transition: 'background 0.1s',
+  },
+  item: {
+    display: 'block', width: '100%', textAlign: 'left',
+    background: 'none', border: 'none', padding: '6px 14px',
+    fontSize: 12, cursor: 'pointer', color: 'var(--color-text-primary)',
+  },
+  itemDisabled: { opacity: 0.4, cursor: 'default' },
+  divider: { height: '0.5px', background: 'var(--color-border)', margin: '4px 0' },
 }
 
 // ── Live slide preview canvas ─────────────────────────────────────────────────
@@ -610,6 +736,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
   const [bgImage,       setBgImage]       = useState(slide.style?.bgImage ?? null)
   const [activePanel,   setActivePanel]   = useState('content') // content | images | notes
   const [fullscreen,    setFullscreen]    = useState(true)
+  const [ctxMenu,       setCtxMenu]       = useState(null) // { x, y }
   const [controlsWidth, setControlsWidth] = useState(300)
   const splitterDragRef = useRef(null)
 
@@ -832,6 +959,33 @@ export default function SlideEditor({ slide, onSave, onClose }) {
 
   function removeFreeImage(i) {
     updateStyle('images', draft.style.images.filter((_, idx) => idx !== i))
+  }
+
+  // ── Context menu handlers ─────────────────────────────────────────────────
+  function handleCanvasContextMenu(e) {
+    e.preventDefault()
+    // Keep menu within viewport
+    const vw = window.innerWidth, vh = window.innerHeight
+    const menuW = 220, menuH = 280
+    const x = Math.min(e.clientX, vw - menuW - 8)
+    const y = Math.min(e.clientY, vh - menuH - 8)
+    setCtxMenu({ x, y })
+  }
+
+  function applyMarkerToSelection(marker) {
+    const sel = window.getSelection()
+    if (!sel || sel.rangeCount === 0) return
+    const range = sel.getRangeAt(0)
+    if (sel.isCollapsed) return
+    const text = sel.toString()
+    range.deleteContents()
+    range.insertNode(document.createTextNode(`${marker}${text}${marker}`))
+    sel.removeAllRanges()
+  }
+
+  function handleCtxAlignment(align) {
+    // textAlign is stored on the bodyBox's container — we use a slide-level style field
+    updateStyle('textAlign', align)
   }
 
   function handleSave() {
@@ -1138,7 +1292,8 @@ export default function SlideEditor({ slide, onSave, onClose }) {
           {/* Right — live preview */}
           <div style={styles.preview}>
             <div style={styles.previewInner}>
-              <div style={styles.previewLabel}>Live preview</div>
+              <div style={styles.previewLabel}>Live preview · <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>right-click slide to format</span></div>
+              <div onContextMenu={handleCanvasContextMenu}>
               <SlideCanvas
                 slide={draft}
                 bgImage={bgImage}
@@ -1157,6 +1312,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
                 onFreeTextChange={(fi, text) => updateFreeTextBox(fi, { text: text.trim() })}
                 freeTextRefs={freeTextRefs}
               />
+              </div>
               <div style={styles.previewHint}>
                 {draft.bullets.length} bullet{draft.bullets.length !== 1 ? 's' : ''}
                 {draft.style.images?.length ? ` · ${draft.style.images.length} overlay image${draft.style.images.length !== 1 ? 's' : ''}` : ''}
@@ -1179,6 +1335,19 @@ export default function SlideEditor({ slide, onSave, onClose }) {
           </div>
         </div>
       </div>
+
+      {ctxMenu && (
+        <SlideContextMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          onClose={() => setCtxMenu(null)}
+          onBold={() => applyMarkerToSelection('**')}
+          onItalic={() => applyMarkerToSelection('*')}
+          onAlignment={handleCtxAlignment}
+          onAddBullet={() => { addBullet(); setActivePanel('content') }}
+          onAddTextBox={() => { addFreeTextBox(); setActivePanel('content') }}
+        />
+      )}
     </div>
   )
 }
