@@ -535,7 +535,7 @@ const S = {
   shellBottom:  { display: 'flex', alignItems: 'flex-start', gap: 8 },
   shellIdx:     { fontSize: 10, color: 'var(--color-text-muted)', width: 18, flexShrink: 0, textAlign: 'center', paddingTop: 2 },
   shellInput:   { flex: 1, background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 6, padding: '5px 8px', fontSize: 12, color: 'var(--color-text-primary)', outline: 'none' },
-  shellTextarea:  { flex: 1, background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 6, padding: '5px 8px', fontSize: 11, color: 'var(--color-text-secondary)', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 },
+  shellTextarea:  { width: '100%', boxSizing: 'border-box', background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 6, padding: '5px 8px', fontSize: 11, color: 'var(--color-text-secondary)', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 },
   shellGuardrails:{ display: 'flex', alignItems: 'flex-start', gap: 8 },
   guardrailPair:  { flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
   guardrailField: { display: 'flex', flexDirection: 'column', gap: 3 },
