@@ -672,11 +672,6 @@ function SlideCanvas({
       {freeTextBoxes.map((ft, fi) => (
         <DraggableBox key={`ft${fi}`} box={ft.box} onChange={box => onFreeTextBoxChange?.(fi, { box })}>
           <div
-            ref={el => { if (freeTextRefs) freeTextRefs.current[fi] = el }}
-            contentEditable={!!onFreeTextChange}
-            suppressContentEditableWarning
-            onPointerDown={stopForEdit}
-            onBlur={e => onFreeTextChange?.(fi, e.currentTarget.innerText)}
             onContextMenu={e => onElementContextMenu?.(e, { type: 'freetext', index: fi })}
             style={{
               color: bgImage ? '#fff' : textCol,
@@ -684,12 +679,10 @@ function SlideCanvas({
               lineHeight: 1.6,
               whiteSpace: 'pre-wrap',
               wordBreak: 'break-word',
-              outline: 'none',
-              cursor: onFreeTextChange ? 'text' : 'default',
               textShadow: bgImage ? '0 1px 3px rgba(0,0,0,0.6)' : 'none',
               textAlign: ft.textAlign ?? 'left',
             }}
-          >{ft.text}</div>
+          ><RichText text={ft.text ?? ''} /></div>
         </DraggableBox>
       ))}
       <div style={{ position: 'absolute', left: '1.8%', top: '90.4%', width: '48.4%', fontSize: '1.2cqw', fontStyle: 'italic', color: bgImage ? 'rgba(255,255,255,0.7)' : '#7F7F7F', display: 'flex', gap: '0.3em' }}>
@@ -1073,11 +1066,6 @@ export default function SlideEditor({ slide, onSave, onClose }) {
   }
 
   function handleSave() {
-    // Flush any freetext contentEditable boxes that haven't blurred yet
-    const flushedFreeText = draft.freeTextBoxes.map((ft, fi) => {
-      const el = freeTextRefs.current[fi]
-      return el ? { ...ft, text: el.innerText } : ft
-    })
     const saved = {
       ...slide,
       title:   draft.title,
@@ -1090,7 +1078,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
       extraBulletBoxes: draft.extraBulletBoxes
         .filter(eb => eb.bullets.some(Boolean))
         .map(eb => ({ ...eb, bullets: eb.bullets.filter(Boolean) })),
-      freeTextBoxes: flushedFreeText.filter(ft => ft.text.trim()),
+      freeTextBoxes: draft.freeTextBoxes.filter(ft => ft.text?.trim()),
     }
     onSave(saved)
     clearTimeout(savedTimerRef.current)
