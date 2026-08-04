@@ -672,7 +672,6 @@ function SlideCanvas({
       {freeTextBoxes.map((ft, fi) => (
         <DraggableBox key={`ft${fi}`} box={ft.box} onChange={box => onFreeTextBoxChange?.(fi, { box })}>
           <div
-            onContextMenu={e => onElementContextMenu?.(e, { type: 'freetext', index: fi })}
             style={{
               color: bgImage ? '#fff' : textCol,
               fontSize: `${(ft.fontSize ?? 14) * 0.115}cqw`,
@@ -1222,9 +1221,18 @@ export default function SlideEditor({ slide, onSave, onClose }) {
                             const text = ft.text ?? ''
                             const selected = text.slice(start, end)
                             if (!selected) return
-                            const next = text.slice(0, start) + marker + selected + marker + text.slice(end)
+                            const mLen = marker.length
+                            const alreadyWrapped = text.slice(start - mLen, start) === marker && text.slice(end, end + mLen) === marker
+                            let next, newStart, newEnd
+                            if (alreadyWrapped) {
+                              next = text.slice(0, start - mLen) + selected + text.slice(end + mLen)
+                              newStart = start - mLen; newEnd = end - mLen
+                            } else {
+                              next = text.slice(0, start) + marker + selected + marker + text.slice(end)
+                              newStart = start + mLen; newEnd = end + mLen
+                            }
                             updateFreeTextBox(fi, { text: next })
-                            requestAnimationFrame(() => { ta.focus(); ta.setSelectionRange(start + marker.length, end + marker.length) })
+                            requestAnimationFrame(() => { ta.focus(); ta.setSelectionRange(newStart, newEnd) })
                           }}
                         >{label}</button>
                       ))}
