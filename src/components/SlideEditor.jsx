@@ -647,11 +647,13 @@ function SlideCanvas({
           <TablePreview tbl={table} />
         </DraggableBox>
       )}
-      {extraBulletBoxes.map((eb, bi) => (
+      {extraBulletBoxes.map((eb, bi) => {
+        const ebAlign = eb.textAlign ?? 'left'
+        return (
         <DraggableBox key={bi} box={eb.box} onChange={box => onExtraBoxChange?.(bi, box)}>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             {(eb.bullets || []).map((b, li) => (
-              <li key={li} style={{ color: bgImage ? '#fff' : textCol, fontSize: '1.7cqw', lineHeight: 1.6, display: 'flex', gap: 8, marginBottom: '0.5em', textShadow: bgImage ? '0 1px 3px rgba(0,0,0,0.6)' : 'none', justifyContent: textAlign === 'right' ? 'flex-end' : textAlign === 'center' ? 'center' : 'flex-start' }}>
+              <li key={li} style={{ color: bgImage ? '#fff' : textCol, fontSize: '1.7cqw', lineHeight: 1.6, display: 'flex', gap: 8, marginBottom: '0.5em', textShadow: bgImage ? '0 1px 3px rgba(0,0,0,0.6)' : 'none', justifyContent: ebAlign === 'right' ? 'flex-end' : ebAlign === 'center' ? 'center' : 'flex-start' }}>
                 <span style={{ color: accent, fontWeight: 700, flexShrink: 0 }}>•</span>
                 <span
                   contentEditable={!!onExtraBulletChange}
@@ -659,13 +661,14 @@ function SlideCanvas({
                   onPointerDown={stopForEdit}
                   onBlur={e => onExtraBulletChange?.(bi, li, e.currentTarget.innerText)}
                   onContextMenu={e => onElementContextMenu?.(e, { type: 'extraBullet', index: bi, subIndex: li })}
-                  style={{ outline: 'none', cursor: onExtraBulletChange ? 'text' : 'default', textAlign, flex: 1 }}
+                  style={{ outline: 'none', cursor: onExtraBulletChange ? 'text' : 'default', textAlign: ebAlign, flex: 1 }}
                 ><RichText text={b} /></span>
               </li>
             ))}
           </ul>
         </DraggableBox>
-      ))}
+        )
+      })}
       {freeTextBoxes.map((ft, fi) => (
         <DraggableBox key={`ft${fi}`} box={ft.box} onChange={box => onFreeTextBoxChange?.(fi, { box })}>
           <div
@@ -684,6 +687,7 @@ function SlideCanvas({
               outline: 'none',
               cursor: onFreeTextChange ? 'text' : 'default',
               textShadow: bgImage ? '0 1px 3px rgba(0,0,0,0.6)' : 'none',
+              textAlign: ft.textAlign ?? 'left',
             }}
           >{ft.text}</div>
         </DraggableBox>
@@ -777,6 +781,9 @@ export default function SlideEditor({ slide, onSave, onClose }) {
   }
 
   function updateBullet(i, val) {
+    const currentRaw = draft.bullets[i] ?? ''
+    const currentPlain = parseRichText(currentRaw).map(s => s.text).join('')
+    if (val === currentPlain) return // no new typing — preserve existing markdown markers
     const b = [...draft.bullets]; b[i] = val; update('bullets', b)
   }
 
@@ -817,6 +824,9 @@ export default function SlideEditor({ slide, onSave, onClose }) {
   function updateExtraBullet(bi, li, val) {
     const next = draft.extraBulletBoxes.map((eb, i) => {
       if (i !== bi) return eb
+      const currentRaw = eb.bullets[li] ?? ''
+      const currentPlain = parseRichText(currentRaw).map(s => s.text).join('')
+      if (val === currentPlain) return eb // preserve markdown markers
       const bullets = [...eb.bullets]; bullets[li] = val
       return { ...eb, bullets }
     })
@@ -1049,8 +1059,17 @@ export default function SlideEditor({ slide, onSave, onClose }) {
   }
 
   function handleCtxAlignment(align) {
-    // textAlign is stored on the bodyBox's container — we use a slide-level style field
-    updateStyle('textAlign', align)
+    const target = ctxTargetRef.current
+    if (target?.type === 'extraBullet' && target.index != null) {
+      const next = draft.extraBulletBoxes.map((eb, i) =>
+        i === target.index ? { ...eb, textAlign: align } : eb
+      )
+      update('extraBulletBoxes', next)
+    } else if (target?.type === 'freetext' && target.index != null) {
+      updateFreeTextBox(target.index, { textAlign: align })
+    } else {
+      updateStyle('textAlign', align)
+    }
   }
 
   function handleSave() {
@@ -1366,7 +1385,10 @@ export default function SlideEditor({ slide, onSave, onClose }) {
                 onImagesChange={next => updateStyle('images', next)}
                 onBodyBoxChange={next => updateStyle('bodyBox', next)}
                 onTableBoxChange={next => updateStyle('tableBox', next)}
-                onTitleChange={text => update('title', text.trim())}
+                onTitleChange={text => {
+                  const plain = parseRichText(draft.title).map(s => s.text).join('')
+                  if (text.trim() !== plain) update('title', text.trim())
+                }}
                 onBulletChange={(i, text) => updateBullet(i, text.trim())}
                 onTableHeaderChange={(ci, text) => setTableHeader(ci, text.trim())}
                 onTableCellChange={(ri, ci, text) => setTableCell(ri, ci, text.trim())}
