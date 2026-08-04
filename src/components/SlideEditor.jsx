@@ -1210,6 +1210,25 @@ export default function SlideEditor({ slide, onSave, onClose }) {
                         <button style={{ ...styles.microBtn, color: '#ef4444', borderColor: '#ef444466' }} onClick={() => removeFreeTextBox(fi)}>Remove</button>
                       </div>
                     </div>
+                    <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+                      {[['B', '**', { fontWeight: 700 }], ['I', '*', { fontStyle: 'italic' }]].map(([label, marker, s]) => (
+                        <button
+                          key={label}
+                          style={{ ...styles.microBtn, ...s, padding: '2px 8px' }}
+                          onMouseDown={e => {
+                            e.preventDefault()
+                            const ta = e.currentTarget.closest('div').nextSibling
+                            const start = ta.selectionStart, end = ta.selectionEnd
+                            const text = ft.text ?? ''
+                            const selected = text.slice(start, end)
+                            if (!selected) return
+                            const next = text.slice(0, start) + marker + selected + marker + text.slice(end)
+                            updateFreeTextBox(fi, { text: next })
+                            requestAnimationFrame(() => { ta.focus(); ta.setSelectionRange(start + marker.length, end + marker.length) })
+                          }}
+                        >{label}</button>
+                      ))}
+                    </div>
                     <textarea
                       style={{ ...styles.bulletInput, width: '100%', boxSizing: 'border-box', minHeight: 80, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5, padding: '6px 8px' }}
                       value={ft.text}
