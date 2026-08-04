@@ -411,6 +411,7 @@ function SlideCanvas({
   slide, bgImage, table, onImagesChange, onBodyBoxChange, onTableBoxChange,
   onTitleChange, onBulletChange, onTableHeaderChange, onTableCellChange, onSourceChange,
   onExtraBoxChange, onExtraBulletChange, onFreeTextBoxChange, onFreeTextChange, freeTextRefs,
+  onElementContextMenu,
 }) {
   const { title, bullets, source, style = {}, extraBulletBoxes = [], freeTextBoxes = [] } = slide
   const font    = style.font    ?? FONTS[0].value
@@ -621,7 +622,7 @@ function SlideCanvas({
         suppressContentEditableWarning
         onPointerDown={stopForEdit}
         onBlur={e => onTitleChange?.(e.currentTarget.textContent)}
-        onContextMenu={e => openCtxMenu(e, { type: 'title' })}
+        onContextMenu={e => onElementContextMenu?.(e, { type: 'title' })}
         style={{ position: 'absolute', left: '15.25%', top: '5.1%', width: '77.9%', fontSize: '2.8cqw', fontWeight: 400, color: bgImage ? '#fff' : accent, lineHeight: 1.3, outline: 'none', cursor: onTitleChange ? 'text' : 'default' }}
       >{title}</div>
       <DraggableBox box={style.bodyBox || { x: 0.045, y: 0.19, w: 0.829, h: table ? 0.4 : 0.63 }} onChange={onBodyBoxChange}>
@@ -634,7 +635,7 @@ function SlideCanvas({
                 suppressContentEditableWarning
                 onPointerDown={stopForEdit}
                 onBlur={e => onBulletChange?.(i, e.currentTarget.innerText)}
-                onContextMenu={e => openCtxMenu(e, { type: 'bullet', index: i })}
+                onContextMenu={e => onElementContextMenu?.(e, { type: 'bullet', index: i })}
                 style={{ outline: 'none', cursor: onBulletChange ? 'text' : 'default', textAlign, flex: 1 }}
               ><RichText text={b} /></span>
             </li>
@@ -650,15 +651,15 @@ function SlideCanvas({
         <DraggableBox key={bi} box={eb.box} onChange={box => onExtraBoxChange?.(bi, box)}>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             {(eb.bullets || []).map((b, li) => (
-              <li key={li} style={{ color: bgImage ? '#fff' : textCol, fontSize: '1.7cqw', lineHeight: 1.6, display: 'flex', gap: 8, marginBottom: '0.5em', textShadow: bgImage ? '0 1px 3px rgba(0,0,0,0.6)' : 'none' }}>
+              <li key={li} style={{ color: bgImage ? '#fff' : textCol, fontSize: '1.7cqw', lineHeight: 1.6, display: 'flex', gap: 8, marginBottom: '0.5em', textShadow: bgImage ? '0 1px 3px rgba(0,0,0,0.6)' : 'none', justifyContent: textAlign === 'right' ? 'flex-end' : textAlign === 'center' ? 'center' : 'flex-start' }}>
                 <span style={{ color: accent, fontWeight: 700, flexShrink: 0 }}>•</span>
                 <span
                   contentEditable={!!onExtraBulletChange}
                   suppressContentEditableWarning
                   onPointerDown={stopForEdit}
                   onBlur={e => onExtraBulletChange?.(bi, li, e.currentTarget.innerText)}
-                  onContextMenu={e => openCtxMenu(e, { type: 'extraBullet', index: bi, subIndex: li })}
-                  style={{ outline: 'none', cursor: onExtraBulletChange ? 'text' : 'default' }}
+                  onContextMenu={e => onElementContextMenu?.(e, { type: 'extraBullet', index: bi, subIndex: li })}
+                  style={{ outline: 'none', cursor: onExtraBulletChange ? 'text' : 'default', textAlign, flex: 1 }}
                 ><RichText text={b} /></span>
               </li>
             ))}
@@ -673,7 +674,7 @@ function SlideCanvas({
             suppressContentEditableWarning
             onPointerDown={stopForEdit}
             onBlur={e => onFreeTextChange?.(fi, e.currentTarget.innerText)}
-            onContextMenu={e => openCtxMenu(e, { type: 'freetext', index: fi })}
+            onContextMenu={e => onElementContextMenu?.(e, { type: 'freetext', index: fi })}
             style={{
               color: bgImage ? '#fff' : textCol,
               fontSize: `${(ft.fontSize ?? 14) * 0.115}cqw`,
@@ -1375,6 +1376,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
                 onFreeTextBoxChange={(fi, patch) => updateFreeTextBox(fi, patch)}
                 onFreeTextChange={(fi, text) => updateFreeTextBox(fi, { text: text.trim() })}
                 freeTextRefs={freeTextRefs}
+                onElementContextMenu={openCtxMenu}
               />
               </div>
               <div style={styles.previewHint}>
