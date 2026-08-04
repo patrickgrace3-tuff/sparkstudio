@@ -633,7 +633,7 @@ function SlideCanvas({
                 suppressContentEditableWarning
                 onPointerDown={stopForEdit}
                 onBlur={e => onBulletChange?.(i, e.currentTarget.innerText)}
-                style={{ outline: 'none', cursor: onBulletChange ? 'text' : 'default' }}
+                style={{ outline: 'none', cursor: onBulletChange ? 'text' : 'default', textAlign, flex: 1 }}
               ><RichText text={b} /></span>
             </li>
           ))}
@@ -969,21 +969,38 @@ export default function SlideEditor({ slide, onSave, onClose }) {
     setCtxMenu({ x, y })
   }
 
+  function rebuildMarkdown(markdown, plainStart, plainEnd, marker) {
+    let plainIdx = 0, result = '', i = 0
+    while (i < markdown.length) {
+      if (markdown.startsWith('**', i)) { result += '**'; i += 2; continue }
+      if (markdown[i] === '*') { result += '*'; i++; continue }
+      if (plainIdx === plainStart) result += marker
+      result += markdown[i]
+      plainIdx++
+      i++
+      if (plainIdx === plainEnd) result += marker
+    }
+    if (plainEnd >= plainIdx && !result.endsWith(marker)) result += marker
+    return result
+  }
+
   function applyMarkerToSelection(marker) {
     const selected = ctxSelectionRef.current
     if (!selected) return
     setDraft(d => {
-      const bulletIdx = d.bullets.findIndex(b => b.includes(selected))
-      if (bulletIdx !== -1) {
-        const b = d.bullets[bulletIdx]
-        const pos = b.indexOf(selected)
+      for (let bi = 0; bi < d.bullets.length; bi++) {
+        const raw = d.bullets[bi]
+        const plain = parseRichText(raw).map(s => s.text).join('')
+        const plainStart = plain.indexOf(selected)
+        if (plainStart === -1) continue
         const next = [...d.bullets]
-        next[bulletIdx] = b.slice(0, pos) + marker + selected + marker + b.slice(pos + selected.length)
+        next[bi] = rebuildMarkdown(raw, plainStart, plainStart + selected.length, marker)
         return { ...d, bullets: next }
       }
-      if (d.title.includes(selected)) {
-        const pos = d.title.indexOf(selected)
-        return { ...d, title: d.title.slice(0, pos) + marker + selected + marker + d.title.slice(pos + selected.length) }
+      const titlePlain = parseRichText(d.title).map(s => s.text).join('')
+      const titleStart = titlePlain.indexOf(selected)
+      if (titleStart !== -1) {
+        return { ...d, title: rebuildMarkdown(d.title, titleStart, titleStart + selected.length, marker) }
       }
       return d
     })
