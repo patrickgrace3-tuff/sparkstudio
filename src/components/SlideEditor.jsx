@@ -621,7 +621,8 @@ function SlideCanvas({
         suppressContentEditableWarning
         onPointerDown={stopForEdit}
         onBlur={e => onTitleChange?.(e.currentTarget.textContent)}
-        style={{ position: 'absolute', left: '15.25%', top: '5.1%', width: '77.9%', fontSize: '2.8cqw', fontWeight: 400, color: bgImage ? '#fff' : accent, lineHeight: 1.3, outline: 'none', cursor: onTitleChange ? 'text' : 'default', textAlign }}
+        onContextMenu={e => openCtxMenu(e, { type: 'title' })}
+        style={{ position: 'absolute', left: '15.25%', top: '5.1%', width: '77.9%', fontSize: '2.8cqw', fontWeight: 400, color: bgImage ? '#fff' : accent, lineHeight: 1.3, outline: 'none', cursor: onTitleChange ? 'text' : 'default' }}
       >{title}</div>
       <DraggableBox box={style.bodyBox || { x: 0.045, y: 0.19, w: 0.829, h: table ? 0.4 : 0.63 }} onChange={onBodyBoxChange}>
         <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
@@ -633,6 +634,7 @@ function SlideCanvas({
                 suppressContentEditableWarning
                 onPointerDown={stopForEdit}
                 onBlur={e => onBulletChange?.(i, e.currentTarget.innerText)}
+                onContextMenu={e => openCtxMenu(e, { type: 'bullet', index: i })}
                 style={{ outline: 'none', cursor: onBulletChange ? 'text' : 'default', textAlign, flex: 1 }}
               ><RichText text={b} /></span>
             </li>
@@ -655,6 +657,7 @@ function SlideCanvas({
                   suppressContentEditableWarning
                   onPointerDown={stopForEdit}
                   onBlur={e => onExtraBulletChange?.(bi, li, e.currentTarget.innerText)}
+                  onContextMenu={e => openCtxMenu(e, { type: 'extraBullet', index: bi, subIndex: li })}
                   style={{ outline: 'none', cursor: onExtraBulletChange ? 'text' : 'default' }}
                 ><RichText text={b} /></span>
               </li>
@@ -670,6 +673,7 @@ function SlideCanvas({
             suppressContentEditableWarning
             onPointerDown={stopForEdit}
             onBlur={e => onFreeTextChange?.(fi, e.currentTarget.innerText)}
+            onContextMenu={e => openCtxMenu(e, { type: 'freetext', index: fi })}
             style={{
               color: bgImage ? '#fff' : textCol,
               fontSize: `${(ft.fontSize ?? 14) * 0.115}cqw`,
@@ -734,6 +738,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
   const [fullscreen,    setFullscreen]    = useState(true)
   const [ctxMenu,       setCtxMenu]       = useState(null) // { x, y }
   const ctxSelectionRef = useRef(null) // selected text captured at right-click time
+  const ctxTargetRef    = useRef(null) // { type: 'bullet'|'extraBullet'|'freetext'|'title', index?, subIndex? }
   const [controlsWidth, setControlsWidth] = useState(300)
   const splitterDragRef = useRef(null)
 
@@ -959,14 +964,20 @@ export default function SlideEditor({ slide, onSave, onClose }) {
   }
 
   // ── Context menu handlers ─────────────────────────────────────────────────
-  function handleCanvasContextMenu(e) {
+  function openCtxMenu(e, target) {
     e.preventDefault()
+    e.stopPropagation()
     ctxSelectionRef.current = window.getSelection()?.toString() ?? ''
+    ctxTargetRef.current = target
     const vw = window.innerWidth, vh = window.innerHeight
     const menuW = 220, menuH = 280
     const x = Math.min(e.clientX, vw - menuW - 8)
     const y = Math.min(e.clientY, vh - menuH - 8)
     setCtxMenu({ x, y })
+  }
+
+  function handleCanvasContextMenu(e) {
+    openCtxMenu(e, null)
   }
 
   function rebuildMarkdown(markdown, plainStart, plainEnd, marker) {
@@ -987,20 +998,50 @@ export default function SlideEditor({ slide, onSave, onClose }) {
   function applyMarkerToSelection(marker) {
     const selected = ctxSelectionRef.current
     if (!selected) return
+    const target = ctxTargetRef.current
     setDraft(d => {
-      for (let bi = 0; bi < d.bullets.length; bi++) {
-        const raw = d.bullets[bi]
+      if (target?.type === 'bullet' && target.index != null) {
+        const raw = d.bullets[target.index]
         const plain = parseRichText(raw).map(s => s.text).join('')
         const plainStart = plain.indexOf(selected)
-        if (plainStart === -1) continue
-        const next = [...d.bullets]
-        next[bi] = rebuildMarkdown(raw, plainStart, plainStart + selected.length, marker)
-        return { ...d, bullets: next }
+        if (plainStart !== -1) {
+          const next = [...d.bullets]
+          next[target.index] = rebuildMarkdown(raw, plainStart, plainStart + selected.length, marker)
+          return { ...d, bullets: next }
+        }
       }
-      const titlePlain = parseRichText(d.title).map(s => s.text).join('')
-      const titleStart = titlePlain.indexOf(selected)
-      if (titleStart !== -1) {
-        return { ...d, title: rebuildMarkdown(d.title, titleStart, titleStart + selected.length, marker) }
+      if (target?.type === 'extraBullet' && target.index != null && target.subIndex != null) {
+        const eb = d.extraBulletBoxes[target.index]
+        const raw = eb.bullets[target.subIndex]
+        const plain = parseRichText(raw).map(s => s.text).join('')
+        const plainStart = plain.indexOf(selected)
+        if (plainStart !== -1) {
+          const newBoxes = d.extraBulletBoxes.map((box, bi) => {
+            if (bi !== target.index) return box
+            const newBullets = [...box.bullets]
+            newBullets[target.subIndex] = rebuildMarkdown(raw, plainStart, plainStart + selected.length, marker)
+            return { ...box, bullets: newBullets }
+          })
+          return { ...d, extraBulletBoxes: newBoxes }
+        }
+      }
+      if (target?.type === 'freetext' && target.index != null) {
+        const ft = d.freeTextBoxes[target.index]
+        const raw = ft.text ?? ''
+        const plainStart = raw.indexOf(selected)
+        if (plainStart !== -1) {
+          const newBoxes = d.freeTextBoxes.map((box, fi) =>
+            fi !== target.index ? box : { ...box, text: raw.slice(0, plainStart) + marker + selected + marker + raw.slice(plainStart + selected.length) }
+          )
+          return { ...d, freeTextBoxes: newBoxes }
+        }
+      }
+      if (target?.type === 'title' || !target) {
+        const titlePlain = parseRichText(d.title).map(s => s.text).join('')
+        const titleStart = titlePlain.indexOf(selected)
+        if (titleStart !== -1) {
+          return { ...d, title: rebuildMarkdown(d.title, titleStart, titleStart + selected.length, marker) }
+        }
       }
       return d
     })
