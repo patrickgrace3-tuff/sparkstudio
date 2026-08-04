@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 
 // Lightweight read-only slide thumbnail — mirrors the exact positions the editor uses
 function SlideThumbnail({ slide }) {
@@ -165,6 +165,8 @@ function SlideThumbnail({ slide }) {
 }
 
 export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, onUseAsTemplate }) {
+  const [confirming, setConfirming] = useState(false)
+
   return (
     <div style={styles.card}>
       <div style={{ ...styles.accent, background: deptColor }} />
@@ -215,7 +217,17 @@ export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, o
             + Template
           </button>
         )}
-        <button style={styles.deleteBtn} onClick={() => onDelete(index)}>✕</button>
+        {confirming ? (
+          <div style={styles.confirmRow}>
+            <span style={styles.confirmText}>Delete?</span>
+            <button style={styles.confirmYes} onClick={() => onDelete(index)}>Yes</button>
+            <button style={styles.confirmNo}  onClick={() => setConfirming(false)}>No</button>
+          </div>
+        ) : (
+          <button style={styles.deleteBtn} onClick={() => setConfirming(true)} title="Remove slide">
+            ✕
+          </button>
+        )}
       </div>
     </div>
   )
@@ -247,4 +259,8 @@ const styles = {
   editBtn: { background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '4px 10px', fontSize: 11, fontWeight: 500, color: 'var(--color-text-primary)', cursor: 'pointer' },
   templateBtn: { background: 'none', border: '0.5px solid var(--color-accent)', borderRadius: 'var(--radius-pill)', padding: '4px 8px', fontSize: 10, fontWeight: 600, color: 'var(--color-accent)', cursor: 'pointer' },
   deleteBtn: { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '4px 8px', fontSize: 10, color: 'var(--color-text-muted)', cursor: 'pointer' },
+  confirmRow:  { display: 'flex', alignItems: 'center', gap: 4 },
+  confirmText: { fontSize: 10, color: '#dc2626', fontWeight: 600, whiteSpace: 'nowrap' },
+  confirmYes:  { background: '#dc2626', border: 'none', borderRadius: 'var(--radius-pill)', padding: '3px 8px', fontSize: 10, fontWeight: 600, color: '#fff', cursor: 'pointer' },
+  confirmNo:   { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '3px 8px', fontSize: 10, color: 'var(--color-text-muted)', cursor: 'pointer' },
 }
