@@ -12,21 +12,6 @@ function RichText({ text }) {
   })
 }
 
-// Convert a contentEditable element's innerHTML back to **bold** / *italic* markdown markers
-// so execCommand('bold'/'italic') formatting survives the onBlur → state round-trip.
-function htmlToMarkdown(el) {
-  function walk(node) {
-    if (node.nodeType === Node.TEXT_NODE) return node.textContent
-    const tag = node.nodeName
-    const inner = Array.from(node.childNodes).map(walk).join('')
-    if (tag === 'STRONG' || tag === 'B') return `**${inner}**`
-    if (tag === 'EM'     || tag === 'I') return `*${inner}*`
-    if (tag === 'BR') return '\n'
-    if (tag === 'DIV' || tag === 'P') return inner + '\n'
-    return inner
-  }
-  return Array.from(el.childNodes).map(walk).join('').replace(/\n$/, '')
-}
 
 const FONTS = [
   { label: 'Arial', value: 'Arial, sans-serif' },
@@ -335,8 +320,8 @@ function SlideContextMenu({ x, y, onClose, onBold, onItalic, onAlignment, onAddB
       {/* Font group */}
       <div style={CM.groupLabel}>Font</div>
       <div style={CM.row}>
-        <button style={CM.fmtBtn} title="Bold" onPointerDown={e => { e.preventDefault(); e.stopPropagation(); onBold(); onClose() }}><b>B</b></button>
-        <button style={{ ...CM.fmtBtn, fontStyle: 'italic' }} title="Italic" onPointerDown={e => { e.preventDefault(); e.stopPropagation(); onItalic(); onClose() }}><i>I</i></button>
+        <button style={CM.fmtBtn} title="Bold" onPointerDown={e => e.stopPropagation()} onClick={() => { onBold(); onClose() }}><b>B</b></button>
+        <button style={{ ...CM.fmtBtn, fontStyle: 'italic' }} title="Italic" onPointerDown={e => e.stopPropagation()} onClick={() => { onItalic(); onClose() }}><i>I</i></button>
         <button style={{ ...CM.fmtBtn, textDecoration: 'underline', opacity: 0.4 }} title="Underline (not supported in export)" disabled><u>U</u></button>
         <button style={{ ...CM.fmtBtn, textDecoration: 'line-through', opacity: 0.4 }} title="Strikethrough (not supported in export)" disabled>S̶</button>
         <button style={{ ...CM.fmtBtn, fontSize: 10, opacity: 0.4 }} title="Subscript (not supported)" disabled>x₂</button>
@@ -647,7 +632,7 @@ function SlideCanvas({
                 contentEditable={!!onBulletChange}
                 suppressContentEditableWarning
                 onPointerDown={stopForEdit}
-                onBlur={e => onBulletChange?.(i, htmlToMarkdown(e.currentTarget))}
+                onBlur={e => onBulletChange?.(i, e.currentTarget.innerText)}
                 style={{ outline: 'none', cursor: onBulletChange ? 'text' : 'default' }}
               ><RichText text={b} /></span>
             </li>
@@ -669,7 +654,7 @@ function SlideCanvas({
                   contentEditable={!!onExtraBulletChange}
                   suppressContentEditableWarning
                   onPointerDown={stopForEdit}
-                  onBlur={e => onExtraBulletChange?.(bi, li, htmlToMarkdown(e.currentTarget))}
+                  onBlur={e => onExtraBulletChange?.(bi, li, e.currentTarget.innerText)}
                   style={{ outline: 'none', cursor: onExtraBulletChange ? 'text' : 'default' }}
                 ><RichText text={b} /></span>
               </li>
@@ -684,7 +669,7 @@ function SlideCanvas({
             contentEditable={!!onFreeTextChange}
             suppressContentEditableWarning
             onPointerDown={stopForEdit}
-            onBlur={e => onFreeTextChange?.(fi, htmlToMarkdown(e.currentTarget))}
+            onBlur={e => onFreeTextChange?.(fi, e.currentTarget.innerText)}
             style={{
               color: bgImage ? '#fff' : textCol,
               fontSize: `${(ft.fontSize ?? 14) * 0.115}cqw`,
@@ -748,6 +733,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
   const [activePanel,   setActivePanel]   = useState('content') // content | images | notes
   const [fullscreen,    setFullscreen]    = useState(true)
   const [ctxMenu,       setCtxMenu]       = useState(null) // { x, y }
+  const ctxSelectionRef = useRef(null) // selected text captured at right-click time
   const [controlsWidth, setControlsWidth] = useState(300)
   const splitterDragRef = useRef(null)
 
@@ -975,7 +961,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
   // ── Context menu handlers ─────────────────────────────────────────────────
   function handleCanvasContextMenu(e) {
     e.preventDefault()
-    // Keep menu within viewport
+    ctxSelectionRef.current = window.getSelection()?.toString() ?? ''
     const vw = window.innerWidth, vh = window.innerHeight
     const menuW = 220, menuH = 280
     const x = Math.min(e.clientX, vw - menuW - 8)
@@ -983,9 +969,24 @@ export default function SlideEditor({ slide, onSave, onClose }) {
     setCtxMenu({ x, y })
   }
 
-  function applyMarkerToSelection(command) {
-    // execCommand wraps selection in <strong>/<em>; htmlToMarkdown converts back on blur
-    document.execCommand(command, false, null)
+  function applyMarkerToSelection(marker) {
+    const selected = ctxSelectionRef.current
+    if (!selected) return
+    setDraft(d => {
+      const bulletIdx = d.bullets.findIndex(b => b.includes(selected))
+      if (bulletIdx !== -1) {
+        const b = d.bullets[bulletIdx]
+        const pos = b.indexOf(selected)
+        const next = [...d.bullets]
+        next[bulletIdx] = b.slice(0, pos) + marker + selected + marker + b.slice(pos + selected.length)
+        return { ...d, bullets: next }
+      }
+      if (d.title.includes(selected)) {
+        const pos = d.title.indexOf(selected)
+        return { ...d, title: d.title.slice(0, pos) + marker + selected + marker + d.title.slice(pos + selected.length) }
+      }
+      return d
+    })
   }
 
   function handleCtxAlignment(align) {
@@ -997,7 +998,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
     // Flush any freetext contentEditable boxes that haven't blurred yet
     const flushedFreeText = draft.freeTextBoxes.map((ft, fi) => {
       const el = freeTextRefs.current[fi]
-      return el ? { ...ft, text: htmlToMarkdown(el) } : ft
+      return el ? { ...ft, text: el.innerText } : ft
     })
     const saved = {
       ...slide,
@@ -1346,8 +1347,8 @@ export default function SlideEditor({ slide, onSave, onClose }) {
           x={ctxMenu.x}
           y={ctxMenu.y}
           onClose={() => setCtxMenu(null)}
-          onBold={() => applyMarkerToSelection('bold')}
-          onItalic={() => applyMarkerToSelection('italic')}
+          onBold={() => applyMarkerToSelection('**')}
+          onItalic={() => applyMarkerToSelection('*')}
           onAlignment={handleCtxAlignment}
           onAddBullet={() => { addBullet(); setActivePanel('content') }}
           onAddTextBox={() => { addFreeTextBox(); setActivePanel('content') }}
