@@ -733,6 +733,7 @@ export default function App() {
 
               {deptTab === 'ai' && (
                 <AIAssistant
+                  divisions={clientDivisions(activeClient)}
                   clientId={activeClientId}
                   clientName={activeClient?.name}
                   deptId={activeDeptId}
