@@ -44,7 +44,8 @@ export const api = {
 
   // Clients
   getClients:    ()              => apiFetch('/api/clients'),
-  createClient:  (name)          => apiFetch('/api/clients',       { method: 'POST',   body: { name } }),
+  createClient:  (name, extra = {}) => apiFetch('/api/clients',    { method: 'POST',   body: { name, ...extra } }),
+  updateClientDivisions: (id, divisions, divisionDepts) => apiFetch(`/api/clients/${id}`, { method: 'PATCH', body: { divisions, divisionDepts } }),
   updateClient:  (id, name)      => apiFetch(`/api/clients/${id}`, { method: 'PATCH',  body: { name } }),
   deleteClient:  (id)            => apiFetch(`/api/clients/${id}`, { method: 'DELETE' }),
 
