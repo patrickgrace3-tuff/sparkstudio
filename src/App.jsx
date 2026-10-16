@@ -23,6 +23,7 @@ import { enhanceSlideBody, generateDeck } from './lib/api.js'
 import { exportToPptx } from './lib/export.js'
 import { importSlidesFromPptx } from './lib/importPptx.js'
 import { clientDivisions, deptUsesDivisions, splitFilesByDivision } from './lib/divisions.js'
+import { fetchLatestMarketResearch, marketResearchDeckSlides, insertMarketResearch, withoutMarketResearch, MARKET_RESEARCH_DEPT_ID } from './lib/marketResearch.js'
 import { api, setToken } from './lib/apiClient.js'
 
 export default function App() {
@@ -44,6 +45,7 @@ export default function App() {
   const importInputRef = useRef(null)
   const [showMarketResearch, setShowMarketResearch] = useState(false)
   const [presentationOrder,  setPresentationOrder]  = useState(null) // platform default, null = built-in order
+  const [marketResearch,     setMarketResearch]     = useState(null) // latest deck summary, added to Marketing on generate
   const [editingSlide,   setEditingSlide]   = useState(null)
   const [showGlobal,     setShowGlobal]     = useState(false)
   const [showFunnel,     setShowFunnel]     = useState(false)
@@ -109,7 +111,12 @@ export default function App() {
     }).catch(console.error)
     api.getTemplates().then(setTemplates).catch(console.error)
     loadPresentationOrder()
+    loadMarketResearchInfo()
   }, [currentUser])
+
+  function loadMarketResearchInfo() {
+    api.getMarketResearchDecks().then(decks => setMarketResearch(decks?.[0] ?? null)).catch(() => setMarketResearch(null))
+  }
 
   function loadPresentationOrder() {
     api.getSetting('presentation_order').then(setPresentationOrder).catch(() => setPresentationOrder(null))
@@ -255,12 +262,17 @@ export default function App() {
 
   async function handleGenerate() {
     const contributions = DEPARTMENTS.filter(d => (allSlides[d.id] || []).length > 0)
-    if (!contributions.length) return
+    if (!contributions.length && !marketResearch) return
 
     setIsGenerating(true)
     setActiveTab('preview')
 
     try {
+      // Latest Market Research deck goes into every client's Marketing section as-is
+      let mrSlides = []
+      try { mrSlides = marketResearchDeckSlides(await fetchLatestMarketResearch()) }
+      catch (err) { console.error('Could not load Market Research slides:', err) }
+
       const globalData = loadGlobalFiles(activeClientId)
       const divisions  = clientDivisions(activeClient)
       // With divisions, only shared global files go to every department; each
@@ -285,7 +297,11 @@ export default function App() {
           return { dept: d.name, division: div.name, slides, deptSummary: ctx.deptSummary, globalSummary: ctx.globalSummary, imageFiles: ctx.imageFiles, pdfFiles: ctx.pdfFiles }
         })
       })
-      const result = await generateDeck(withData, activeClient.name, activeClientId, deck ?? null)
+      // Market Research slides are re-added fresh below, so never carry old ones over
+      const previousDeck = deck ? { ...deck, slides: withoutMarketResearch(deck.slides) } : null
+      const result = withData.length
+        ? await generateDeck(withData, activeClient.name, activeClientId, previousDeck)
+        : { title: `${activeClient.name} Presentation`, slides: [], _deptFingerprints: {} }
 
       const allSlidesFlat = Object.values(allSlides).flat()
       result.slides = result.slides.map(genSlide => {
@@ -346,6 +362,9 @@ export default function App() {
           ...(original.freeTextBoxes?.length ? { freeTextBoxes: original.freeTextBoxes } : {}),
         }
       })
+
+      result.slides = insertMarketResearch(result.slides, mrSlides)
+      result.slides.forEach((sl, i) => { sl.num = i + 1 })
 
       setDeckMap(prev => ({ ...prev, [activeClientId]: result }))
       setHasChanges(true)
@@ -505,7 +524,7 @@ export default function App() {
           )}
           {showAdminDashboard && (
             <AdminDashboard
-              onClose={() => { setShowAdminDashboard(false); loadPresentationOrder() }}
+              onClose={() => { setShowAdminDashboard(false); loadPresentationOrder(); loadMarketResearchInfo() }}
               currentUser={currentUser}
               onClientsChange={updated => {
                 const normalized = updated.map(c => ({ id: c.id, name: c.name, divisions: c.divisions ?? [], division_depts: c.division_depts ?? [] }))
@@ -668,6 +687,12 @@ export default function App() {
 
               {deptTab === 'slides' && (
                 <>
+                  {activeDeptId === MARKET_RESEARCH_DEPT_ID && marketResearch && (
+                    <div style={styles.mrNotice}>
+                      <strong>Market Research included automatically.</strong>{' '}
+                      The latest deck, “{marketResearch.name}” ({marketResearch.slide_count} slide{marketResearch.slide_count === 1 ? '' : 's'}), is added at the start of {activeDept?.name} every time a presentation is generated. Admins manage it in Admin → Market Research.
+                    </div>
+                  )}
                   <div style={styles.slideList}>
                     {deptSlides.length === 0 ? (
                       <p style={styles.emptyMsg}>No slides yet — add your first one below</p>
@@ -771,11 +796,11 @@ export default function App() {
               <button
                 style={{
                   ...styles.generateBtn,
-                  opacity: (isGenerating || totalSlides === 0) ? 0.45 : 1,
-                  cursor:  (isGenerating || totalSlides === 0) ? 'not-allowed' : 'pointer',
+                  opacity: (isGenerating || (totalSlides === 0 && !marketResearch)) ? 0.45 : 1,
+                  cursor:  (isGenerating || (totalSlides === 0 && !marketResearch)) ? 'not-allowed' : 'pointer',
                 }}
                 onClick={handleGenerate}
-                disabled={isGenerating || totalSlides === 0}
+                disabled={isGenerating || (totalSlides === 0 && !marketResearch)}
               >
                 {isGenerating ? 'Generating…' : 'Generate Presentation →'}
               </button>
@@ -833,6 +858,7 @@ const styles = {
   subTab:          { background: 'none', border: '0.5px solid transparent', borderRadius: 'var(--radius-pill)', padding: '4px 12px', fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'pointer' },
   subTabActive:    { background: 'var(--color-accent-tint)', border: '0.5px solid var(--color-border)', color: 'var(--color-accent-dark)', fontWeight: 500 },
   subTabAI:        { color: '#1D9E75' },
+  mrNotice:        { margin: '12px 20px 0', fontSize: 12, lineHeight: 1.5, color: 'var(--color-text-secondary)', background: '#1D9E7510', border: '0.5px solid #1D9E7540', borderRadius: 8, padding: '10px 14px' },
   importBtn:       { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '4px 12px', fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'pointer', marginLeft: 4 },
   slideList:       { flex: 1, overflowY: 'auto', padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 8 },
   emptyMsg:        { fontSize: 14, color: 'var(--color-text-muted)', margin: 'auto', alignSelf: 'center', paddingTop: 40 },

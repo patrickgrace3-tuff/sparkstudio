@@ -79,7 +79,7 @@ export function buildOrderedSlideList(deck, funnelConfig, teamConfig, order) {
     const slides = byDept.get(deptName)
     if (!slides?.length) return
     if (section) list.push({ kind: 'section', label: `${deptName} — section`, dept: deptName })
-    for (const slide of slides) list.push({ kind: 'content', label: slide.division ? `${deptName} · ${slide.division}` : deptName, slide })
+    for (const slide of slides) list.push({ kind: 'content', label: slide._marketResearch ? `${deptName} · Market Research` : slide.division ? `${deptName} · ${slide.division}` : deptName, slide })
     byDept.delete(deptName)
   }
 
