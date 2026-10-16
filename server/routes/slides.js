@@ -16,6 +16,7 @@ function rowToSlide(row) {
     notes:            row.notes             ?? '',
     extraBulletBoxes: row.extra_bullet_boxes ?? null,
     freeTextBoxes:    row.free_text_boxes    ?? null,
+    divisionId:       row.division_id        ?? null,
   }
 }
 
@@ -121,9 +122,10 @@ router.put('/:clientId/bulk', async (req, res) => {
     )
     for (const s of allSlides) {
       await query(
-        `INSERT INTO slides (id, client_id, dept_id, title, body, bullets, style, sort_order, "table", source, notes, extra_bullet_boxes, free_text_boxes, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        `INSERT INTO slides (id, client_id, dept_id, title, body, bullets, style, sort_order, "table", source, notes, extra_bullet_boxes, free_text_boxes, created_by, division_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
          ON CONFLICT (id) DO UPDATE SET
+           division_id        = $15,
            title              = $4,
            body               = $5,
            bullets            = $6,
@@ -148,6 +150,7 @@ router.put('/:clientId/bulk', async (req, res) => {
           s.extraBulletBoxes != null ? JSON.stringify(s.extraBulletBoxes) : null,
           s.freeTextBoxes    != null ? JSON.stringify(s.freeTextBoxes)    : null,
           req.user.id,
+          s.divisionId ? String(s.divisionId).slice(0, 40) : null,
         ]
       )
     }

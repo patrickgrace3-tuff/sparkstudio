@@ -176,7 +176,7 @@ export function SlideThumbnail({ slide }) {
   )
 }
 
-export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, onUseAsTemplate }) {
+export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, onUseAsTemplate, divisionName }) {
   const [confirming, setConfirming] = useState(false)
 
   return (
@@ -187,7 +187,10 @@ export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, o
       <div style={styles.left}>
         <div style={styles.num}>{String(index + 1).padStart(2, '0')}</div>
         <div style={styles.content}>
-          <p style={styles.title}>{slide.title}</p>
+          <p style={styles.title}>
+            {slide.title}
+            {divisionName && <span style={styles.divisionBadge} title="Created from a template for this division — uses this division's files">{divisionName}</span>}
+          </p>
           {slide.bullets?.length > 0 ? (
             <ul style={styles.bullets}>
               {slide.bullets.slice(0, 4).map((b, i) => (
@@ -246,6 +249,7 @@ export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, o
 }
 
 const styles = {
+  divisionBadge: { display: 'inline-block', marginLeft: 8, verticalAlign: 'middle', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#D85A30', background: '#D85A3014', border: '0.5px solid #D85A3055', borderRadius: 99, padding: '1px 7px' },
   card: {
     display: 'flex', gap: 12, alignItems: 'stretch',
     background: 'var(--color-bg)', border: '0.5px solid var(--color-border)',
