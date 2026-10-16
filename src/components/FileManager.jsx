@@ -5,6 +5,7 @@ import WordEditor  from './WordEditor.jsx'
 import ExcelEditor from './ExcelEditor.jsx'
 import RequirementsChecklist from './RequirementsChecklist.jsx'
 import LookerPanel from './LookerPanel.jsx'
+import FilePreview, { downloadFile } from './FilePreview.jsx'
 
 export default function FileManager({ clientId, clientName, deptId, deptName, deptColor, isGlobal = false, divisions = [] }) {
   const [rawData,    setData]       = useState(() =>
@@ -183,6 +184,10 @@ export default function FileManager({ clientId, clientName, deptId, deptName, de
   if (openFile) {
     const saved = data.files.find(f => f.id === openFile.id) ?? openFile
 
+    if (saved.type === 'upload') {
+      return <FilePreview file={saved} onBack={() => setOpenFile(null)} styles={styles} />
+    }
+
     if (saved.type === 'link') {
       return (
         <div style={styles.editorWrap}>
@@ -344,7 +349,7 @@ export default function FileManager({ clientId, clientName, deptId, deptName, de
         {/* Files */}
         {currentFiles.map(file => {
           const icon = file.type === 'word' ? '📝' : file.type === 'excel' ? '📊' : file.type === 'link' ? '🔗' : '📎'
-          const canOpen = file.type === 'word' || file.type === 'excel' || file.type === 'link'
+          const canOpen = file.type === 'word' || file.type === 'excel' || file.type === 'link' || (file.type === 'upload' && !!file.content?.base64)
           const date = new Date(file.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })
           const linkStatus = file.type === 'link'
             ? (file.content?.fetchedText ? 'Content readable' : file.content?.fetchError === 'Fetching…' ? 'Fetching…' : 'Reference only')
@@ -360,6 +365,9 @@ export default function FileManager({ clientId, clientName, deptId, deptName, de
                 {linkStatus && <span style={styles.itemMeta}>{linkStatus}</span>}
                 <span style={styles.itemMeta}>{date}</span>
               </button>
+              {file.type === 'upload' && file.content?.base64 && (
+                <button style={styles.itemDownload} onClick={() => downloadFile(file)} title="Download">↓</button>
+              )}
               <button style={styles.itemDelete} onClick={() => deleteFile(file.id)}>✕</button>
             </div>
           )
@@ -444,6 +452,7 @@ const styles = {
   lookerBtn:      { borderColor: '#4285f4', color: '#4285f4' },
   ghostBtn:       { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '5px 12px', fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'pointer', whiteSpace: 'nowrap' },
   folderInputRow: { display: 'flex', alignItems: 'center', gap: 6 },
+  itemDownload:   { background: 'none', border: 'none', fontSize: 13, color: 'var(--color-text-muted)', cursor: 'pointer', padding: '4px 8px', borderRadius: 4 },
   folderBackBtn:  { background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '2px 10px', fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'pointer', marginRight: 8 },
   saveStatus:     { fontSize: 12, marginLeft: 'auto', whiteSpace: 'nowrap' },
   saveBtn:        { background: 'var(--color-accent)', color: '#fff', border: 'none', borderRadius: 'var(--radius-pill)', padding: '6px 16px', fontSize: 12, fontWeight: 600, flexShrink: 0 },
