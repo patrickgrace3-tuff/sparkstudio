@@ -110,6 +110,7 @@ export const api = {
   getMarketResearchDecks:   ()   => apiFetch('/api/market-research'),
   getMarketResearchDeck:    (id) => apiFetch(`/api/market-research/${id}`),
   createMarketResearchDeck: (d)  => apiFetch('/api/market-research', { method: 'POST', body: d }),
+  updateMarketResearchDeck: (id, d) => apiFetch(`/api/market-research/${id}`, { method: 'PUT', body: d }),
   deleteMarketResearchDeck: (id) => apiFetch(`/api/market-research/${id}`, { method: 'DELETE' }),
 
   // Templates

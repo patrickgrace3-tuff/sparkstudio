@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { api } from '../lib/apiClient.js'
 import { importSlidesFromPptx } from '../lib/importPptx.js'
 import { SlideThumbnail } from './SlideCard.jsx'
+import SlideEditor from './SlideEditor.jsx'
 
 // ── Stat tile ─────────────────────────────────────────────────────────────────
 function StatTile({ label, value, color }) {
@@ -721,7 +722,9 @@ function MarketResearchTab() {
   const [pending,   setPending]   = useState(null) // { name, fileName, slides }
   const [parsing,   setParsing]   = useState(false)
   const [saving,    setSaving]    = useState(false)
-  const [expanded,  setExpanded]  = useState(null) // { id, slides }
+  const [expanded,  setExpanded]  = useState(null) // { id, name, slides }
+  const [editing,   setEditing]   = useState(null) // { target: 'pending' | deckId, index }
+  const [savingDeck, setSavingDeck] = useState(false)
   const [msg,       setMsg]       = useState('')
   const [err,       setErr]       = useState('')
   const fileRef = React.useRef(null)
@@ -775,12 +778,66 @@ function MarketResearchTab() {
     if (expanded?.id === deck.id) { setExpanded(null); return }
     try {
       const full = await api.getMarketResearchDeck(deck.id)
-      setExpanded({ id: deck.id, slides: full.slides ?? [] })
+      setExpanded({ id: deck.id, name: full.name, slides: full.slides ?? [] })
     } catch (e) { setErr(e.message) }
   }
 
+  // Persist edits to a stored deck straight away; pending uploads stay local until saved
+  async function persistExpanded(next) {
+    setExpanded(next); setSavingDeck(true); setErr('')
+    try {
+      const updated = await api.updateMarketResearchDeck(next.id, { name: next.name, slides: next.slides })
+      setDecks(ds => ds.map(d => (d.id === updated.id ? { ...d, ...updated } : d)))
+    } catch (e) { setErr('Save failed: ' + e.message) }
+    finally { setSavingDeck(false) }
+  }
+
+  function saveSlide(target, index, slide) {
+    if (target === 'pending') {
+      setPending(p => ({ ...p, slides: p.slides.map((s, i) => (i === index ? slide : s)) }))
+    } else if (expanded?.id === target) {
+      persistExpanded({ ...expanded, slides: expanded.slides.map((s, i) => (i === index ? slide : s)) })
+    }
+  }
+
+  function removeSlide(target, index) {
+    const list = target === 'pending' ? pending.slides : expanded.slides
+    if (list.length <= 1) { setErr('A deck needs at least one slide — delete the deck instead.'); return }
+    if (!confirm(`Remove slide ${index + 1} "${list[index].title}"?`)) return
+    const slides = list.filter((_, i) => i !== index)
+    if (target === 'pending') setPending(p => ({ ...p, slides }))
+    else persistExpanded({ ...expanded, slides })
+  }
+
+  function moveSlide(target, index, dir) {
+    const list = [...(target === 'pending' ? pending.slides : expanded.slides)]
+    const j = index + dir
+    if (j < 0 || j >= list.length) return
+    ;[list[index], list[j]] = [list[j], list[index]]
+    if (target === 'pending') setPending(p => ({ ...p, slides: list }))
+    else persistExpanded({ ...expanded, slides: list })
+  }
+
+  async function renameExpanded() {
+    const name = expanded.name.trim()
+    if (!name) { setErr('Name cannot be empty'); return }
+    persistExpanded({ ...expanded, name })
+  }
+
+  const editingSlide = editing
+    ? (editing.target === 'pending' ? pending?.slides : expanded?.slides)?.[editing.index]
+    : null
+
   return (
     <div style={S.tabContent}>
+      {editingSlide && (
+        <SlideEditor
+          key={`${editing.target}-${editing.index}`}
+          slide={editingSlide}
+          onSave={updated => saveSlide(editing.target, editing.index, updated)}
+          onClose={() => setEditing(null)}
+        />
+      )}
       <div style={S.sectionHeader}>
         <span style={S.sectionTitle}>Market Research</span>
         <span style={S.sectionSub}>{decks.length} stored deck{decks.length === 1 ? '' : 's'}</span>
@@ -807,7 +864,12 @@ function MarketResearchTab() {
           <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
             {pending.slides.length} slide{pending.slides.length === 1 ? '' : 's'} extracted from {pending.fileName}
           </div>
-          <MarketResearchSlideList slides={pending.slides} />
+          <MarketResearchSlideList
+            slides={pending.slides}
+            onEdit={i => setEditing({ target: 'pending', index: i })}
+            onRemove={i => removeSlide('pending', i)}
+            onMove={(i, dir) => moveSlide('pending', i, dir)}
+          />
         </div>
       )}
 
@@ -845,7 +907,24 @@ function MarketResearchTab() {
                 </tr>
                 {expanded?.id === d.id && (
                   <tr><td colSpan={5} style={{ ...S.td, background: 'var(--color-bg-secondary)' }}>
-                    <MarketResearchSlideList slides={expanded.slides} />
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Name</span>
+                      <input
+                        style={{ ...S.input, flex: 1 }}
+                        value={expanded.name}
+                        onChange={e => setExpanded(x => ({ ...x, name: e.target.value }))}
+                        onKeyDown={e => { if (e.key === 'Enter') renameExpanded() }}
+                      />
+                      <button style={S.ghostBtn} onClick={renameExpanded} disabled={savingDeck || expanded.name.trim() === d.name}>Rename</button>
+                      <span style={{ fontSize: 11, color: 'var(--color-text-muted)', minWidth: 70 }}>{savingDeck ? 'Saving…' : 'Click a slide to edit'}</span>
+                    </div>
+                    <MarketResearchSlideList
+                      slides={expanded.slides}
+                      onEdit={i => setEditing({ target: d.id, index: i })}
+                      onRemove={i => removeSlide(d.id, i)}
+                      onMove={(i, dir) => moveSlide(d.id, i, dir)}
+                      disabled={savingDeck}
+                    />
                   </td></tr>
                 )}
               </React.Fragment>
@@ -857,8 +936,9 @@ function MarketResearchTab() {
   )
 }
 
-// Previews each slide exactly as it will be rebuilt on the PowerPoint template
-function MarketResearchSlideList({ slides }) {
+// Previews each slide exactly as it will be rebuilt on the PowerPoint template.
+// Clicking a slide opens it in the slide editor.
+function MarketResearchSlideList({ slides, onEdit, onRemove, onMove, disabled }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14, maxHeight: 560, overflowY: 'auto', padding: 2 }}>
       {slides.map((s, i) => {
@@ -870,13 +950,32 @@ function MarketResearchSlideList({ slides }) {
           s.notes ? 'notes' : null,
         ].filter(Boolean)
         return (
-          <div key={i} style={{ border: '0.5px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--color-bg)' }}>
-            <SlideThumbnail slide={s} />
-            <div style={{ padding: '8px 10px' }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {i + 1}. {s.title}
+          <div key={i} style={{ border: '0.5px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--color-bg)', display: 'flex', flexDirection: 'column' }}>
+            <div
+              role="button"
+              tabIndex={0}
+              title="Edit slide"
+              style={{ cursor: 'pointer' }}
+              onClick={() => onEdit?.(i)}
+              onKeyDown={e => { if (e.key === 'Enter') onEdit?.(i) }}
+            >
+              <SlideThumbnail slide={s} />
+            </div>
+            <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {i + 1}. {s.title}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>{parts.join(' · ') || 'Title only'}</div>
               </div>
-              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>{parts.join(' · ') || 'Title only'}</div>
+              {onEdit && (
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button style={S.ghostBtn} onClick={() => onEdit(i)} disabled={disabled}>✎ Edit</button>
+                  <button style={S.ghostBtn} onClick={() => onMove(i, -1)} disabled={disabled || i === 0} title="Move earlier">←</button>
+                  <button style={S.ghostBtn} onClick={() => onMove(i, 1)} disabled={disabled || i === slides.length - 1} title="Move later">→</button>
+                  <button style={{ ...S.dangerBtn, marginLeft: 'auto' }} onClick={() => onRemove(i)} disabled={disabled}>Remove</button>
+                </div>
+              )}
             </div>
           </div>
         )
