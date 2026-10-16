@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { parseRichText } from '../lib/richtext.js'
-import { previewTable } from '../lib/tableFit.js'
+import { previewTable, TABLE_LINE_HEIGHT } from '../lib/tableFit.js'
 
 function RichText({ text }) {
   return parseRichText(text).map((seg, i) => {
@@ -121,12 +121,12 @@ export function SlideThumbnail({ slide }) {
           width: `${tableBox.w * 100}%`, height: `${tableBox.h * 100}%`,
           overflow: 'hidden',
         }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: `${tableView.fontCqw}cqw`, tableLayout: 'fixed' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: `${tableView.fontCqw}cqw`, tableLayout: 'fixed', ...(tableView.showAll ? { lineHeight: TABLE_LINE_HEIGHT } : {}) }}>
             <thead>
               <tr style={{ background: accent }}>
                 {table.headers.map((h, i) => (
                   <th key={i} style={{
-                    color: '#fff', padding: tableView.showAll ? '0 0.5cqw' : '0.3cqw 0.5cqw',
+                    color: '#fff', padding: tableView.showAll ? '0.3em 0.6em' : '0.3cqw 0.5cqw',
                     fontWeight: 700, textAlign: 'left',
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     border: '0.5px solid rgba(255,255,255,0.3)',
@@ -140,7 +140,7 @@ export function SlideThumbnail({ slide }) {
                   {table.headers.map((_, ci) => (
                     <td key={ci} style={{
                       color: bgImage ? '#fff' : textCol,
-                      padding: tableView.showAll ? '0 0.5cqw' : '0.25cqw 0.5cqw',
+                      padding: tableView.showAll ? '0.3em 0.6em' : '0.25cqw 0.5cqw',
                       border: '0.5px solid rgba(128,128,128,0.25)',
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     }}>{row[ci] ?? ''}</td>

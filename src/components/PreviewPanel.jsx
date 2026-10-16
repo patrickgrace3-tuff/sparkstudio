@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { buildOrderedSlideList } from '../lib/presentationOrder.js'
-import { previewTable } from '../lib/tableFit.js'
+import { previewTable, TABLE_LINE_HEIGHT } from '../lib/tableFit.js'
 import { DEPARTMENTS } from '../lib/constants.js'
 import { parseRichText } from '../lib/richtext.js'
 import { FunnelSlidePreview } from './FunnelBuilder.jsx'
@@ -99,7 +99,7 @@ function ContentSlidePreview({ slide }) {
       {/* Table — at its own tableBox position, same as editor */}
       {hasTable && (
         <div style={{ position: 'absolute', left: `${tableBox.x * 100}%`, top: `${tableBox.y * 100}%`, width: `${tableBox.w * 100}%`, height: `${tableBox.h * 100}%`, overflow: 'hidden' }}>
-          <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: `${previewTable(table, style, 20).fontCqw}cqw` }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: `${previewTable(table, style, 20).fontCqw}cqw`, ...(style.tableShowAll ? { lineHeight: TABLE_LINE_HEIGHT } : {}) }}>
             <thead>
               <tr>{table.headers.map((h, i) => <th key={i} style={{ background: accent, color: '#fff', padding: '0.3em 0.6em', border: '0.5px solid rgba(255,255,255,0.2)', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>)}</tr>
             </thead>
