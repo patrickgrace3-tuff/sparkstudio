@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { parseRichText } from '../lib/richtext.js'
+import { previewTable } from '../lib/tableFit.js'
 
 function RichText({ text }) {
   return parseRichText(text).map((seg, i) => {
@@ -23,6 +24,7 @@ export function SlideThumbnail({ slide }) {
   const freeTextBoxes    = slide.freeTextBoxes    ?? []
 
   const hasTable = table && table.headers?.length > 0
+  const tableView = hasTable ? previewTable(table, style, 5, 1.3) : null
 
   // Use same defaults as SlideEditor's DraggableBox calls
   const bodyBox  = style.bodyBox  ?? { x: 0.045, y: 0.19,  w: 0.829, h: hasTable ? 0.4 : 0.63 }
@@ -119,12 +121,12 @@ export function SlideThumbnail({ slide }) {
           width: `${tableBox.w * 100}%`, height: `${tableBox.h * 100}%`,
           overflow: 'hidden',
         }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '1.3cqw', tableLayout: 'fixed' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: `${tableView.fontCqw}cqw`, tableLayout: 'fixed' }}>
             <thead>
               <tr style={{ background: accent }}>
                 {table.headers.map((h, i) => (
                   <th key={i} style={{
-                    color: '#fff', padding: '0.3cqw 0.5cqw',
+                    color: '#fff', padding: tableView.showAll ? '0 0.5cqw' : '0.3cqw 0.5cqw',
                     fontWeight: 700, textAlign: 'left',
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     border: '0.5px solid rgba(255,255,255,0.3)',
@@ -133,12 +135,12 @@ export function SlideThumbnail({ slide }) {
               </tr>
             </thead>
             <tbody>
-              {(table.rows ?? []).slice(0, 5).map((row, ri) => (
+              {tableView.rows.map((row, ri) => (
                 <tr key={ri} style={{ background: ri % 2 === 0 ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)' }}>
                   {table.headers.map((_, ci) => (
                     <td key={ci} style={{
                       color: bgImage ? '#fff' : textCol,
-                      padding: '0.25cqw 0.5cqw',
+                      padding: tableView.showAll ? '0 0.5cqw' : '0.25cqw 0.5cqw',
                       border: '0.5px solid rgba(128,128,128,0.25)',
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     }}>{row[ci] ?? ''}</td>
@@ -147,9 +149,9 @@ export function SlideThumbnail({ slide }) {
               ))}
             </tbody>
           </table>
-          {table.rows?.length > 5 && (
+          {tableView.hidden > 0 && (
             <div style={{ fontSize: '1.1cqw', color: bgImage ? 'rgba(255,255,255,0.5)' : textCol, opacity: 0.6, marginTop: '0.2cqw' }}>
-              +{table.rows.length - 5} more rows
+              +{tableView.hidden} more rows
             </div>
           )}
         </div>

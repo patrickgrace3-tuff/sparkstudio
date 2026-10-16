@@ -13,6 +13,7 @@
 
 import JSZip from 'jszip'
 import { parseRichText } from './richtext.js'
+import { exportTableMetrics, DEFAULT_TABLE_BOX } from './tableFit.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -85,7 +86,9 @@ ${runs}
  * Build a PowerPoint native table shape XML.
  * Positioned below the bullet content area.
  */
-function buildTableShapeXml(table, accentHex, box = null) {
+function buildTableShapeXml(table, accentHex, box = null, showAll = false) {
+  // "Show all rows" fits the table to the same box the editor preview shows
+  if (showAll && !box) box = DEFAULT_TABLE_BOX
   const accent   = accentHex || 'CD2F37'
   const headers  = table.headers || []
   const rows     = table.rows    || []
@@ -95,6 +98,10 @@ function buildTableShapeXml(table, accentHex, box = null) {
   const offY     = box ? Math.round(box.y * SLIDE_H) : 4200000
   const frameW   = box ? Math.round(box.w * SLIDE_W) : 10104300
   const colWidth = Math.floor((box ? frameW : 9144000) / Math.max(colCount, 1)) // spread across ~9.1" by default
+  // "Show all rows": shrink rows and text so the whole table fits the box height
+  const fit      = showAll ? exportTableMetrics(rows.length, Math.round(box.h * SLIDE_H)) : null
+  const fontSz   = fit ? fit.sz : 1200
+  const cellMar  = fit ? ' marT="0" marB="0"' : ''
 
   const cellXml = (text, isHeader) => {
     const fill   = isHeader ? `<a:solidFill><a:srgbClr val="${accent}"/></a:solidFill>` : '<a:noFill/>'
@@ -106,7 +113,7 @@ function buildTableShapeXml(table, accentHex, box = null) {
                 <a:lstStyle/>
                 <a:p>
                   <a:r>
-                    <a:rPr lang="en-US" sz="1200" b="${bold}" dirty="0">
+                    <a:rPr lang="en-US" sz="${fontSz}" b="${bold}" dirty="0">
                       <a:solidFill><a:srgbClr val="${color}"/></a:solidFill>
                       <a:latin typeface="Arial"/>
                     </a:rPr>
@@ -114,7 +121,7 @@ function buildTableShapeXml(table, accentHex, box = null) {
                   </a:r>
                 </a:p>
               </a:txBody>
-              <a:tcPr>
+              <a:tcPr${cellMar}>
                 ${fill}
                 <a:lnL w="12700"><a:solidFill><a:srgbClr val="CCCCCC"/></a:solidFill></a:lnL>
                 <a:lnR w="12700"><a:solidFill><a:srgbClr val="CCCCCC"/></a:solidFill></a:lnR>
@@ -124,18 +131,18 @@ function buildTableShapeXml(table, accentHex, box = null) {
             </a:tc>`
   }
 
-  const headerRow = `<a:tr h="381000">
+  const headerRow = `<a:tr h="${fit ? fit.headerH : 381000}">
             ${headers.map(h => cellXml(h, true)).join('')}
           </a:tr>`
 
   const dataRows = rows.map(row =>
-    `<a:tr h="304800">
+    `<a:tr h="${fit ? fit.rowH : 304800}">
             ${headers.map((_, ci) => cellXml(row[ci] ?? '', false)).join('')}
           </a:tr>`
   ).join('')
 
   const gridCols = headers.map(() => `<a:gridCol w="${colWidth}"/>`).join('')
-  const tableH   = 381000 + rows.length * 304800
+  const tableH   = fit ? fit.headerH + rows.length * fit.rowH : 381000 + rows.length * 304800
 
   return `<p:sp>
         <p:nvSpPr>
@@ -392,7 +399,7 @@ ${paraXml}
 
   // 3c. Inject table shape before </p:spTree> if table data provided
   if (table && table.headers?.length > 0 && table.rows?.length > 0) {
-    const tableXml = buildTableShapeXml(table, accentHex, style.tableBox ?? null)
+    const tableXml = buildTableShapeXml(table, accentHex, style.tableBox ?? null, !!style.tableShowAll)
     out = out.replace('</p:spTree>', `${tableXml}\n</p:spTree>`)
   }
 

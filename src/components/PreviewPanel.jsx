@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { buildOrderedSlideList } from '../lib/presentationOrder.js'
+import { previewTable } from '../lib/tableFit.js'
 import { DEPARTMENTS } from '../lib/constants.js'
 import { parseRichText } from '../lib/richtext.js'
 import { FunnelSlidePreview } from './FunnelBuilder.jsx'
@@ -98,12 +99,12 @@ function ContentSlidePreview({ slide }) {
       {/* Table — at its own tableBox position, same as editor */}
       {hasTable && (
         <div style={{ position: 'absolute', left: `${tableBox.x * 100}%`, top: `${tableBox.y * 100}%`, width: `${tableBox.w * 100}%`, height: `${tableBox.h * 100}%`, overflow: 'hidden' }}>
-          <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '1.2cqw' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: `${previewTable(table, style, 20).fontCqw}cqw` }}>
             <thead>
               <tr>{table.headers.map((h, i) => <th key={i} style={{ background: accent, color: '#fff', padding: '0.3em 0.6em', border: '0.5px solid rgba(255,255,255,0.2)', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>)}</tr>
             </thead>
             <tbody>
-              {(table.rows ?? []).slice(0, 20).map((row, ri) => (
+              {previewTable(table, style, 20).rows.map((row, ri) => (
                 <tr key={ri} style={{ background: ri % 2 === 0 ? 'rgba(0,0,0,0.04)' : 'transparent' }}>
                   {table.headers.map((_, ci) => <td key={ci} style={{ color: tc, padding: '0.3em 0.6em', border: '0.5px solid rgba(128,128,128,0.2)', whiteSpace: 'nowrap' }}>{row[ci] ?? ''}</td>)}
                 </tr>
