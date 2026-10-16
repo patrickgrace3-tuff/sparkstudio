@@ -4,6 +4,22 @@ import { requireAuth, requireAdmin } from '../auth.js'
 
 const router = Router()
 
+const num = v => (Number.isFinite(+v) ? +v : 0)
+const box = b => (b && typeof b === 'object' ? { x: num(b.x), y: num(b.y), w: num(b.w), h: num(b.h) } : null)
+
+function sanitizeStyle(st) {
+  const out = {}
+  if (!st || typeof st !== 'object') return out
+  if (st.bodyBox)  out.bodyBox  = box(st.bodyBox)
+  if (st.tableBox) out.tableBox = box(st.tableBox)
+  if (Array.isArray(st.images)) {
+    out.images = st.images
+      .filter(img => typeof img?.src === 'string' && img.src.startsWith('data:image/'))
+      .map(img => ({ src: img.src, ...box(img), mode: img.mode === 'crop' ? 'crop' : 'scale' }))
+  }
+  return out
+}
+
 // Keep stored slides to the fields the editor/export understand
 function sanitizeSlide(s) {
   const bullets = Array.isArray(s?.bullets) ? s.bullets.map(String) : []
@@ -16,6 +32,16 @@ function sanitizeSlide(s) {
     body:    bullets.join('\n'),
     table,
     notes:   String(s?.notes ?? ''),
+    source:  String(s?.source ?? ''),
+    freeTextBoxes: Array.isArray(s?.freeTextBoxes)
+      ? s.freeTextBoxes.map(ft => ({
+          text: String(ft?.text ?? ''),
+          box: box(ft?.box) ?? { x: 0.045, y: 0.55, w: 0.829, h: 0.25 },
+          fontSize: num(ft?.fontSize) || 14,
+          textAlign: ['left', 'center', 'right'].includes(ft?.textAlign) ? ft.textAlign : 'left',
+        }))
+      : null,
+    style:   sanitizeStyle(s?.style),
   }
 }
 

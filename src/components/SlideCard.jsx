@@ -1,7 +1,17 @@
 import React, { useState } from 'react'
+import { parseRichText } from '../lib/richtext.js'
+
+function RichText({ text }) {
+  return parseRichText(text).map((seg, i) => {
+    if (seg.bold && seg.italic) return <strong key={i}><em>{seg.text}</em></strong>
+    if (seg.bold)   return <strong key={i}>{seg.text}</strong>
+    if (seg.italic) return <em key={i}>{seg.text}</em>
+    return <React.Fragment key={i}>{seg.text}</React.Fragment>
+  })
+}
 
 // Lightweight read-only slide thumbnail — mirrors the exact positions the editor uses
-function SlideThumbnail({ slide }) {
+export function SlideThumbnail({ slide }) {
   const style   = slide.style ?? {}
   const accent  = style.accent  ?? '#CD2F37'
   const textCol = style.textCol ?? '#1a1a1a'
@@ -56,7 +66,7 @@ function SlideThumbnail({ slide }) {
                 overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
               }}>
                 <span style={{ color: accent, fontWeight: 700, flexShrink: 0 }}>•</span>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{b}</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}><RichText text={b} /></span>
               </li>
             ))}
           </ul>
@@ -81,7 +91,7 @@ function SlideThumbnail({ slide }) {
                   overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
                 }}>
                   <span style={{ color: accent, fontWeight: 700, flexShrink: 0 }}>•</span>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{b}</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}><RichText text={b} /></span>
                 </li>
               ))}
             </ul>
@@ -97,7 +107,7 @@ function SlideThumbnail({ slide }) {
           width: `${(ft.box?.w ?? 0.829) * 100}%`, height: `${(ft.box?.h ?? 0.25) * 100}%`,
           overflow: 'hidden',
         }}>
-          <p style={{ margin: 0, fontSize: `${(ft.fontSize ?? 14) * 0.115}cqw`, color: bgImage ? '#fff' : textCol, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{ft.text}</p>
+          <p style={{ margin: 0, fontSize: `${(ft.fontSize ?? 14) * 0.115}cqw`, color: bgImage ? '#fff' : textCol, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', textAlign: ft.textAlign ?? 'left' }}><RichText text={ft.text} /></p>
         </div>
       ) : null)}
 
