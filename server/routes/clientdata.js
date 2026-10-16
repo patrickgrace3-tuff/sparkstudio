@@ -7,7 +7,7 @@ const router = Router()
 router.use(requireAuth)
 router.use(express.json({ limit: '5mb' }))
 
-const ALLOWED_KEY_PREFIXES = ['funnel', 'team', 'checklist', 'looker', 'files', 'presentation']
+const ALLOWED_KEY_PREFIXES = ['funnel', 'team', 'checklist', 'looker', 'files', 'presentation', 'marketresearch']
 
 function validateKey(req, res, next) {
   const key = req.params.dataKey

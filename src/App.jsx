@@ -23,7 +23,8 @@ import { enhanceSlideBody, generateDeck } from './lib/api.js'
 import { exportToPptx } from './lib/export.js'
 import { importSlidesFromPptx } from './lib/importPptx.js'
 import { clientDivisions, deptUsesDivisions, splitFilesByDivision, syncedDeptFiles, syncedGlobalFiles } from './lib/divisions.js'
-import { fetchLatestMarketResearch, marketResearchDeckSlides, insertMarketResearch, withoutMarketResearch, MARKET_RESEARCH_DEPT_ID } from './lib/marketResearch.js'
+import { fetchMarketResearchForClient, fetchClientMarketResearchCopy, marketResearchDeckSlides, insertMarketResearch, withoutMarketResearch, MARKET_RESEARCH_DEPT_ID } from './lib/marketResearch.js'
+import ClientMarketResearchEditor from './components/ClientMarketResearchEditor.jsx'
 import { api, setToken } from './lib/apiClient.js'
 
 export default function App() {
@@ -46,6 +47,8 @@ export default function App() {
   const [showMarketResearch, setShowMarketResearch] = useState(false)
   const [presentationOrder,  setPresentationOrder]  = useState(null) // platform default, null = built-in order
   const [marketResearch,     setMarketResearch]     = useState(null) // latest deck summary, added to Marketing on generate
+  const [mrClientCopy,       setMrClientCopy]       = useState(null) // this client's edited copy (deckId) or null
+  const [showClientMR,       setShowClientMR]       = useState(false)
   const [editingSlide,   setEditingSlide]   = useState(null)
   const [showGlobal,     setShowGlobal]     = useState(false)
   const [showFunnel,     setShowFunnel]     = useState(false)
@@ -121,6 +124,14 @@ export default function App() {
   function loadPresentationOrder() {
     api.getSetting('presentation_order').then(setPresentationOrder).catch(() => setPresentationOrder(null))
   }
+
+  // ── This client's edited copy of the Market Research slides ───────────────
+  useEffect(() => {
+    setMrClientCopy(null)
+    if (!activeClientId) return
+    fetchClientMarketResearchCopy(activeClientId).then(setMrClientCopy).catch(() => {})
+  }, [activeClientId])
+  const mrCustomised = !!(mrClientCopy && marketResearch && mrClientCopy.deckId === marketResearch.id)
 
   // ── Load slides when client changes ───────────────────────────────────────
   useEffect(() => {
@@ -270,7 +281,7 @@ export default function App() {
     try {
       // Latest Market Research deck goes into every client's Marketing section as-is
       let mrSlides = []
-      try { mrSlides = marketResearchDeckSlides(await fetchLatestMarketResearch()) }
+      try { mrSlides = marketResearchDeckSlides(await fetchMarketResearchForClient(activeClientId)) }
       catch (err) { console.error('Could not load Market Research slides:', err) }
 
       // Only folders of active divisions count; files from removed ones are shared
@@ -689,10 +700,21 @@ export default function App() {
               {deptTab === 'slides' && (
                 <>
                   {activeDeptId === MARKET_RESEARCH_DEPT_ID && marketResearch && (
-                    <div style={styles.mrNotice}>
+                    <button type="button" style={styles.mrNotice} onClick={() => setShowClientMR(true)} title="View or edit these slides for this client">
                       <strong>Market Research included automatically.</strong>{' '}
                       The latest deck, “{marketResearch.name}” ({marketResearch.slide_count} slide{marketResearch.slide_count === 1 ? '' : 's'}), is added at the start of {activeDept?.name} every time a presentation is generated. Admins manage it in Admin → Market Research.
-                    </div>
+                      <span style={styles.mrNoticeAction}>
+                        {mrCustomised ? `Edited for ${activeClient?.name ?? 'this client'} · ` : ''}Click to view or edit for this client →
+                      </span>
+                    </button>
+                  )}
+                  {showClientMR && (
+                    <ClientMarketResearchEditor
+                      clientId={activeClientId}
+                      clientName={activeClient?.name}
+                      onClose={() => setShowClientMR(false)}
+                      onChange={() => fetchClientMarketResearchCopy(activeClientId).then(setMrClientCopy).catch(() => {})}
+                    />
                   )}
                   <div style={styles.slideList}>
                     {deptSlides.length === 0 ? (
@@ -861,7 +883,8 @@ const styles = {
   subTab:          { background: 'none', border: '0.5px solid transparent', borderRadius: 'var(--radius-pill)', padding: '4px 12px', fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'pointer' },
   subTabActive:    { background: 'var(--color-accent-tint)', border: '0.5px solid var(--color-border)', color: 'var(--color-accent-dark)', fontWeight: 500 },
   subTabAI:        { color: '#1D9E75' },
-  mrNotice:        { margin: '12px 20px 0', fontSize: 12, lineHeight: 1.5, color: 'var(--color-text-secondary)', background: '#1D9E7510', border: '0.5px solid #1D9E7540', borderRadius: 8, padding: '10px 14px' },
+  mrNotice:        { display: 'block', width: 'calc(100% - 40px)', textAlign: 'left', font: 'inherit', cursor: 'pointer', margin: '12px 20px 0', fontSize: 12, lineHeight: 1.5, color: 'var(--color-text-secondary)', background: '#1D9E7510', border: '0.5px solid #1D9E7540', borderRadius: 8, padding: '10px 14px' },
+  mrNoticeAction:  { display: 'block', marginTop: 4, fontWeight: 600, color: '#1D9E75' },
   importBtn:       { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '4px 12px', fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'pointer', marginLeft: 4 },
   slideList:       { flex: 1, overflowY: 'auto', padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 8 },
   emptyMsg:        { fontSize: 14, color: 'var(--color-text-muted)', margin: 'auto', alignSelf: 'center', paddingTop: 40 },
