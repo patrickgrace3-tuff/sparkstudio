@@ -3,7 +3,10 @@
 // shrinks so the whole table fits its box — in previews and the exported pptx.
 
 const SLIDE_H_CQW = 56.25 // 16:9 slide height in container-width units
-const ROW_EM      = 1.85  // approx. row height in ems (line height + cell padding), with a little slack
+// Previews pin the table's line height so every view sizes rows the same:
+// row ≈ line height + 0.6em cell padding + borders, with a little slack
+export const TABLE_LINE_HEIGHT = 1.2
+const ROW_EM = TABLE_LINE_HEIGHT + 0.6 + 0.15
 
 export const DEFAULT_TABLE_BOX = { x: 0.045, y: 0.55, w: 0.829, h: 0.32 }
 

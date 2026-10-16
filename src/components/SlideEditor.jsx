@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { DEPARTMENTS } from '../lib/constants.js'
 import { parseRichText } from '../lib/richtext.js'
-import { previewTable } from '../lib/tableFit.js'
+import { previewTable, TABLE_LINE_HEIGHT } from '../lib/tableFit.js'
 
 function RichText({ text }) {
   return parseRichText(text).map((seg, i) => {
@@ -569,7 +569,7 @@ function SlideCanvas({
     const view = previewTable(tbl, style, 6)
     return (
     <div style={{ overflowX: 'auto' }}>
-      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: `${view.fontCqw}cqw` }}>
+      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: `${view.fontCqw}cqw`, ...(view.showAll ? { lineHeight: TABLE_LINE_HEIGHT } : {}) }}>
         <thead>
           <tr>{tbl.headers.map((h, i) => (
             <th
@@ -578,7 +578,7 @@ function SlideCanvas({
               suppressContentEditableWarning
               onPointerDown={stopForEdit}
               onBlur={e => onTableHeaderChange?.(i, e.currentTarget.textContent)}
-              style={{ background: accent, color: '#fff', padding: '3px 6px', border: '0.5px solid rgba(255,255,255,0.3)', fontWeight: 700, whiteSpace: 'nowrap', outline: 'none', cursor: onTableHeaderChange ? 'text' : 'default' }}
+              style={{ background: accent, color: '#fff', padding: view.showAll ? '0.3em 0.6em' : '3px 6px', border: '0.5px solid rgba(255,255,255,0.3)', fontWeight: 700, whiteSpace: 'nowrap', outline: 'none', cursor: onTableHeaderChange ? 'text' : 'default' }}
             >{h}</th>
           ))}</tr>
         </thead>
@@ -592,7 +592,7 @@ function SlideCanvas({
                   suppressContentEditableWarning
                   onPointerDown={stopForEdit}
                   onBlur={e => onTableCellChange?.(ri, ci, e.currentTarget.textContent)}
-                  style={{ color: textCol, padding: view.showAll ? '0 6px' : '2px 6px', border: '0.5px solid rgba(128,128,128,0.2)', whiteSpace: 'nowrap', outline: 'none', cursor: onTableCellChange ? 'text' : 'default' }}
+                  style={{ color: textCol, padding: view.showAll ? '0.3em 0.6em' : '2px 6px', border: '0.5px solid rgba(128,128,128,0.2)', whiteSpace: 'nowrap', outline: 'none', cursor: onTableCellChange ? 'text' : 'default' }}
                 >{row[ci] ?? ''}</td>
               ))}
             </tr>

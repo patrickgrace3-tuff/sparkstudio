@@ -55,6 +55,54 @@ No preamble, no markdown fences.
 }
 
 
+// Generation never adds slides: exactly one output slide per input slide,
+// whatever the model returns. Extra slides it invents for the same input
+// (e.g. a breakdown per division or region) are dropped; "(cont'd)" overflow
+// slides are folded back into the first (the bullet safety net below may
+// split long bullet lists again). Inputs the model skipped keep their own
+// content so nothing disappears. Division tags come only from the input.
+function oneSlidePerInput(output, inputs, dept, division) {
+  const ids     = new Set(inputs.map(s => s._id))
+  const byTitle = new Map(inputs.map(s => [String(s.title ?? '').toLowerCase().trim(), s._id]))
+  const sourceOf = sl => {
+    if (ids.has(sl.sourceId)) return sl.sourceId
+    const t = String(sl.title ?? '').toLowerCase().replace(/\s*\(cont'd\)\s*$/, '').trim()
+    return byTitle.get(t) ?? null
+  }
+  const first = new Map()
+  for (const sl of output) {
+    const src = sourceOf(sl)
+    if (!src) continue // a slide the model invented
+    const { division: _ignored, ...rest } = sl
+    const kept = first.get(src)
+    if (!kept) {
+      first.set(src, { ...rest, sourceId: src, dept, ...(division ? { division } : {}) })
+    } else if (/\(cont'd\)\s*$/i.test(sl.title ?? '')) {
+      kept.bullets = [...(kept.bullets ?? []), ...(sl.bullets ?? [])]
+      if (!kept.table && sl.table) kept.table = sl.table
+    }
+  }
+  return inputs.map(inp => first.get(inp._id) ?? {
+    title: inp.title, dept, sourceId: inp._id,
+    bullets: inp.bullets?.length ? inp.bullets : String(inp.body ?? '').split('\n').filter(Boolean),
+    ...(inp.table ? { table: inp.table } : {}),
+    ...(division ? { division } : {}),
+  })
+}
+
+// Reuse a department's previous slides only if they map one-to-one onto its
+// current input slides ("(cont'd)" overflow slides aside) — so a deck that
+// picked up extra slides earlier is regenerated cleanly.
+function isOnePerInput(previous, inputs) {
+  const ids = new Set(inputs.map(s => s._id))
+  const counts = new Map()
+  for (const sl of previous) {
+    if (!ids.has(sl.sourceId)) return false
+    if (!/\(cont'd\)\s*$/i.test(sl.title ?? '')) counts.set(sl.sourceId, (counts.get(sl.sourceId) ?? 0) + 1)
+  }
+  return inputs.every(i => counts.get(i._id) === 1)
+}
+
 // Workers run per department, or per department + division for clients with divisions
 const contribKey = c => (c.division ? `${c.dept}::${c.division}` : c.dept)
 const slideKey   = s => (s.division ? `${s.dept}::${s.division}` : s.dept)
@@ -118,6 +166,7 @@ RULES — follow exactly:
 - Do NOT create any slide with dept "All", "Overview", "Introduction", "Closing", "Conclusion", or "Summary"
 - Do NOT create intro slides or closing slides — those are added automatically
 - CRITICAL: You must generate exactly one output slide for EVERY input slide listed. Do NOT merge or skip any input slide.
+- NEVER split an input slide into several slides by division, region, location, market, segment or any other breakdown — even when the files contain data for many divisions. Cover them together on the one slide (e.g. a table with a row per division).
 - Each input slide has an "Id" — every output slide must include a "sourceId" field that exactly copies the Id of the input slide it was generated from (verbatim, unchanged).
 - Each slide has "Instructions" — follow them exactly to produce the slide content.
 - Review ALL supporting file content to fulfil each slide's instructions. Extract specific data, numbers, and facts.
@@ -161,7 +210,7 @@ Department slides:
 
       // Skip Claude if nothing changed for this department (and division) since last generation
       const fp = deptFingerprint(contrib)
-      if (existingByDept[key]?.length && existingFps[key] === fp) {
+      if (existingByDept[key]?.length && existingFps[key] === fp && isOnePerInput(existingByDept[key], slides)) {
         console.log(`[generateDeck] Skipping "${key}" — no changes detected`)
         // Mark slides so handleGenerate knows not to re-merge or re-split them
         return existingByDept[key].map(s => ({ ...s, _fromExisting: true }))
@@ -190,8 +239,7 @@ Department slides:
         const raw   = await callClaude(prompt, system, 4000, { imageFiles: images, pdfFiles: pdfs, model: ANTHROPIC_MODEL_DECK, clientId, workerIndex: deptIdx })
         const clean = raw.replace(/```json|```/g, '').trim()
         const parsed = JSON.parse(clean)
-        // Tag division slides ourselves rather than trusting the model to
-        return (parsed.slides ?? []).map(sl => (division ? { ...sl, dept, division } : sl))
+        return oneSlidePerInput(parsed.slides ?? [], slides, dept, division)
       } catch (err) {
         console.error(`Worker ${deptIdx} failed for dept "${dept}":`, err)
         return []

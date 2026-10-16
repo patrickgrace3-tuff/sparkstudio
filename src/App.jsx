@@ -324,45 +324,42 @@ export default function App() {
         ? await generateDeck(withData, activeClient.name, activeClientId, previousDeck)
         : { title: `${activeClient.name} Presentation`, slides: [], _deptFingerprints: {} }
 
+      // Every presentation slide matches the slide built in the slide builder:
+      // title, edited bullets, table, layout/style settings, extra bullet
+      // areas, text boxes, source and notes all come from the builder slide —
+      // for freshly generated slides and for ones reused from the last deck
+      // (whose fingerprint ignores layout, so their saved settings would
+      // otherwise go stale). Slides whose bullets were edited are not split
+      // into "(cont'd)" slides, so they come out exactly as built.
       const allSlidesFlat = Object.values(allSlides).flat()
-      result.slides = result.slides.map(genSlide => {
-        // Slides carried over from an unchanged dept are already correctly merged and
-        // split from the previous generation — re-merging them would restore the full
-        // pre-split bullet list and cause geometric duplication on every regen.
-        if (genSlide._fromExisting) {
-          const { _fromExisting: _, ...clean } = genSlide
-          return clean
+      const isContd = sl => /\(cont'd\)\s*$/i.test(sl.title ?? '')
+      result.slides = result.slides.flatMap(genSlide => {
+        const { _fromExisting: _, ...slide } = genSlide
+        const original = allSlidesFlat.find(s => s._id === slide.sourceId)
+          ?? allSlidesFlat.find(s => s.title?.toLowerCase().trim() === slide.title?.toLowerCase().trim())
+        if (!original) return [slide]
+        const edited = 'bullets' in original
+        if (isContd(slide)) return edited ? [] : [slide]
+        // Builder settings win; an image the AI placed is kept only when the
+        // slide has no images of its own (with the body box it made room with)
+        const style = { ...(slide.style ?? {}), ...(original.style ?? {}) }
+        const userImgs = original.style?.images
+        if (!(Array.isArray(userImgs) && userImgs.length) && slide.style?.images?.length) {
+          style.images = slide.style.images
+          if (slide.style.bodyBox) style.bodyBox = slide.style.bodyBox
         }
-        const original = allSlidesFlat.find(s => s._id === genSlide.sourceId)
-          ?? allSlidesFlat.find(s => s.title?.toLowerCase().trim() === genSlide.title?.toLowerCase().trim())
-        if (!original) return genSlide
-        return {
-          ...genSlide,
-          // Always restore the original title so the AI cannot rename saved slides
-          title: original.title || genSlide.title,
-          // Restore saved bullets when the slide has been edited (bullets key exists, even if
-          // intentionally empty). Slides added but never opened in SlideEditor have no bullets
-          // key at all — those keep AI-generated bullets.
-          ...('bullets' in original ? { bullets: original.bullets } : {}),
-          // Restore saved table only when it has real content.
-          // After the DB migration all slides have table: null in the DB by default,
-          // so checking 'table' in original is no longer a reliable signal — use non-null instead.
+        return [{
+          ...slide,
+          title: original.title || slide.title,
+          ...(edited ? { bullets: original.bullets } : {}),
+          // DB rows default to table: null, so only a real table counts
           ...(original.table != null ? { table: original.table } : {}),
-          // Merge styles: AI-assigned images/layout take priority, then original style fills gaps.
-          // Preserve user-placed images (original.style.images) — never let the AI overwrite them.
-          style: (() => {
-            const merged = { ...(original.style ?? {}), ...(genSlide.style ?? {}) }
-            const userImgs = original.style?.images
-            if (Array.isArray(userImgs) && userImgs.length) merged.images = userImgs
-            return merged
-          })(),
+          style,
           ...(original.source ? { source: original.source } : {}),
           ...(original.notes  ? { notes:  original.notes }  : {}),
-          // Restore extra bullet boxes (additional column areas added in SlideEditor)
           ...('extraBulletBoxes' in original ? { extraBulletBoxes: original.extraBulletBoxes } : {}),
-          // Restore freeform text boxes added in SlideEditor
           ...(original.freeTextBoxes?.length ? { freeTextBoxes: original.freeTextBoxes } : {}),
-        }
+        }]
       })
 
       result.slides = insertMarketResearch(result.slides, mrSlides)
