@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { loadFiles, loadGlobalFiles, buildAIContext } from '../lib/files.js'
+import { fileDivisionId, fileFolderPath } from '../lib/divisions.js'
 import { callClaude } from '../lib/api.js'
 import { api } from '../lib/apiClient.js'
 
@@ -13,7 +14,7 @@ function getSuggestions(clientName) {
   ]
 }
 
-export default function AIAssistant({ clientId, clientName, deptId, deptName, deptColor, allSlides, currentUser, totalSlides, onAddSlide }) {
+export default function AIAssistant({ clientId, clientName, deptId, deptName, deptColor, allSlides, currentUser, totalSlides, onAddSlide, divisions = [] }) {
   const [messages,       setMessages]       = useState([])
   const [input,          setInput]          = useState('')
   const [loading,        setLoading]        = useState(false)
@@ -52,21 +53,39 @@ export default function AIAssistant({ clientId, clientName, deptId, deptName, de
     }
   }
 
-  // All available files (dept + global) for the checkbox panel
-  function getAllFiles() {
-    const fileData   = loadFiles(clientId, deptId)
-    const globalData = loadGlobalFiles(clientId)
-    return [
-      ...globalData.files.map(f => ({ ...f, _global: true })),
-      ...fileData.files.map(f => ({ ...f, _global: false })),
-    ]
+  const hasDivisions = divisions.length > 0
+  const divisionName = id => divisions.find(d => d.id === id)?.name ?? null
+  // Files are keyed by id so same-named files in different divisions stay distinct
+  const fileKey = f => f.id ?? f.name
+
+  // Tags each file with where it applies: one division, or all divisions
+  function annotate(data, isGlobal) {
+    return (data.files ?? []).map(f => {
+      const divId = hasDivisions ? fileDivisionId(data, f) : null
+      return {
+        ...f,
+        _global: isGlobal,
+        _divisionId: divId && divisionName(divId) ? divId : null,
+        _divisionName: divId ? divisionName(divId) : null,
+        _path: fileFolderPath(data, f, divisions),
+      }
+    })
   }
 
-  function toggleFile(name) {
+  // All available files (dept + global) for the checkbox panel —
+  // "All divisions" first, then each division in the client's order
+  function getAllFiles() {
+    const all = [...annotate(loadGlobalFiles(clientId), true), ...annotate(loadFiles(clientId, deptId), false)]
+    if (!hasDivisions) return all
+    const rank = f => (f._divisionId ? 1 + divisions.findIndex(d => d.id === f._divisionId) : 0)
+    return all.map((f, i) => [f, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(([f]) => f)
+  }
+
+  function toggleFile(key) {
     setExcludedFiles(prev => {
       const next = new Set(prev)
-      if (next.has(name)) next.delete(name)
-      else next.add(name)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
   }
@@ -109,21 +128,44 @@ export default function AIAssistant({ clientId, clientName, deptId, deptName, de
     const globalData = loadGlobalFiles(clientId)
 
     // Filter out excluded files before building AI context
-    const filteredFileData   = { ...fileData,   files: fileData.files.filter(f   => !excludedFiles.has(f.name)) }
-    const filteredGlobalData = { ...globalData, files: globalData.files.filter(f => !excludedFiles.has(f.name)) }
+    const filteredFileData   = { ...fileData,   files: fileData.files.filter(f   => !excludedFiles.has(fileKey(f))) }
+    const filteredGlobalData = { ...globalData, files: globalData.files.filter(f => !excludedFiles.has(fileKey(f))) }
 
-    const { textSummary, pdfFiles } = buildAIContext(filteredFileData, deptName, filteredGlobalData)
+    // With divisions, build the text content per scope so every section says
+    // which division it belongs to (or that it applies to all divisions)
+    let textSummary = '', pdfFiles = []
+    if (!hasDivisions) {
+      ({ textSummary, pdfFiles } = buildAIContext(filteredFileData, deptName, filteredGlobalData))
+    } else {
+      const deptAnn = annotate(filteredFileData, false), globalAnn = annotate(filteredGlobalData, true)
+      const scopes = [{ id: null, label: 'ALL DIVISIONS' }, ...divisions.map(d => ({ id: d.id, label: `${d.name.toUpperCase()} DIVISION ONLY` }))]
+      const parts = []
+      for (const scope of scopes) {
+        const pick = list => list.filter(f => (f._divisionId ?? null) === scope.id)
+        const ctx = buildAIContext({ files: pick(deptAnn) }, `${deptName} — ${scope.label}`, { files: pick(globalAnn) })
+        if (ctx.textSummary) parts.push(ctx.textSummary.replace('=== Shared company files ===', `=== Shared company files — ${scope.label} ===`))
+        pdfFiles.push(...ctx.pdfFiles)
+      }
+      textSummary = parts.join('\n\n')
+    }
     pdfFilesRef.current = pdfFiles
 
-    const globalFiles = filteredGlobalData.files.map(f => {
+    const scopeTag = f => (!hasDivisions ? '' : f._divisionName ? ` [DIVISION: ${f._divisionName}]` : ' [ALL DIVISIONS]')
+    const describe = (f, global) => {
       const isPdf = f.name.toLowerCase().endsWith('.pdf') || (f.content?.mimeType ?? '').includes('pdf')
-      return `  - "${f.name}" [GLOBAL]${isPdf ? ' (PDF, read natively)' : ''}${f.type === 'link' ? ' (linked file)' : ''}`
-    })
-    const deptFiles = filteredFileData.files.map(f => {
-      const isPdf = f.name.toLowerCase().endsWith('.pdf') || (f.content?.mimeType ?? '').includes('pdf')
-      return `  - "${f.name}"${isPdf ? ' (PDF, read natively)' : ''}${f.type === 'link' ? ' (linked file)' : ''}`
-    })
-    const fileInventory = [...globalFiles, ...deptFiles].join('\n') || '  (none)'
+      return `  - "${f.name}"${global ? ' [GLOBAL]' : ''}${scopeTag(f)}${isPdf ? ' (PDF, read natively)' : ''}${f.type === 'link' ? ' (linked file)' : ''}`
+    }
+    const fileInventory = [
+      ...annotate(filteredGlobalData, true).map(f => describe(f, true)),
+      ...annotate(filteredFileData, false).map(f => describe(f, false)),
+    ].join('\n') || '  (none)'
+
+    const divisionGuide = hasDivisions ? `
+DIVISIONS: ${clientName} has these divisions: ${divisions.map(d => d.name).join(', ')}.
+Each file below is tagged [DIVISION: name] (data about that division only) or [ALL DIVISIONS] (applies to every division).
+When a slide is about one division, use only that division's files plus the ALL DIVISIONS files, and say which division the figures are for.
+Never present one division's numbers as another's, or as the whole client's.
+` : ''
 
     const existingSlides = (allSlides[deptId] || [])
       .map((s, i) => `  Slide ${i + 1}: ${s.title} — ${s.body}`)
@@ -181,7 +223,7 @@ If the user asks for a table, replace the TABLE example rows with real data from
 The first TABLE row is always headers. Use pipe | to separate columns.
 You can include BULLETS, IMAGE, and TABLE in the same slide, or just some of them.
 
---- Files available (${fileData.files.length} total) ---
+${divisionGuide}--- Files available (${filteredFileData.files.length + filteredGlobalData.files.length} total) ---
 ${fileInventory}
 
 --- Text file content ---
@@ -560,17 +602,24 @@ ${existingSlides || 'No slides added yet.'}
             {showFiles && (
               <div style={styles.fileSelectorList}>
                 {allFiles.map(f => {
-                  const checked = !excludedFiles.has(f.name)
+                  const key = fileKey(f)
+                  const checked = !excludedFiles.has(key)
+                  const path = f._path.length ? f._path.join(' / ') : null
                   return (
-                    <label key={f.name} style={styles.fileRow}>
+                    <label key={`${f._global ? 'g' : 'd'}:${key}`} style={styles.fileRow} title={path ? `${f._global ? 'Global Files' : deptName} / ${path} / ${f.name}` : undefined}>
                       <input
                         type="checkbox"
                         checked={checked}
-                        onChange={() => toggleFile(f.name)}
+                        onChange={() => toggleFile(key)}
                         style={{ flexShrink: 0 }}
                       />
+                      {hasDivisions && (f._divisionName
+                        ? <span style={styles.divisionBadge}>{f._divisionName}</span>
+                        : <span style={styles.allDivisionsBadge}>All divisions</span>)}
                       {f._global && <span style={styles.globalBadge}>Global</span>}
-                      <span style={{ ...styles.fileRowName, opacity: checked ? 1 : 0.4 }}>{f.name}</span>
+                      <span style={{ ...styles.fileRowName, opacity: checked ? 1 : 0.4 }}>
+                        {path && <span style={styles.fileRowPath}>{path} / </span>}{f.name}
+                      </span>
                     </label>
                   )
                 })}
@@ -680,6 +729,9 @@ const styles = {
   fileSelectorList:   { display: 'flex', flexDirection: 'column', gap: 1, padding: '4px 12px 8px', maxHeight: 140, overflowY: 'auto' },
   fileRow:            { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', padding: '2px 0' },
   fileRowName:        { fontSize: 12, color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, transition: 'opacity 0.15s' },
+  divisionBadge:      { fontSize: 9, fontWeight: 700, color: '#D85A30', background: '#D85A3014', border: '0.5px solid #D85A3055', borderRadius: 99, padding: '1px 6px', flexShrink: 0, textTransform: 'uppercase', letterSpacing: '0.05em' },
+  allDivisionsBadge:  { fontSize: 9, fontWeight: 700, color: '#1D9E75', background: '#1D9E7514', border: '0.5px solid #1D9E7555', borderRadius: 99, padding: '1px 6px', flexShrink: 0, textTransform: 'uppercase', letterSpacing: '0.05em' },
+  fileRowPath:        { color: 'var(--color-text-muted)' },
   globalBadge:        { fontSize: 9, fontWeight: 700, color: '#7F77DD', background: '#7F77DD18', border: '0.5px solid #7F77DD44', borderRadius: 99, padding: '1px 5px', flexShrink: 0, textTransform: 'uppercase', letterSpacing: '0.05em' },
   imageSelector:      { display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderTop: '0.5px solid var(--color-border)', background: 'var(--color-bg)', flexShrink: 0, flexWrap: 'wrap' },
   imageSelectorLabel: { fontSize: 10, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', flexShrink: 0 },

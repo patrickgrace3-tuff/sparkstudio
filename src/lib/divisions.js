@@ -67,3 +67,24 @@ export function splitFilesByDivision(data) {
   }
   return { shared, byDivision }
 }
+
+// Division id for a single file (null = shared by all divisions)
+export function fileDivisionId(data, file) {
+  return folderDivision(data?.folders ?? [], file?.folderId)
+}
+
+// Folder names from the root down to the file's folder, e.g. ['North', 'Q3']
+export function fileFolderPath(data, file, divisions = []) {
+  const byId = new Map((data?.folders ?? []).map(f => [f.id, f]))
+  const names = []
+  const seen = new Set()
+  let id = file?.folderId
+  while (id && !seen.has(id)) {
+    seen.add(id)
+    const f = byId.get(id)
+    const divId = id.startsWith(divisionFolderId('')) ? id.slice(divisionFolderId('').length) : null
+    names.unshift(f?.name ?? divisions.find(d => d.id === divId)?.name ?? '…')
+    id = f?.parentId ?? null
+  }
+  return names
+}
