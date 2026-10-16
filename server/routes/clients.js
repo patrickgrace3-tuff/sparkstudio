@@ -20,6 +20,40 @@ function cleanDeptIds(list) {
   return Array.isArray(list) ? [...new Set(list.map(String))] : []
 }
 
+// ── Division folder cleanup ───────────────────────────────────────────────────
+// Mirrors stripInactiveDivisionFolders in src/lib/divisions.js: removes folders
+// of divisions not in keepIds; their subfolders and files move to the root.
+const DIVISION_PREFIX = 'division-'
+const folderDivisionTag = f => f?.divisionId ?? (String(f?.id ?? '').startsWith(DIVISION_PREFIX) ? String(f.id).slice(DIVISION_PREFIX.length) : null)
+
+function stripInactiveDivisionFolders(data, keepIds) {
+  const folders = Array.isArray(data?.folders) ? data.folders : []
+  const files   = Array.isArray(data?.files) ? data.files : []
+  const removed = new Set(folders.filter(f => { const d = folderDivisionTag(f); return d && !keepIds.has(d) }).map(f => f.id))
+  const orphaned = id => !!id && (removed.has(id) || (String(id).startsWith(DIVISION_PREFIX) && !keepIds.has(String(id).slice(DIVISION_PREFIX.length))))
+  if (!removed.size && !files.some(f => orphaned(f.folderId))) return null
+  return {
+    ...data,
+    folders: folders.filter(f => !removed.has(f.id)).map(f => (orphaned(f.parentId) ? { ...f, parentId: null } : f)),
+    files:   files.map(f => (orphaned(f.folderId) ? { ...f, folderId: null } : f)),
+  }
+}
+
+// After divisions change: drop folders of removed divisions everywhere, and all
+// division folders from departments that no longer repeat per division
+async function cleanUpDivisionFolders(clientId, divisions, divisionDepts) {
+  const activeIds = divisions.map(d => d.id)
+  const rows = await query(`SELECT data_key, value FROM client_data WHERE client_id = $1 AND data_key LIKE 'files:%'`, [clientId])
+  for (const row of rows.rows) {
+    const deptId = row.data_key.slice('files:'.length)
+    const keep = new Set(deptId === '__global__' || divisionDepts.includes(deptId) ? activeIds : [])
+    const cleaned = stripInactiveDivisionFolders(row.value, keep)
+    if (cleaned) {
+      await query('UPDATE client_data SET value = $1, updated_at = NOW() WHERE client_id = $2 AND data_key = $3', [JSON.stringify(cleaned), clientId, row.data_key])
+    }
+  }
+}
+
 // All authenticated users can list and read clients (shared workspace model).
 // Mutations (PATCH, DELETE) require admin role to prevent accidental data loss.
 
@@ -71,7 +105,15 @@ router.patch('/:id', async (req, res) => {
       ]
     )
     if (!result.rows.length) return res.status(404).json({ error: 'Not found' })
-    res.json(result.rows[0])
+    const client = result.rows[0]
+    if (divisions !== undefined || divisionDepts !== undefined) {
+      try {
+        await cleanUpDivisionFolders(client.id, client.divisions ?? [], client.division_depts ?? [])
+      } catch (err) {
+        console.error('Division folder cleanup failed:', err) // non-fatal: the app hides inactive folders too
+      }
+    }
+    res.json(client)
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Server error' })

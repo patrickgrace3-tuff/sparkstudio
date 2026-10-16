@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { loadFiles, loadGlobalFiles, buildAIContext } from '../lib/files.js'
-import { fileDivisionId, fileFolderPath } from '../lib/divisions.js'
+import { fileDivisionId, fileFolderPath, stripInactiveDivisionFolders } from '../lib/divisions.js'
 import { callClaude } from '../lib/api.js'
 import { api } from '../lib/apiClient.js'
 
@@ -14,7 +14,7 @@ function getSuggestions(clientName) {
   ]
 }
 
-export default function AIAssistant({ clientId, clientName, deptId, deptName, deptColor, allSlides, currentUser, totalSlides, onAddSlide, divisions = [] }) {
+export default function AIAssistant({ clientId, clientName, deptId, deptName, deptColor, allSlides, currentUser, totalSlides, onAddSlide, divisions = [], deptDivisions = [] }) {
   const [messages,       setMessages]       = useState([])
   const [input,          setInput]          = useState('')
   const [loading,        setLoading]        = useState(false)
@@ -54,6 +54,9 @@ export default function AIAssistant({ clientId, clientName, deptId, deptName, de
   }
 
   const hasDivisions = divisions.length > 0
+  // Only active division folders count (this dept's only if it's split by division)
+  const loadDeptFiles   = () => stripInactiveDivisionFolders(loadFiles(clientId, deptId), new Set(deptDivisions.map(d => d.id)))
+  const loadSharedFiles = () => stripInactiveDivisionFolders(loadGlobalFiles(clientId), new Set(divisions.map(d => d.id)))
   const divisionName = id => divisions.find(d => d.id === id)?.name ?? null
   // Files are keyed by id so same-named files in different divisions stay distinct
   const fileKey = f => f.id ?? f.name
@@ -75,7 +78,7 @@ export default function AIAssistant({ clientId, clientName, deptId, deptName, de
   // All available files (dept + global) for the checkbox panel —
   // "All divisions" first, then each division in the client's order
   function getAllFiles() {
-    const all = [...annotate(loadGlobalFiles(clientId), true), ...annotate(loadFiles(clientId, deptId), false)]
+    const all = [...annotate(loadSharedFiles(), true), ...annotate(loadDeptFiles(), false)]
     if (!hasDivisions) return all
     const rank = f => (f._divisionId ? 1 + divisions.findIndex(d => d.id === f._divisionId) : 0)
     return all.map((f, i) => [f, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(([f]) => f)
@@ -92,8 +95,8 @@ export default function AIAssistant({ clientId, clientName, deptId, deptName, de
 
   // Collect image files from dept + global
   function getAvailableImages() {
-    const fileData   = loadFiles(clientId, deptId)
-    const globalData = loadGlobalFiles(clientId)
+    const fileData   = loadDeptFiles()
+    const globalData = loadSharedFiles()
     const all = [...(globalData.files ?? []), ...(fileData.files ?? [])]
     return all.filter(f => {
       const ext  = f.name.split('.').pop().toLowerCase()
@@ -124,8 +127,8 @@ export default function AIAssistant({ clientId, clientName, deptId, deptName, de
 
   // Build system prompt + collect PDF files for document blocks
   function buildContext() {
-    const fileData   = loadFiles(clientId, deptId)
-    const globalData = loadGlobalFiles(clientId)
+    const fileData   = loadDeptFiles()
+    const globalData = loadSharedFiles()
 
     // Filter out excluded files before building AI context
     const filteredFileData   = { ...fileData,   files: fileData.files.filter(f   => !excludedFiles.has(fileKey(f))) }
@@ -481,8 +484,8 @@ ${existingSlides || 'No slides added yet.'}
       <div style={styles.messages}>
         {/* Welcome */}
         {messages.length === 0 && (() => {
-          const fileData    = loadFiles(clientId, deptId)
-          const globalData  = loadGlobalFiles(clientId)
+          const fileData    = loadDeptFiles()
+          const globalData  = loadSharedFiles()
           const allFileNames = [
             ...globalData.files.map(f => ({ name: f.name, global: true })),
             ...fileData.files.map(f => ({ name: f.name, global: false })),

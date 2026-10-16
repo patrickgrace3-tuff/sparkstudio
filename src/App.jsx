@@ -22,7 +22,7 @@ import { loadFiles, loadFilesRemote, buildAIContext, loadGlobalFiles, loadGlobal
 import { enhanceSlideBody, generateDeck } from './lib/api.js'
 import { exportToPptx } from './lib/export.js'
 import { importSlidesFromPptx } from './lib/importPptx.js'
-import { clientDivisions, deptUsesDivisions, splitFilesByDivision } from './lib/divisions.js'
+import { clientDivisions, deptUsesDivisions, splitFilesByDivision, syncedDeptFiles, syncedGlobalFiles } from './lib/divisions.js'
 import { fetchLatestMarketResearch, marketResearchDeckSlides, insertMarketResearch, withoutMarketResearch, MARKET_RESEARCH_DEPT_ID } from './lib/marketResearch.js'
 import { api, setToken } from './lib/apiClient.js'
 
@@ -273,7 +273,8 @@ export default function App() {
       try { mrSlides = marketResearchDeckSlides(await fetchLatestMarketResearch()) }
       catch (err) { console.error('Could not load Market Research slides:', err) }
 
-      const globalData = loadGlobalFiles(activeClientId)
+      // Only folders of active divisions count; files from removed ones are shared
+      const globalData = syncedGlobalFiles(loadGlobalFiles(activeClientId), activeClient)
       const divisions  = clientDivisions(activeClient)
       // With divisions, only shared global files go to every department; each
       // division's global folder is added to that division's own context
@@ -281,7 +282,7 @@ export default function App() {
       const sharedGlobal = divisions.length ? { ...globalData, files: globalSplit.shared } : globalData
 
       const withData = contributions.flatMap(d => {
-        const fileData = loadFiles(activeClientId, d.id)
+        const fileData = syncedDeptFiles(loadFiles(activeClientId, d.id), activeClient, d.id)
         const slides   = allSlides[d.id] || []
         if (!deptUsesDivisions(activeClient, d.id)) {
           // Not split by division: sees all of its own files plus every division's global files
@@ -734,6 +735,7 @@ export default function App() {
               {deptTab === 'ai' && (
                 <AIAssistant
                   divisions={clientDivisions(activeClient)}
+                  deptDivisions={deptUsesDivisions(activeClient, activeDeptId) ? clientDivisions(activeClient) : []}
                   clientId={activeClientId}
                   clientName={activeClient?.name}
                   deptId={activeDeptId}

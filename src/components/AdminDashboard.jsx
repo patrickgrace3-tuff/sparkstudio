@@ -367,7 +367,7 @@ function ClientsTab({ onClientsChange }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
                     Divisions for <strong>{c.name}</strong>. Ticked departments generate their slides once per division, and get a folder per division in their Files tab (Global Files too).
-                    Removing a division keeps its folder's files but they stop being used for that division.
+                    Removing a division (or unticking a department) deletes its folders; any files inside move to the main Files area and are then used for all divisions.
                   </div>
                   <DivisionsEditor value={editDivs} onChange={setEditDivs} />
                   <div style={{ display: 'flex', gap: 8 }}>
