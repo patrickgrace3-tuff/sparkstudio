@@ -16,6 +16,7 @@ import tokenLogRoutes      from './routes/tokenlogs.js'
 import claudeRoutes        from './routes/claude.js'
 import slideRequestRoutes  from './routes/slideRequests.js'
 import marketResearchRoutes from './routes/marketResearch.js'
+import settingsRoutes      from './routes/settings.js'
 
 const app  = express()
 const PORT = process.env.PORT || 3001
@@ -46,6 +47,7 @@ app.use('/api/tokenlogs',      tokenLogRoutes)
 app.use('/api/claude',         claudeRoutes)
 app.use('/api/slide-requests', slideRequestRoutes)
 app.use('/api/market-research', marketResearchRoutes)
+app.use('/api/settings',        settingsRoutes)
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }))
 

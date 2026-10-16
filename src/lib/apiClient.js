@@ -106,6 +106,9 @@ export const api = {
     }).then(r => r.json())
   },
 
+  // Platform settings readable by every user (writes go through adminPutSetting)
+  getSetting: (key) => apiFetch(`/api/settings/${key}`),
+
   // Market Research decks (content extracted from uploaded PPTX)
   getMarketResearchDecks:   ()   => apiFetch('/api/market-research'),
   getMarketResearchDeck:    (id) => apiFetch(`/api/market-research/${id}`),

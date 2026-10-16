@@ -3,6 +3,8 @@ import { api } from '../lib/apiClient.js'
 import { importSlidesFromPptx } from '../lib/importPptx.js'
 import { SlideThumbnail } from './SlideCard.jsx'
 import SlideEditor from './SlideEditor.jsx'
+import { DEPARTMENTS } from '../lib/constants.js'
+import { PRESENTATION_ORDER_KEY, defaultOrder, normalizeOrder, itemKey, orderItemLabel } from '../lib/presentationOrder.js'
 
 // ── Stat tile ─────────────────────────────────────────────────────────────────
 function StatTile({ label, value, color }) {
@@ -984,6 +986,162 @@ function MarketResearchSlideList({ slides, onEdit, onRemove, onMove, disabled })
   )
 }
 
+// ── Presentation Order tab ────────────────────────────────────────────────────
+// Platform-wide default order for generated decks. Applied whenever a
+// presentation is generated; users can still reorder a deck in the preview.
+const ORDER_KIND = {
+  dept:    { label: 'Department', color: '#378ADD' },
+  funnel:  { label: 'Funnel',     color: '#1D9E75' },
+  team:    { label: 'My Team',    color: '#7F77DD' },
+  divider: { label: 'Divider',    color: '#D85A30' },
+}
+
+function PresentationOrderTab() {
+  const [order,   setOrder]   = useState(null)
+  const [saved,   setSaved]   = useState(null) // JSON of last saved order, for dirty tracking
+  const [isCustom, setIsCustom] = useState(false)
+  const [saving,  setSaving]  = useState(false)
+  const [msg,     setMsg]     = useState('')
+  const [err,     setErr]     = useState('')
+  const dragIdx = React.useRef(null)
+  const [overIdx, setOverIdx] = useState(null)
+
+  useEffect(() => {
+    api.adminGetSetting(PRESENTATION_ORDER_KEY)
+      .then(data => {
+        const o = normalizeOrder(data ?? defaultOrder())
+        setOrder(o); setSaved(JSON.stringify(o)); setIsCustom(!!data)
+      })
+      .catch(e => { setErr(e.message); setOrder(defaultOrder()) })
+  }, [])
+
+  if (!order) return <div style={S.loading}>Loading order…</div>
+
+  const items = order.items
+  const dirty = JSON.stringify(order) !== saved
+  const setItems = next => setOrder({ items: next })
+  const update = (i, patch) => setItems(items.map((it, idx) => (idx === i ? { ...it, ...patch } : it)))
+
+  function move(from, to) {
+    if (to < 0 || to >= items.length || from === to) return
+    const next = [...items]
+    const [m] = next.splice(from, 1)
+    next.splice(to, 0, m)
+    setItems(next)
+  }
+
+  function addDivider() {
+    setItems([...items, { type: 'divider', id: `${Date.now()}`, text: 'Section Title', enabled: true }])
+  }
+
+  async function handleSave() {
+    setSaving(true); setErr(''); setMsg('')
+    try {
+      await api.adminPutSetting(PRESENTATION_ORDER_KEY, order)
+      setSaved(JSON.stringify(order)); setIsCustom(true)
+      setMsg('Presentation order saved. It applies to every client the next time a presentation is generated.')
+      setTimeout(() => setMsg(''), 5000)
+    } catch (e) { setErr(e.message) }
+    finally { setSaving(false) }
+  }
+
+  function handleReset() {
+    if (!confirm('Reset to the default order? You still need to click Save to apply it.')) return
+    setOrder(defaultOrder())
+  }
+
+  const fixedRow = label => (
+    <div style={{ ...OS.row, background: 'var(--color-bg-secondary)', cursor: 'default' }}>
+      <span style={{ ...OS.handle, visibility: 'hidden' }}>⠿</span>
+      <span style={{ ...OS.badge, color: 'var(--color-text-muted)', borderColor: 'var(--color-border)' }}>Fixed</span>
+      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-secondary)' }}>{label}</span>
+    </div>
+  )
+
+  return (
+    <div style={S.tabContent}>
+      <div style={S.sectionHeader}>
+        <span style={S.sectionTitle}>Presentation Order</span>
+        <span style={S.sectionSub}>{isCustom ? 'Custom order active' : 'Using built-in default'}</span>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          <button style={S.ghostBtn} onClick={addDivider}>＋ Section divider</button>
+          <button style={S.ghostBtn} onClick={handleReset}>Reset to default</button>
+          <button style={S.primaryBtn} onClick={handleSave} disabled={saving || !dirty}>{saving ? 'Saving…' : dirty ? 'Save order' : 'Saved'}</button>
+        </div>
+      </div>
+      <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: 0 }}>
+        Sets the default slide order for every generated presentation, across all clients. Drag rows (or use the arrows) to reposition them.
+        Departments with no slides are skipped automatically. Users can still fine-tune an individual deck in its preview.
+      </p>
+
+      {err && <div style={S.error}>{err}</div>}
+      {msg && <div style={{ fontSize: 13, color: '#1D9E75', background: '#1D9E7510', border: '0.5px solid #1D9E7530', borderRadius: 6, padding: '10px 14px' }}>{msg}</div>}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 760 }}>
+        {fixedRow('Cover slide')}
+        {items.map((it, i) => {
+          const kind = ORDER_KIND[it.type]
+          const dept = it.type === 'dept' ? DEPARTMENTS.find(d => d.id === it.dept) : null
+          const off  = it.enabled === false
+          return (
+            <div
+              key={itemKey(it)}
+              draggable
+              onDragStart={e => { dragIdx.current = i; e.dataTransfer.effectAllowed = 'move' }}
+              onDragOver={e => { e.preventDefault(); setOverIdx(i) }}
+              onDragLeave={() => setOverIdx(o => (o === i ? null : o))}
+              onDrop={e => { e.preventDefault(); move(dragIdx.current, i); dragIdx.current = null; setOverIdx(null) }}
+              onDragEnd={() => { dragIdx.current = null; setOverIdx(null) }}
+              style={{ ...OS.row, opacity: off ? 0.55 : 1, borderColor: overIdx === i ? 'var(--color-accent)' : 'var(--color-border)' }}
+            >
+              <span style={OS.handle} title="Drag to reorder">⠿</span>
+              <span style={{ fontSize: 11, color: 'var(--color-text-muted)', width: 18, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{i + 1}</span>
+              <span style={{ ...OS.badge, color: kind.color, borderColor: `${kind.color}55`, background: `${kind.color}12` }}>{kind.label}</span>
+              {dept && <span style={{ width: 8, height: 8, borderRadius: 99, background: dept.color, flexShrink: 0 }} />}
+              {it.type === 'divider' ? (
+                <input
+                  style={{ ...S.input, flex: 1, minWidth: 120 }}
+                  value={it.text}
+                  onChange={e => update(i, { text: e.target.value })}
+                  placeholder="Divider title"
+                />
+              ) : (
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', flex: 1 }}>
+                  {orderItemLabel(it)}{it.type === 'dept' ? ' slides' : ' slide'}
+                </span>
+              )}
+              {it.type === 'dept' ? (
+                <label style={OS.check} title="Insert this department's section divider slide before its slides">
+                  <input type="checkbox" checked={it.section !== false} onChange={e => update(i, { section: e.target.checked })} />
+                  Divider before
+                </label>
+              ) : (
+                <label style={OS.check}>
+                  <input type="checkbox" checked={!off} onChange={e => update(i, { enabled: e.target.checked })} />
+                  Include
+                </label>
+              )}
+              <button style={S.ghostBtn} onClick={() => move(i, i - 1)} disabled={i === 0} title="Move up">↑</button>
+              <button style={S.ghostBtn} onClick={() => move(i, i + 1)} disabled={i === items.length - 1} title="Move down">↓</button>
+              {it.type === 'divider' && (
+                <button style={S.dangerBtn} onClick={() => setItems(items.filter((_, idx) => idx !== i))} title="Remove divider">✕</button>
+              )}
+            </div>
+          )
+        })}
+        {fixedRow('Closing slide')}
+      </div>
+    </div>
+  )
+}
+
+const OS = {
+  row:    { display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', border: '0.5px solid var(--color-border)', borderRadius: 8, background: 'var(--color-bg)', cursor: 'grab', flexWrap: 'wrap' },
+  handle: { color: 'var(--color-text-muted)', fontSize: 14, userSelect: 'none' },
+  badge:  { fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', border: '0.5px solid', borderRadius: 99, padding: '2px 8px', flexShrink: 0, width: 96, textAlign: 'center' },
+  check:  { display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'pointer', userSelect: 'none' },
+}
+
 // ── Main AdminDashboard ───────────────────────────────────────────────────────
 export default function AdminDashboard({ onClose, currentUser, onClientsChange }) {
   const [tab, setTab] = useState('overview')
@@ -997,6 +1155,7 @@ export default function AdminDashboard({ onClose, currentUser, onClientsChange }
     { id: 'requests',  label: 'Slide Requests' },
     { id: 'styles',    label: 'PowerPoint Template' },
     { id: 'market',    label: 'Market Research' },
+    { id: 'order',     label: 'Presentation Order' },
   ]
 
   return (
@@ -1046,6 +1205,7 @@ export default function AdminDashboard({ onClose, currentUser, onClientsChange }
               {tab === 'requests' && <SlideRequestsTab />}
               {tab === 'styles'   && <StylesTab />}
               {tab === 'market'   && <MarketResearchTab />}
+              {tab === 'order'    && <PresentationOrderTab />}
             </div>
           </>
         )}

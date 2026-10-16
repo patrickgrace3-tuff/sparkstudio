@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { buildOrderedSlideList } from '../lib/presentationOrder.js'
 import { DEPARTMENTS } from '../lib/constants.js'
 import { parseRichText } from '../lib/richtext.js'
 import { FunnelSlidePreview } from './FunnelBuilder.jsx'
@@ -181,7 +182,9 @@ function groupByDept(slides) {
   return groups
 }
 
-function buildSlideList(deck, funnelConfig, teamConfig) {
+function buildSlideList(deck, funnelConfig, teamConfig, presentationOrder) {
+  // Platform-wide order set by admins (Admin Dashboard → Presentation Order)
+  if (presentationOrder) return buildOrderedSlideList(deck, funnelConfig, teamConfig, presentationOrder)
   const groups = groupByDept(deck.slides)
   const list = [{ kind: 'cover', label: 'Cover' }]
   for (const group of groups) {
@@ -261,7 +264,7 @@ function PresenterView({ slides, startIndex, onClose }) {
   )
 }
 
-export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerating, onExport, isExporting, onEditSlide, onSlidesListChange, onDeletePresentation }) {
+export default function PreviewPanel({ deck, funnelConfig, teamConfig, presentationOrder, isGenerating, onExport, isExporting, onEditSlide, onSlidesListChange, onDeletePresentation }) {
   const [presenting,    setPresenting]    = useState(false)
   const [startIndex,    setStartIndex]    = useState(0)
   const [slidesList,    setSlidesList]    = useState(() => deck?.deckSlides ?? null)
@@ -294,7 +297,7 @@ export default function PreviewPanel({ deck, funnelConfig, teamConfig, isGenerat
     )
   }
 
-  const baseSlides = buildSlideList(deck, funnelConfig, teamConfig)
+  const baseSlides = buildSlideList(deck, funnelConfig, teamConfig, presentationOrder)
   const slides = slidesList ?? baseSlides
 
   function onDragStart(e, i) {

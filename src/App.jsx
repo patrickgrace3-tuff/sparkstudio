@@ -42,6 +42,7 @@ export default function App() {
   const [isImporting,    setIsImporting]    = useState(false)
   const importInputRef = useRef(null)
   const [showMarketResearch, setShowMarketResearch] = useState(false)
+  const [presentationOrder,  setPresentationOrder]  = useState(null) // platform default, null = built-in order
   const [editingSlide,   setEditingSlide]   = useState(null)
   const [showGlobal,     setShowGlobal]     = useState(false)
   const [showFunnel,     setShowFunnel]     = useState(false)
@@ -94,7 +95,12 @@ export default function App() {
       if (rows.length) setActiveClientId(rows[0].id)
     }).catch(console.error)
     api.getTemplates().then(setTemplates).catch(console.error)
+    loadPresentationOrder()
   }, [currentUser])
+
+  function loadPresentationOrder() {
+    api.getSetting('presentation_order').then(setPresentationOrder).catch(() => setPresentationOrder(null))
+  }
 
   // ── Load slides when client changes ───────────────────────────────────────
   useEffect(() => {
@@ -449,7 +455,7 @@ export default function App() {
           )}
           {showAdminDashboard && (
             <AdminDashboard
-              onClose={() => setShowAdminDashboard(false)}
+              onClose={() => { setShowAdminDashboard(false); loadPresentationOrder() }}
               currentUser={currentUser}
               onClientsChange={updated => {
                 const normalized = updated.map(c => ({ id: c.id, name: c.name }))
@@ -670,6 +676,7 @@ export default function App() {
               deck={deck}
               funnelConfig={loadFunnelConfig()}
               teamConfig={loadTeamConfig()}
+              presentationOrder={presentationOrder}
               isGenerating={isGenerating}
               onExport={handleExport}
               isExporting={isExporting}
