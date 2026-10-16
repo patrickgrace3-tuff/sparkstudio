@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react'
+import React, { useState, useRef, useMemo, useEffect } from 'react'
 import { ensureDivisionFolders } from '../lib/divisions.js'
 import { loadFiles, saveFiles, loadGlobalFiles, saveGlobalFiles, uid, fetchLinkContent } from '../lib/files.js'
 import WordEditor  from './WordEditor.jsx'
@@ -216,30 +216,13 @@ export default function FileManager({ clientId, clientName, deptId, deptName, de
     }
 
     return (
-      <div style={styles.editorWrap}>
-        <div style={styles.editorHeader}>
-          <button style={styles.backBtn} onClick={() => setOpenFile(null)}>← Back</button>
-          <input
-            style={styles.fileNameInput}
-            value={saved.name}
-            onChange={e => renameFile(saved.id, e.target.value)}
-          />
-          <span style={styles.fileTypeBadge}>{saved.type === 'word' ? 'Word' : 'Excel'}</span>
-        </div>
-        <div style={styles.editorBody}>
-          {saved.type === 'word' ? (
-            <WordEditor
-              value={saved.content}
-              onChange={content => saveFileContent(saved.id, content)}
-            />
-          ) : (
-            <ExcelEditor
-              value={saved.content}
-              onChange={content => saveFileContent(saved.id, content)}
-            />
-          )}
-        </div>
-      </div>
+      <DocumentEditor
+        key={saved.id}
+        file={saved}
+        onSave={content => saveFileContent(saved.id, content)}
+        onRename={name => renameFile(saved.id, name)}
+        onClose={() => setOpenFile(null)}
+      />
     )
   }
 
@@ -302,6 +285,15 @@ export default function FileManager({ clientId, clientName, deptId, deptName, de
 
       {/* Breadcrumb */}
       <div style={styles.breadcrumb}>
+        {activeFolderId && (
+          <button
+            style={styles.folderBackBtn}
+            onClick={() => setActiveFolderId(data.folders.find(f => f.id === activeFolderId)?.parentId ?? null)}
+            title="Back to the folder above"
+          >
+            ← Back
+          </button>
+        )}
         <button style={styles.crumbBtn} onClick={() => setActiveFolderId(null)}>
           {deptName}
         </button>
@@ -377,6 +369,73 @@ export default function FileManager({ clientId, clientName, deptId, deptName, de
   )
 }
 
+// ── Word / Excel editor with an explicit Save ─────────────────────────────────
+// Edits stay in a local draft until Save (or Ctrl/Cmd+S); leaving with unsaved
+// changes asks first.
+function DocumentEditor({ file, onSave, onRename, onClose }) {
+  const [draft,   setDraft]   = useState(file.content)
+  const [savedAt, setSavedAt] = useState(null)
+  const dirty = JSON.stringify(draft ?? null) !== JSON.stringify(file.content ?? null)
+
+  function save() {
+    if (!dirty) return
+    onSave(draft)
+    setSavedAt(Date.now())
+  }
+
+  function close() {
+    if (dirty && !confirm('You have unsaved changes. Leave without saving?')) return
+    onClose()
+  }
+
+  // Ctrl/Cmd+S saves; warn before closing the tab with unsaved changes
+  const saveRef = useRef(save)
+  saveRef.current = save
+  useEffect(() => {
+    const onKey = e => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveRef.current() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+  useEffect(() => {
+    if (!dirty) return
+    const onUnload = e => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', onUnload)
+    return () => window.removeEventListener('beforeunload', onUnload)
+  }, [dirty])
+
+  return (
+    <div style={styles.editorWrap}>
+      <div style={styles.editorHeader}>
+        <button style={styles.backBtn} onClick={close}>← Back</button>
+        <input
+          style={styles.fileNameInput}
+          value={file.name}
+          onChange={e => onRename(e.target.value)}
+        />
+        <span style={styles.fileTypeBadge}>{file.type === 'word' ? 'Word' : 'Excel'}</span>
+        <span style={{ ...styles.saveStatus, color: dirty ? '#BA7517' : 'var(--color-text-muted)' }}>
+          {dirty ? 'Unsaved changes' : savedAt ? 'Saved' : ''}
+        </span>
+        <button
+          style={{ ...styles.saveBtn, opacity: dirty ? 1 : 0.5, cursor: dirty ? 'pointer' : 'default' }}
+          onClick={save}
+          disabled={!dirty}
+          title="Save (Ctrl+S)"
+        >
+          Save
+        </button>
+      </div>
+      <div style={styles.editorBody}>
+        {file.type === 'word'
+          ? <WordEditor value={file.content} onChange={setDraft} />
+          : <ExcelEditor value={file.content} onChange={setDraft} />}
+      </div>
+    </div>
+  )
+}
+
 const styles = {
   browser:        { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' },
   browserDragging:{ outline: '2px dashed var(--color-border-medium)', outlineOffset: -4 },
@@ -385,6 +444,9 @@ const styles = {
   lookerBtn:      { borderColor: '#4285f4', color: '#4285f4' },
   ghostBtn:       { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '5px 12px', fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'pointer', whiteSpace: 'nowrap' },
   folderInputRow: { display: 'flex', alignItems: 'center', gap: 6 },
+  folderBackBtn:  { background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '2px 10px', fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'pointer', marginRight: 8 },
+  saveStatus:     { fontSize: 12, marginLeft: 'auto', whiteSpace: 'nowrap' },
+  saveBtn:        { background: 'var(--color-accent)', color: '#fff', border: 'none', borderRadius: 'var(--radius-pill)', padding: '6px 16px', fontSize: 12, fontWeight: 600, flexShrink: 0 },
   divisionBadge:  { fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#D85A30', background: '#D85A3014', border: '0.5px solid #D85A3055', borderRadius: 99, padding: '1px 7px', marginLeft: 8 },
   folderInput:    { background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: '4px 9px', fontSize: 12, color: 'var(--color-text-primary)', outline: 'none', width: 160 },
   breadcrumb:     { display: 'flex', alignItems: 'center', gap: 2, padding: '7px 16px', borderBottom: '0.5px solid var(--color-border)', background: 'var(--color-bg-secondary)' },

@@ -19,11 +19,32 @@ export function deptUsesDivisions(client, deptId) {
 
 export const divisionFolderId = divisionId => `division-${divisionId}`
 
-// Adds a root folder per division (and keeps names in sync). Returns the same
-// object when nothing changed so callers can skip a save.
+const DIVISION_PREFIX = divisionFolderId('')
+const folderDivisionTag = f => f.divisionId ?? (f.id?.startsWith(DIVISION_PREFIX) ? f.id.slice(DIVISION_PREFIX.length) : null)
+
+// Removes folders of divisions not in keepIds. Their subfolders and files move
+// up to the root (so they count for all divisions) — nothing is deleted.
+// Mirrors stripInactiveDivisionFolders in server/routes/clients.js.
+export function stripInactiveDivisionFolders(data, keepIds) {
+  const folders = data.folders ?? []
+  const files   = data.files ?? []
+  const removed = new Set(folders.filter(f => { const d = folderDivisionTag(f); return d && !keepIds.has(d) }).map(f => f.id))
+  const orphaned = id => id && (removed.has(id) || (id.startsWith(DIVISION_PREFIX) && !keepIds.has(id.slice(DIVISION_PREFIX.length))))
+  if (!removed.size && !files.some(f => orphaned(f.folderId))) return data
+  return {
+    ...data,
+    folders: folders.filter(f => !removed.has(f.id)).map(f => (orphaned(f.parentId) ? { ...f, parentId: null } : f)),
+    files:   files.map(f => (orphaned(f.folderId) ? { ...f, folderId: null } : f)),
+  }
+}
+
+// Keeps exactly one root folder per active division (names kept in sync) and
+// drops folders of removed divisions. Returns the same object when nothing
+// changed so callers can skip a save.
 export function ensureDivisionFolders(data, divisions) {
-  const folders = [...(data.folders ?? [])]
-  let changed = false
+  const synced  = stripInactiveDivisionFolders(data, new Set(divisions.map(d => d.id)))
+  const folders = [...(synced.folders ?? [])]
+  let changed = synced !== data
   for (const d of divisions) {
     const id  = divisionFolderId(d.id)
     const idx = folders.findIndex(f => f.id === id)
@@ -35,7 +56,16 @@ export function ensureDivisionFolders(data, divisions) {
       changed = true
     }
   }
-  return changed ? { ...data, folders } : data
+  return changed ? { ...synced, folders } : data
+}
+
+// The files blob as it should be for this client: active division folders
+// only. Use before reading files for generation or the AI Assistant.
+export function syncedDeptFiles(data, client, deptId) {
+  return stripInactiveDivisionFolders(data, new Set(deptUsesDivisions(client, deptId) ? clientDivisions(client).map(d => d.id) : []))
+}
+export function syncedGlobalFiles(data, client) {
+  return stripInactiveDivisionFolders(data, new Set(clientDivisions(client).map(d => d.id)))
 }
 
 // The division a folder sits under (walking up parents), or null if shared
