@@ -271,6 +271,28 @@ export default function App() {
     finally { setIsEnhancing(false) }
   }
 
+  // ── AI context for a department's slides ──────────────────────────────────
+  // divisionId given → that division's files (shared dept files + its division
+  // folders in the dept and Global Files). Otherwise → all of the dept's files
+  // and every division's global files.
+  function buildDeptContribution(d, slides, divisionId = null) {
+    const globalData = syncedGlobalFiles(loadGlobalFiles(activeClientId), activeClient)
+    const divisions  = clientDivisions(activeClient)
+    const globalSplit  = splitFilesByDivision(globalData)
+    const sharedGlobal = divisions.length ? { ...globalData, files: globalSplit.shared } : globalData
+    const fileData = syncedDeptFiles(loadFiles(activeClientId, d.id), activeClient, d.id)
+    const division = divisionId && deptUsesDivisions(activeClient, d.id) ? divisions.find(x => x.id === divisionId) : null
+    if (!division) {
+      const deptData = divisions.length ? { ...fileData, files: [...(fileData.files ?? []), ...Object.values(globalSplit.byDivision).flat()] } : fileData
+      const ctx = buildAIContext(deptData, d.name, sharedGlobal)
+      return { dept: d.name, slides, deptSummary: ctx.deptSummary, globalSummary: ctx.globalSummary, imageFiles: ctx.imageFiles, pdfFiles: ctx.pdfFiles }
+    }
+    const deptSplit = splitFilesByDivision(fileData)
+    const files = [...deptSplit.shared, ...(deptSplit.byDivision[division.id] ?? []), ...(globalSplit.byDivision[division.id] ?? [])]
+    const ctx = buildAIContext({ ...fileData, files }, `${d.name} — ${division.name}`, sharedGlobal)
+    return { dept: d.name, division: division.name, slides, deptSummary: ctx.deptSummary, globalSummary: ctx.globalSummary, imageFiles: ctx.imageFiles, pdfFiles: ctx.pdfFiles }
+  }
+
   async function handleGenerate() {
     const contributions = DEPARTMENTS.filter(d => (allSlides[d.id] || []).length > 0)
     if (!contributions.length && !marketResearch) return
@@ -284,30 +306,17 @@ export default function App() {
       try { mrSlides = marketResearchDeckSlides(await fetchMarketResearchForClient(activeClientId)) }
       catch (err) { console.error('Could not load Market Research slides:', err) }
 
-      // Only folders of active divisions count; files from removed ones are shared
-      const globalData = syncedGlobalFiles(loadGlobalFiles(activeClientId), activeClient)
-      const divisions  = clientDivisions(activeClient)
-      // With divisions, only shared global files go to every department; each
-      // division's global folder is added to that division's own context
-      const globalSplit  = splitFilesByDivision(globalData)
-      const sharedGlobal = divisions.length ? { ...globalData, files: globalSplit.shared } : globalData
-
+      // One presentation slide per slide-builder slide — no per-division
+      // copies here. Slides tagged with a division (created from a template)
+      // are generated with that division's files.
       const withData = contributions.flatMap(d => {
-        const fileData = syncedDeptFiles(loadFiles(activeClientId, d.id), activeClient, d.id)
-        const slides   = allSlides[d.id] || []
-        if (!deptUsesDivisions(activeClient, d.id)) {
-          // Not split by division: sees all of its own files plus every division's global files
-          const deptData = divisions.length ? { ...fileData, files: [...(fileData.files ?? []), ...Object.values(globalSplit.byDivision).flat()] } : fileData
-          const ctx = buildAIContext(deptData, d.name, sharedGlobal)
-          return [{ dept: d.name, slides, deptSummary: ctx.deptSummary, globalSummary: ctx.globalSummary, imageFiles: ctx.imageFiles, pdfFiles: ctx.pdfFiles }]
+        const groups = new Map()
+        for (const sl of allSlides[d.id] || []) {
+          const key = sl.divisionId ?? ''
+          if (!groups.has(key)) groups.set(key, [])
+          groups.get(key).push(sl)
         }
-        // One set of slides per division: shared dept files + that division's dept and global folders
-        const deptSplit = splitFilesByDivision(fileData)
-        return divisions.map(div => {
-          const files = [...deptSplit.shared, ...(deptSplit.byDivision[div.id] ?? []), ...(globalSplit.byDivision[div.id] ?? [])]
-          const ctx = buildAIContext({ ...fileData, files }, `${d.name} — ${div.name}`, sharedGlobal)
-          return { dept: d.name, division: div.name, slides, deptSummary: ctx.deptSummary, globalSummary: ctx.globalSummary, imageFiles: ctx.imageFiles, pdfFiles: ctx.pdfFiles }
-        })
+        return [...groups].map(([divisionId, slides]) => buildDeptContribution(d, slides, divisionId || null))
       })
       // Market Research slides are re-added fresh below, so never carry old ones over
       const previousDeck = deck ? { ...deck, slides: withoutMarketResearch(deck.slides) } : null
@@ -327,25 +336,6 @@ export default function App() {
         const original = allSlidesFlat.find(s => s._id === genSlide.sourceId)
           ?? allSlidesFlat.find(s => s.title?.toLowerCase().trim() === genSlide.title?.toLowerCase().trim())
         if (!original) return genSlide
-        // Division slides keep the AI's division-specific content; only layout,
-        // images, source and notes carry over, and the title names the division
-        if (genSlide.division) {
-          const baseTitle = (original.title || genSlide.title || '').replace(/(\s+\(cont'd\))$/, '')
-          const contd = / \(cont'd\)$/.test(genSlide.title ?? '') ? " (cont'd)" : ''
-          return {
-            ...genSlide,
-            title: `${baseTitle} — ${genSlide.division}${contd}`,
-            style: (() => {
-              const merged = { ...(original.style ?? {}), ...(genSlide.style ?? {}) }
-              const userImgs = original.style?.images
-              if (Array.isArray(userImgs) && userImgs.length) merged.images = userImgs
-              return merged
-            })(),
-            ...(original.source ? { source: original.source } : {}),
-            ...(original.notes  ? { notes:  original.notes }  : {}),
-            ...(original.freeTextBoxes?.length ? { freeTextBoxes: original.freeTextBoxes } : {}),
-          }
-        }
         return {
           ...genSlide,
           // Always restore the original title so the AI cannot rename saved slides
@@ -601,17 +591,18 @@ export default function App() {
                   setSelectedTemplate(tmpl)
                   if (!tmpl || !activeClientId) return
 
-                  const globalData = loadGlobalFiles(activeClientId)
+                  // Departments that use divisions get one set of template slides per
+                  // division, each built from that division's files
+                  const divisions = clientDivisions(activeClient)
                   const deptContributions = DEPARTMENTS
                     .filter(d => (tmpl.departments[d.name] || []).length > 0)
-                    .map(d => {
-                      const fileData = loadFiles(activeClientId, d.id)
-                      const ctx      = buildAIContext(fileData, d.name, globalData)
-                      const seeds    = buildSeedSlides(tmpl, d.name).map((s, idx) => ({
+                    .flatMap(d => {
+                      const seedsFor = () => buildSeedSlides(tmpl, d.name).map((s, idx) => ({
                         ...s,
                         _id: `s${Date.now()}${idx}${Math.random().toString(36).slice(2)}`,
                       }))
-                      return { dept: d.name, slides: seeds, deptSummary: ctx.deptSummary, globalSummary: ctx.globalSummary, imageFiles: ctx.imageFiles, pdfFiles: ctx.pdfFiles }
+                      if (!deptUsesDivisions(activeClient, d.id) || !divisions.length) return [buildDeptContribution(d, seedsFor())]
+                      return divisions.map(div => buildDeptContribution(d, seedsFor(), div.id))
                     })
 
                   if (!deptContributions.length) return
@@ -619,15 +610,18 @@ export default function App() {
                   setIsApplyingTemplate(true)
                   try {
                     const result = await generateDeck(deptContributions, activeClient?.name ?? '')
+                    const divisionIdByName = Object.fromEntries(divisions.map(dv => [dv.name, dv.id]))
                     setAllSlidesMap(prev => {
                       const current = prev[activeClientId] ?? {}
                       const updated = { ...current }
                       result.slides.forEach(gen => {
                         const dept = DEPARTMENTS.find(d => d.name === gen.dept)
                         if (!dept) return
+                        const divisionId = gen.division ? divisionIdByName[gen.division] ?? null : null
                         const slide = {
                           _id: `s${Date.now()}${Math.random().toString(36).slice(2)}`,
-                          title: gen.title,
+                          title: gen.division && !gen.title?.includes(`— ${gen.division}`) ? `${gen.title} — ${gen.division}` : gen.title,
+                          divisionId,
                           body: (gen.bullets ?? []).join('\n'),
                           bullets: gen.bullets ?? [],
                           table: gen.table ?? null,
@@ -729,6 +723,7 @@ export default function App() {
                           onDelete={deleteSlide}
                           onEdit={idx => setEditingSlide({ index: idx, slide: deptSlides[idx] })}
                           onUseAsTemplate={currentUser?.role === 'admin' ? slide => setTemplateSlide({ slide, deptName: activeDept?.name }) : undefined}
+                          divisionName={slide.divisionId && deptUsesDivisions(activeClient, activeDeptId) ? clientDivisions(activeClient).find(dv => dv.id === slide.divisionId)?.name : undefined}
                         />
                       ))
                     )}
