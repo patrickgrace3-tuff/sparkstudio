@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { DEPARTMENTS } from '../lib/constants.js'
 import { parseRichText } from '../lib/richtext.js'
+import { previewTable } from '../lib/tableFit.js'
 
 function RichText({ text }) {
   return parseRichText(text).map((seg, i) => {
@@ -563,9 +564,12 @@ function SlideCanvas({
   }
 
   // Table preview component — headers/cells are directly editable in place.
-  const TablePreview = ({ tbl }) => tbl ? (
+  const TablePreview = ({ tbl }) => {
+    if (!tbl) return null
+    const view = previewTable(tbl, style, 6)
+    return (
     <div style={{ overflowX: 'auto' }}>
-      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '1.2cqw' }}>
+      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: `${view.fontCqw}cqw` }}>
         <thead>
           <tr>{tbl.headers.map((h, i) => (
             <th
@@ -579,7 +583,7 @@ function SlideCanvas({
           ))}</tr>
         </thead>
         <tbody>
-          {tbl.rows.slice(0, 6).map((row, ri) => (
+          {view.rows.map((row, ri) => (
             <tr key={ri} style={{ background: ri % 2 === 0 ? 'rgba(0,0,0,0.04)' : 'transparent' }}>
               {tbl.headers.map((_, ci) => (
                 <td
@@ -588,16 +592,17 @@ function SlideCanvas({
                   suppressContentEditableWarning
                   onPointerDown={stopForEdit}
                   onBlur={e => onTableCellChange?.(ri, ci, e.currentTarget.textContent)}
-                  style={{ color: textCol, padding: '2px 6px', border: '0.5px solid rgba(128,128,128,0.2)', whiteSpace: 'nowrap', outline: 'none', cursor: onTableCellChange ? 'text' : 'default' }}
+                  style={{ color: textCol, padding: view.showAll ? '0 6px' : '2px 6px', border: '0.5px solid rgba(128,128,128,0.2)', whiteSpace: 'nowrap', outline: 'none', cursor: onTableCellChange ? 'text' : 'default' }}
                 >{row[ci] ?? ''}</td>
               ))}
             </tr>
           ))}
         </tbody>
       </table>
-      {tbl.rows.length > 6 && <p style={{ fontSize: '1.1cqw', color: textCol, opacity: 0.6, margin: '2px 0 0' }}>+{tbl.rows.length - 6} more rows</p>}
+      {view.hidden > 0 && <p style={{ fontSize: '1.1cqw', color: textCol, opacity: 0.6, margin: '2px 0 0' }}>+{view.hidden} more rows</p>}
     </div>
-  ) : null
+    )
+  }
 
   // Default: title-top — this is the only layout the pptx exporter actually
   // produces (other layout choices only affect bgImage/contentImage
@@ -1256,6 +1261,15 @@ export default function SlideEditor({ slide, onSave, onClose }) {
                       onClick={() => setTable(null)}>Remove table</button>
                   )}
                 </div>
+
+                {table && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'pointer', margin: '2px 0 8px' }}
+                    title="Show every row on the slide, shrinking the text to fit the table box (also applies to the exported PowerPoint)">
+                    <input type="checkbox" checked={!!draft.style.tableShowAll} onChange={e => updateStyle('tableShowAll', e.target.checked)} />
+                    Show all rows (shrink to fit)
+                    {!draft.style.tableShowAll && table.rows.length > 6 && <span style={{ color: 'var(--color-text-muted)' }}>· {table.rows.length - 6} hidden in preview</span>}
+                  </label>
+                )}
 
                 {table && (
                   <div style={styles.tableEditor}>
