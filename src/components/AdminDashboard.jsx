@@ -152,6 +152,68 @@ function UsersTab({ currentUserId }) {
   )
 }
 
+// ── Client divisions editor ───────────────────────────────────────────────────
+// value: { divisions: [{ id, name }], divisionDepts: [deptId] }
+function newDivisionId() { return Math.random().toString(36).slice(2, 10) }
+
+function DivisionsEditor({ value, onChange }) {
+  const { divisions, divisionDepts } = value
+  const set = patch => onChange({ ...value, ...patch })
+  const [draft, setDraft] = useState('')
+
+  function addDivision() {
+    const names = draft.split(/[\n,]/).map(n => n.trim()).filter(Boolean)
+    if (!names.length) return
+    const existing = new Set(divisions.map(d => d.name.toLowerCase()))
+    const added = names.filter(n => !existing.has(n.toLowerCase()) && existing.add(n.toLowerCase())).map(name => ({ id: newDivisionId(), name }))
+    set({ divisions: [...divisions, ...added] })
+    setDraft('')
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        {divisions.map((d, i) => (
+          <span key={d.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: '0.5px solid var(--color-border)', borderRadius: 99, padding: '2px 4px 2px 10px', background: 'var(--color-bg)' }}>
+            <input
+              style={{ border: 'none', outline: 'none', background: 'none', fontSize: 12, color: 'var(--color-text-primary)', width: Math.max(60, d.name.length * 7) }}
+              value={d.name}
+              onChange={e => set({ divisions: divisions.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })}
+              aria-label="Division name"
+            />
+            <button style={{ ...S.ghostBtn, border: 'none', padding: '0 6px' }} title="Remove division" onClick={() => set({ divisions: divisions.filter((_, j) => j !== i) })}>✕</button>
+          </span>
+        ))}
+        <input
+          style={{ ...S.input, minWidth: 220 }}
+          placeholder={divisions.length ? 'Add another division' : 'Division names (comma-separated)'}
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addDivision() } }}
+        />
+        <button style={S.ghostBtn} onClick={addDivision} disabled={!draft.trim()}>＋ Add</button>
+      </div>
+      {divisions.length > 0 && (
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Create a set of slides per division for:</span>
+          {DEPARTMENTS.map(dep => (
+            <label key={dep.id} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={divisionDepts.includes(dep.id)}
+                onChange={e => set({ divisionDepts: e.target.checked ? [...divisionDepts, dep.id] : divisionDepts.filter(x => x !== dep.id) })}
+              />
+              {dep.name}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const emptyDivisions = () => ({ divisions: [], divisionDepts: DEPARTMENTS.map(d => d.id) })
+
 // ── Clients tab ───────────────────────────────────────────────────────────────
 function ClientsTab({ onClientsChange }) {
   const [clients,     setClients]     = useState([])
@@ -161,6 +223,10 @@ function ClientsTab({ onClientsChange }) {
   const [adding,      setAdding]      = useState(false)
   const [confirmDel,   setConfirmDel]   = useState(null)
   const [confirmClear, setConfirmClear] = useState(null)
+  const [newDivs,      setNewDivs]      = useState(emptyDivisions)
+  const [showNewDivs,  setShowNewDivs]  = useState(false)
+  const [editDivs,     setEditDivs]     = useState(null) // { id, divisions, divisionDepts }
+  const [savingDivs,   setSavingDivs]   = useState(false)
 
   useEffect(() => {
     api.adminGetClients().then(setClients).catch(e => setErr(e.message)).finally(() => setLoading(false))
@@ -170,13 +236,36 @@ function ClientsTab({ onClientsChange }) {
     if (!newName.trim()) return
     setAdding(true); setErr('')
     try {
-      const created = await api.createClient(newName.trim())
+      const extra = newDivs.divisions.length ? { divisions: cleanDivs(newDivs.divisions), divisionDepts: newDivs.divisionDepts } : {}
+      const created = await api.createClient(newName.trim(), extra)
       const updated = [...clients, { ...created, slide_count: 0, total_tokens: 0, estimated_cost: 0 }]
       setClients(updated)
       onClientsChange?.(updated)
-      setNewName('')
+      setNewName(''); setNewDivs(emptyDivisions()); setShowNewDivs(false)
     } catch (e) { setErr(e.message) }
     finally { setAdding(false) }
+  }
+
+  function cleanDivs(list) {
+    return list.map(d => ({ ...d, name: d.name.trim() })).filter(d => d.name)
+  }
+
+  function openDivisions(c) {
+    if (editDivs?.id === c.id) { setEditDivs(null); return }
+    const divisions = Array.isArray(c.divisions) ? c.divisions : []
+    setEditDivs({ id: c.id, divisions, divisionDepts: divisions.length ? (c.division_depts ?? []) : DEPARTMENTS.map(d => d.id) })
+  }
+
+  async function saveDivisions() {
+    setSavingDivs(true); setErr('')
+    try {
+      const saved = await api.updateClientDivisions(editDivs.id, cleanDivs(editDivs.divisions), editDivs.divisionDepts)
+      const updated = clients.map(c => (c.id === saved.id ? { ...c, divisions: saved.divisions, division_depts: saved.division_depts } : c))
+      setClients(updated)
+      onClientsChange?.(updated)
+      setEditDivs(null)
+    } catch (e) { setErr(e.message) }
+    finally { setSavingDivs(false) }
   }
 
   async function handleDelete(id) {
@@ -215,23 +304,37 @@ function ClientsTab({ onClientsChange }) {
           onChange={e => setNewName(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleAdd()}
         />
+        <button style={S.ghostBtn} onClick={() => setShowNewDivs(v => !v)}>
+          {showNewDivs ? 'Hide divisions' : newDivs.divisions.length ? `Divisions (${newDivs.divisions.length})` : '＋ Divisions'}
+        </button>
         <button style={S.primaryBtn} onClick={handleAdd} disabled={adding || !newName.trim()}>
           {adding ? 'Adding…' : '+ Add client'}
         </button>
+        {showNewDivs && (
+          <div style={{ flexBasis: '100%', paddingTop: 6 }}>
+            <DivisionsEditor value={newDivs} onChange={setNewDivs} />
+          </div>
+        )}
       </div>
 
       <table style={S.table}>
         <thead>
           <tr>
-            {['Client name', 'Slides', 'Token usage', 'Est. cost', 'Created', ''].map(h => (
+            {['Client name', 'Divisions', 'Slides', 'Token usage', 'Est. cost', 'Created', ''].map(h => (
               <th key={h} style={S.th}>{h}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {clients.map(c => (
-            <tr key={c.id} style={S.tr}>
+            <React.Fragment key={c.id}>
+            <tr style={S.tr}>
               <td style={S.td}>{c.name}</td>
+              <td style={S.td}>
+                <button style={S.ghostBtn} onClick={() => openDivisions(c)} title="Edit divisions">
+                  {c.divisions?.length ? `${c.divisions.length} division${c.divisions.length === 1 ? '' : 's'}` : 'None'} ✎
+                </button>
+              </td>
               <td style={S.td}>{c.slide_count}</td>
               <td style={S.td}>{fmtTokens(c.total_tokens)}</td>
               <td style={S.td}>{fmtCost(c.estimated_cost)}</td>
@@ -259,6 +362,22 @@ function ClientsTab({ onClientsChange }) {
                 </div>
               </td>
             </tr>
+            {editDivs?.id === c.id && (
+              <tr><td colSpan={7} style={{ ...S.td, background: 'var(--color-bg-secondary)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+                    Divisions for <strong>{c.name}</strong>. Ticked departments generate their slides once per division, and get a folder per division in their Files tab (Global Files too).
+                    Removing a division keeps its folder's files but they stop being used for that division.
+                  </div>
+                  <DivisionsEditor value={editDivs} onChange={setEditDivs} />
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button style={S.primaryBtn} onClick={saveDivisions} disabled={savingDivs}>{savingDivs ? 'Saving…' : 'Save divisions'}</button>
+                    <button style={S.ghostBtn} onClick={() => setEditDivs(null)} disabled={savingDivs}>Cancel</button>
+                  </div>
+                </div>
+              </td></tr>
+            )}
+            </React.Fragment>
           ))}
         </tbody>
       </table>

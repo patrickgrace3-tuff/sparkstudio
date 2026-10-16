@@ -55,6 +55,10 @@ No preamble, no markdown fences.
 }
 
 
+// Workers run per department, or per department + division for clients with divisions
+const contribKey = c => (c.division ? `${c.dept}::${c.division}` : c.dept)
+const slideKey   = s => (s.division ? `${s.dept}::${s.division}` : s.dept)
+
 // Stable fingerprint for a department's input — used to detect changes between generations.
 function deptFingerprint(contrib) {
   const slides = (contrib.slides ?? []).map(s => `${s._id}|${s.title}|${s.body ?? ''}|imgs:${(s.style?.images?.length ?? 0)}`)
@@ -95,16 +99,20 @@ export async function generateDeck(deptContributions, clientName = "", clientId 
 
   const system = `You are an AI agent that assembles executive presentations from department slide submissions. Return structured JSON only.`.trim()
 
-  const imageList = allImageFiles.length
-    ? `\nAvailable images (you may reference one per slide by exact filename):\n${allImageFiles.map(i => `- ${i.name}`).join('\n')}`
+  const imageListFor = images => images.length
+    ? `\nAvailable images (you may reference one per slide by exact filename):\n${images.map(i => `- ${i.name}`).join('\n')}`
     : ''
 
   const globalSection = globalSummary
     ? `\nShared company context (applies to all departments):\n${globalSummary}\n`
     : ''
 
-  const slideRules = (dept) => `Create slides for the "${dept}" department of client: ${safeName}.
-${globalSection}
+  const slideRules = (dept, division, images = allImageFiles) => `Create slides for the "${dept}" department of client: ${safeName}.
+${globalSection}${division ? `
+DIVISION FOCUS: This client has several divisions. This set of slides is ONLY for the "${division}" division.
+- Use only data, figures and facts about the "${division}" division (from its division files and any shared files that mention it). Do not mix in other divisions' numbers.
+- If the files have no data for "${division}" on a slide's topic, say so briefly rather than inventing figures.
+` : ''}
 RULES — follow exactly:
 - The "dept" field on every slide must be exactly: ${dept}
 - Do NOT create any slide with dept "All", "Overview", "Introduction", "Closing", "Conclusion", or "Summary"
@@ -114,8 +122,8 @@ RULES — follow exactly:
 - Each slide has "Instructions" — follow them exactly to produce the slide content.
 - Review ALL supporting file content to fulfil each slide's instructions. Extract specific data, numbers, and facts.
 - If instructions describe tabular data, output a "table" field with "headers" and "rows". Fill in any [from file] or [calculate] placeholders.
-- Bullets: use only for narrative context not covered by the table. NO MORE than 4 bullet points. If content overflows, add a continuation slide with " (cont'd)" appended to the title sharing the same "sourceId".${allImageFiles.length ? `\n- If an image is relevant, include "imageFile" (exact filename) and "imagePlacement" ("bottom" for charts/data, "right" for product/portrait). One image per slide max.` : ''}
-${imageList}
+- Bullets: use only for narrative context not covered by the table. NO MORE than 4 bullet points. If content overflows, add a continuation slide with " (cont'd)" appended to the title sharing the same "sourceId".${images.length ? `\n- If an image is relevant, include "imageFile" (exact filename) and "imagePlacement" ("bottom" for charts/data, "right" for product/portrait). One image per slide max.` : ''}
+${imageListFor(images)}
 
 Return ONLY valid JSON, no markdown:
 {
@@ -126,7 +134,7 @@ Return ONLY valid JSON, no markdown:
       "dept": "${dept}",
       "bullets": ["narrative context only"],
       "table": { "headers": ["Col A", "Col B"], "rows": [["r1c1", "r1c2"]] },
-      "sourceId": "the input slide's exact Id"${allImageFiles.length ? ',\n      "imageFile": "optional-filename.png",\n      "imagePlacement": "bottom or right"' : ''}
+      "sourceId": "the input slide's exact Id"${images.length ? ',\n      "imageFile": "optional-filename.png",\n      "imagePlacement": "bottom or right"' : ''}
     }
   ]
 }
@@ -141,21 +149,22 @@ Department slides:
   const existingByDept = {}
   if (existingDeck?.slides) {
     for (const s of existingDeck.slides) {
-      if (s.dept) (existingByDept[s.dept] ??= []).push(s)
+      if (s.dept) (existingByDept[slideKey(s)] ??= []).push(s)
     }
   }
 
   // Run each department in parallel on its own worker key
   const deptResults = await Promise.all(
     deptContributions.map(async (contrib, deptIdx) => {
-      const { dept, slides, deptSummary, fileSummary } = contrib
+      const { dept, division, slides, deptSummary, fileSummary } = contrib
+      const key = contribKey(contrib)
 
-      // Skip Claude if nothing changed for this department since last generation
+      // Skip Claude if nothing changed for this department (and division) since last generation
       const fp = deptFingerprint(contrib)
-      if (existingByDept[dept]?.length && existingFps[dept] === fp) {
-        console.log(`[generateDeck] Skipping "${dept}" — no changes detected`)
+      if (existingByDept[key]?.length && existingFps[key] === fp) {
+        console.log(`[generateDeck] Skipping "${key}" — no changes detected`)
         // Mark slides so handleGenerate knows not to re-merge or re-split them
-        return existingByDept[dept].map(s => ({ ...s, _fromExisting: true }))
+        return existingByDept[key].map(s => ({ ...s, _fromExisting: true }))
       }
 
       const slideText = slides.map(s => {
@@ -166,19 +175,23 @@ Department slides:
         const instructions = preGen
           ? `\n  Pre-computed content — copy EXACTLY into bullets and table fields, do not change:\n  bullets: ${JSON.stringify(preGen.bullets)}\n  table: ${JSON.stringify(preGen.table)}`
           : cleanBody ? `\n  Instructions: ${cleanBody}` : ''
-        const imgHint = wantsImg && allImageFiles.length ? `\n  IMAGE REQUIRED: include an "imageFile" field for this slide.` : ''
+        const imgHint = wantsImg && (division ? (contrib.imageFiles ?? []) : allImageFiles).length ? `\n  IMAGE REQUIRED: include an "imageFile" field for this slide.` : ''
         return `  Id: ${s._id}\n  Title: ${s.title}${instructions}${imgHint}`
       }).join('\n')
 
       const summary  = deptSummary ?? fileSummary ?? ''
       const fileText = summary ? `\nDepartment files:\n${summary}` : ''
-      const prompt   = slideRules(dept) + slideText + fileText
+      // Division workers only see their own (and shared) PDFs and images
+      const images   = division ? (contrib.imageFiles ?? []) : allImageFiles
+      const pdfs     = division ? (contrib.pdfFiles ?? [])   : allPdfFiles
+      const prompt   = slideRules(dept, division, images) + slideText + fileText
 
       try {
-        const raw   = await callClaude(prompt, system, 4000, { imageFiles: allImageFiles, pdfFiles: allPdfFiles, model: ANTHROPIC_MODEL_DECK, clientId, workerIndex: deptIdx })
+        const raw   = await callClaude(prompt, system, 4000, { imageFiles: images, pdfFiles: pdfs, model: ANTHROPIC_MODEL_DECK, clientId, workerIndex: deptIdx })
         const clean = raw.replace(/```json|```/g, '').trim()
         const parsed = JSON.parse(clean)
-        return parsed.slides ?? []
+        // Tag division slides ourselves rather than trusting the model to
+        return (parsed.slides ?? []).map(sl => (division ? { ...sl, dept, division } : sl))
       } catch (err) {
         console.error(`Worker ${deptIdx} failed for dept "${dept}":`, err)
         return []
@@ -188,7 +201,7 @@ Department slides:
 
   // Record fingerprints for each dept so the next generation can skip unchanged ones
   const newFps = {}
-  for (const contrib of deptContributions) newFps[contrib.dept] = deptFingerprint(contrib)
+  for (const contrib of deptContributions) newFps[contribKey(contrib)] = deptFingerprint(contrib)
 
   const deck = {
     title: `${safeName} Presentation`,

@@ -136,7 +136,7 @@ router.get('/stats', async (req, res) => {
 router.get('/clients', async (req, res) => {
   try {
     const result = await query(`
-      SELECT c.id, c.name, c.created_at,
+      SELECT c.id, c.name, c.divisions, c.division_depts, c.created_at,
              COUNT(DISTINCT s.id)               AS slide_count,
              COALESCE(SUM(tl.input_tokens),  0) AS input_tokens,
              COALESCE(SUM(tl.output_tokens), 0) AS output_tokens,

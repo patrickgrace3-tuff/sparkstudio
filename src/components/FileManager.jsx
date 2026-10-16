@@ -1,14 +1,21 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useMemo } from 'react'
+import { ensureDivisionFolders } from '../lib/divisions.js'
 import { loadFiles, saveFiles, loadGlobalFiles, saveGlobalFiles, uid, fetchLinkContent } from '../lib/files.js'
 import WordEditor  from './WordEditor.jsx'
 import ExcelEditor from './ExcelEditor.jsx'
 import RequirementsChecklist from './RequirementsChecklist.jsx'
 import LookerPanel from './LookerPanel.jsx'
 
-export default function FileManager({ clientId, clientName, deptId, deptName, deptColor, isGlobal = false }) {
-  const [data,       setData]       = useState(() =>
+export default function FileManager({ clientId, clientName, deptId, deptName, deptColor, isGlobal = false, divisions = [] }) {
+  const [rawData,    setData]       = useState(() =>
     isGlobal ? loadGlobalFiles(clientId) : loadFiles(clientId, deptId)
   )
+  // Division clients: one system folder per division at the root. Added in
+  // memory only and saved with the next real change, so opening the tab can
+  // never overwrite files that are still loading from the server.
+  const divisionsKey = divisions.map(d => `${d.id}:${d.name}`).join('|')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const data = useMemo(() => ensureDivisionFolders(rawData, divisions), [rawData, divisionsKey])
   const [activeFolderId, setActiveFolderId] = useState(null) // null = root
   const [openFile,   setOpenFile]   = useState(null)  // file being edited
   const [newFolderMode, setNewFolderMode] = useState(false)
@@ -24,6 +31,7 @@ export default function FileManager({ clientId, clientName, deptId, deptName, de
     if (isGlobal) saveGlobalFiles(clientId, updated)
     else saveFiles(clientId, deptId, updated)
   }
+
 
   // ── Folders ────────────────────────────────────────────────────────────────
   function createFolder() {
@@ -333,8 +341,11 @@ export default function FileManager({ clientId, clientName, deptId, deptName, de
             <button style={styles.itemMain} onClick={() => setActiveFolderId(folder.id)}>
               <span style={styles.itemIcon}>📁</span>
               <span style={styles.itemName}>{folder.name}</span>
+              {folder.divisionId && <span style={styles.divisionBadge} title="Files here are only used for this division's slides">Division</span>}
             </button>
-            <button style={styles.itemDelete} onClick={() => deleteFolder(folder.id)}>✕</button>
+            {folder.divisionId
+              ? <span style={{ width: 24 }} />
+              : <button style={styles.itemDelete} onClick={() => deleteFolder(folder.id)}>✕</button>}
           </div>
         ))}
 
@@ -374,6 +385,7 @@ const styles = {
   lookerBtn:      { borderColor: '#4285f4', color: '#4285f4' },
   ghostBtn:       { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '5px 12px', fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'pointer', whiteSpace: 'nowrap' },
   folderInputRow: { display: 'flex', alignItems: 'center', gap: 6 },
+  divisionBadge:  { fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#D85A30', background: '#D85A3014', border: '0.5px solid #D85A3055', borderRadius: 99, padding: '1px 7px', marginLeft: 8 },
   folderInput:    { background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: '4px 9px', fontSize: 12, color: 'var(--color-text-primary)', outline: 'none', width: 160 },
   breadcrumb:     { display: 'flex', alignItems: 'center', gap: 2, padding: '7px 16px', borderBottom: '0.5px solid var(--color-border)', background: 'var(--color-bg-secondary)' },
   crumbBtn:       { background: 'none', border: 'none', fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'pointer', padding: '1px 4px', borderRadius: 4 },
