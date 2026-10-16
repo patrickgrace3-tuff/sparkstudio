@@ -11,7 +11,8 @@ function getText(el) {
 }
 
 function getBullets(sp) {
-  const txBody = sp.getElementsByTagNameNS(NS_A, 'txBody')[0]
+  // Slide shapes use p:txBody; a:txBody only appears inside tables
+  const txBody = sp.getElementsByTagNameNS(NS_P, 'txBody')[0] ?? sp.getElementsByTagNameNS(NS_A, 'txBody')[0]
   if (!txBody) return []
   const bullets = []
   for (const para of txBody.getElementsByTagNameNS(NS_A, 'p')) {
@@ -22,6 +23,18 @@ function getBullets(sp) {
     if (text) bullets.push(text)
   }
   return bullets
+}
+
+// First native table on the slide → { headers, rows } (the shape export.js renders)
+function getTable(doc) {
+  const tbl = doc.getElementsByTagNameNS(NS_A, 'tbl')[0]
+  if (!tbl) return null
+  const rows = Array.from(tbl.getElementsByTagNameNS(NS_A, 'tr')).map(tr =>
+    Array.from(tr.getElementsByTagNameNS(NS_A, 'tc')).map(tc => getText(tc))
+  ).filter(r => r.some(c => c))
+  if (rows.length < 2) return null
+  const [headers, ...body] = rows
+  return { headers, rows: body }
 }
 
 function parseSlideXml(xml) {
@@ -50,7 +63,7 @@ function parseSlideXml(xml) {
     title = bodyBullets.shift()
   }
 
-  return { title, bullets: bodyBullets }
+  return { title, bullets: bodyBullets, table: getTable(doc) }
 }
 
 export async function importSlidesFromPptx(file) {
@@ -67,12 +80,13 @@ export async function importSlidesFromPptx(file) {
   const slides = []
   for (const path of slideEntries) {
     const xml = await zip.file(path).async('string')
-    const { title, bullets } = parseSlideXml(xml)
-    if (!title && bullets.length === 0) continue
+    const { title, bullets, table } = parseSlideXml(xml)
+    if (!title && bullets.length === 0 && !table) continue
     slides.push({
       title: title || 'Imported Slide',
       bullets,
       body: bullets.join('\n'),
+      table,
     })
   }
 

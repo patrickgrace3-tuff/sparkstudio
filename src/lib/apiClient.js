@@ -106,6 +106,12 @@ export const api = {
     }).then(r => r.json())
   },
 
+  // Market Research decks (content extracted from uploaded PPTX)
+  getMarketResearchDecks:   ()   => apiFetch('/api/market-research'),
+  getMarketResearchDeck:    (id) => apiFetch(`/api/market-research/${id}`),
+  createMarketResearchDeck: (d)  => apiFetch('/api/market-research', { method: 'POST', body: d }),
+  deleteMarketResearchDeck: (id) => apiFetch(`/api/market-research/${id}`, { method: 'DELETE' }),
+
   // Templates
   getTemplates:   ()          => apiFetch('/api/templates'),
   createTemplate: (t)         => apiFetch('/api/templates',       { method: 'POST', body: t }),

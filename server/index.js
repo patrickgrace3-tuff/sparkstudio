@@ -15,6 +15,7 @@ import adminRoutes        from './routes/admin.js'
 import tokenLogRoutes      from './routes/tokenlogs.js'
 import claudeRoutes        from './routes/claude.js'
 import slideRequestRoutes  from './routes/slideRequests.js'
+import marketResearchRoutes from './routes/marketResearch.js'
 
 const app  = express()
 const PORT = process.env.PORT || 3001
@@ -44,13 +45,14 @@ app.use('/api/admin',         adminRoutes)
 app.use('/api/tokenlogs',      tokenLogRoutes)
 app.use('/api/claude',         claudeRoutes)
 app.use('/api/slide-requests', slideRequestRoutes)
+app.use('/api/market-research', marketResearchRoutes)
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }))
 
 // Run migrations on every startup (all statements use IF NOT EXISTS — safe to repeat)
 async function start() {
   try {
-    for (const file of ['001_initial.sql', '002_slide_requests.sql', '003_slides_table_field.sql', '004_user_metrics.sql', '005_slides_free_text_boxes.sql']) {
+    for (const file of ['001_initial.sql', '002_slide_requests.sql', '003_slides_table_field.sql', '004_user_metrics.sql', '005_slides_free_text_boxes.sql', '006_market_research.sql']) {
       const sql = readFileSync(`./migrations/${file}`, 'utf8')
       await pool.query(sql)
     }
