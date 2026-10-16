@@ -190,7 +190,7 @@ function buildSlideList(deck, funnelConfig, teamConfig, presentationOrder) {
   for (const group of groups) {
     list.push({ kind: 'section', label: `${group.dept} — section`, dept: group.dept })
     for (const slide of group.slides) {
-      list.push({ kind: 'content', label: slide.division ? `${group.dept} · ${slide.division}` : group.dept, slide })
+      list.push({ kind: 'content', label: slide._marketResearch ? `${group.dept} · Market Research` : slide.division ? `${group.dept} · ${slide.division}` : group.dept, slide })
     }
   }
   if (funnelConfig?.current) {
