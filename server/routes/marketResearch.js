@@ -7,15 +7,16 @@ const router = Router()
 const num = v => (Number.isFinite(+v) ? +v : 0)
 const box = b => (b && typeof b === 'object' ? { x: num(b.x), y: num(b.y), w: num(b.w), h: num(b.h) } : null)
 
+// Editor style fields are kept as-is (admin-only input); boxes and images are validated
 function sanitizeStyle(st) {
-  const out = {}
-  if (!st || typeof st !== 'object') return out
+  if (!st || typeof st !== 'object' || Array.isArray(st)) return {}
+  const out = { ...st }
   if (st.bodyBox)  out.bodyBox  = box(st.bodyBox)
   if (st.tableBox) out.tableBox = box(st.tableBox)
   if (Array.isArray(st.images)) {
     out.images = st.images
       .filter(img => typeof img?.src === 'string' && img.src.startsWith('data:image/'))
-      .map(img => ({ src: img.src, ...box(img), mode: img.mode === 'crop' ? 'crop' : 'scale' }))
+      .map(img => ({ ...img, src: img.src, ...box(img), mode: img.mode === 'crop' ? 'crop' : 'scale' }))
   }
   return out
 }
@@ -39,6 +40,13 @@ function sanitizeSlide(s) {
           box: box(ft?.box) ?? { x: 0.045, y: 0.55, w: 0.829, h: 0.25 },
           fontSize: num(ft?.fontSize) || 14,
           textAlign: ['left', 'center', 'right'].includes(ft?.textAlign) ? ft.textAlign : 'left',
+        }))
+      : null,
+    extraBulletBoxes: Array.isArray(s?.extraBulletBoxes)
+      ? s.extraBulletBoxes.map(eb => ({
+          ...eb,
+          bullets: Array.isArray(eb?.bullets) ? eb.bullets.map(String) : [],
+          box: box(eb?.box) ?? { x: 0.5, y: 0.19, w: 0.4, h: 0.63 },
         }))
       : null,
     style:   sanitizeStyle(s?.style),
@@ -87,6 +95,30 @@ router.post('/', requireAdmin, async (req, res) => {
       [name.trim(), fileName ?? '', JSON.stringify(clean), clean.length, req.user.id]
     )
     res.status(201).json(result.rows[0])
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// PUT /api/market-research/:id — admin edits a stored deck (name and/or slides)
+router.put('/:id', requireAdmin, async (req, res) => {
+  const { name, slides } = req.body
+  if (name != null && !String(name).trim()) return res.status(400).json({ error: 'name cannot be empty' })
+  if (slides != null && (!Array.isArray(slides) || !slides.length)) return res.status(400).json({ error: 'slides must be a non-empty array' })
+  const clean = slides ? slides.map(sanitizeSlide) : null
+  try {
+    const result = await query(
+      `UPDATE market_research_decks SET
+         name        = COALESCE($1, name),
+         slides      = COALESCE($2::jsonb, slides),
+         slide_count = COALESCE($3, slide_count)
+       WHERE id = $4
+       RETURNING id, name, file_name, slide_count, created_at`,
+      [name != null ? String(name).trim() : null, clean ? JSON.stringify(clean) : null, clean ? clean.length : null, req.params.id]
+    )
+    if (!result.rows.length) return res.status(404).json({ error: 'Not found' })
+    res.json(result.rows[0])
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Server error' })
