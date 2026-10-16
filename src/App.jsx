@@ -87,12 +87,24 @@ export default function App() {
       .finally(() => setAuthChecked(true))
   }, [])
 
+  // ── Remember the selected client across refreshes (per user, this browser) ──
+  const activeClientKey = currentUser ? `ss:activeClient:${currentUser.id}` : null
+
+  useEffect(() => {
+    if (!activeClientKey || !activeClientId) return
+    try { localStorage.setItem(activeClientKey, activeClientId) } catch { /* storage unavailable */ }
+  }, [activeClientKey, activeClientId])
+
   // ── Load clients after login ───────────────────────────────────────────────
   useEffect(() => {
     if (!currentUser) return
     api.getClients().then(rows => {
       setClients(rows)
-      if (rows.length) setActiveClientId(rows[0].id)
+      if (!rows.length) return
+      let savedId = null
+      try { savedId = localStorage.getItem(`ss:activeClient:${currentUser.id}`) } catch { /* storage unavailable */ }
+      // Fall back to the first client if the saved one was deleted
+      setActiveClientId(rows.some(r => r.id === savedId) ? savedId : rows[0].id)
     }).catch(console.error)
     api.getTemplates().then(setTemplates).catch(console.error)
     loadPresentationOrder()
