@@ -85,12 +85,16 @@ ${runs}
  * Build a PowerPoint native table shape XML.
  * Positioned below the bullet content area.
  */
-function buildTableShapeXml(table, accentHex) {
+function buildTableShapeXml(table, accentHex, box = null) {
   const accent   = accentHex || 'CD2F37'
   const headers  = table.headers || []
   const rows     = table.rows    || []
   const colCount = headers.length
-  const colWidth = Math.floor(9144000 / Math.max(colCount, 1)) // spread across ~9.1"
+  // A custom tableBox (moved in the editor or imported) sets the position/width
+  const offX     = box ? Math.round(box.x * SLIDE_W) : 551425
+  const offY     = box ? Math.round(box.y * SLIDE_H) : 4200000
+  const frameW   = box ? Math.round(box.w * SLIDE_W) : 10104300
+  const colWidth = Math.floor((box ? frameW : 9144000) / Math.max(colCount, 1)) // spread across ~9.1" by default
 
   const cellXml = (text, isHeader) => {
     const fill   = isHeader ? `<a:solidFill><a:srgbClr val="${accent}"/></a:solidFill>` : '<a:noFill/>'
@@ -140,7 +144,7 @@ function buildTableShapeXml(table, accentHex) {
           <p:nvPr/>
         </p:nvSpPr>
         <p:spPr>
-          <a:xfrm><a:off x="551425" y="4200000"/><a:ext cx="10104300" cy="${tableH}"/></a:xfrm>
+          <a:xfrm><a:off x="${offX}" y="${offY}"/><a:ext cx="${frameW}" cy="${tableH}"/></a:xfrm>
           <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
           <a:noFill/>
         </p:spPr>
@@ -156,7 +160,7 @@ function buildTableShapeXml(table, accentHex) {
           <p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr>
           <p:nvPr/>
         </p:nvGraphicFramePr>
-        <p:xfrm><a:off x="551425" y="4200000"/><a:ext cx="10104300" cy="${tableH}"/></p:xfrm>
+        <p:xfrm><a:off x="${offX}" y="${offY}"/><a:ext cx="${frameW}" cy="${tableH}"/></p:xfrm>
         <a:graphic>
           <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table">
             <a:tbl>
@@ -273,7 +277,12 @@ function patchContentSlide(zip, xml, relsXml, slide, table = null) {
 
   // 2. Replace the body text box that contains "Slide Body"
   const accentHex = (accentColor ?? 'CD2F37').replace('#', '').toUpperCase()
-  const bulletXml = buildBulletParagraphs(bullets.length ? bullets : ['No content provided.'], accentHex)
+  // Placeholder text only when the slide is otherwise empty — imported slides
+  // may carry all their content in images, tables or text boxes instead
+  const hasOtherContent = !!(table?.headers?.length || style.images?.length || slide.freeTextBoxes?.some(ft => ft.text?.trim()) || slide.extraBulletBoxes?.some(eb => eb.bullets?.length))
+  const bulletXml = bullets.length ? buildBulletParagraphs(bullets, accentHex)
+    : hasOtherContent ? '<a:p><a:endParaRPr lang="en-US" dirty="0"/></a:p>'
+    : buildBulletParagraphs(['No content provided.'], accentHex)
 
   // PowerPoint-style repositioning of the bullet content box (defaults match
   // the template's original placeholder position, so untouched slides are unaffected)
@@ -352,7 +361,13 @@ ${ebBulletXml}
     const ftCy = Math.round(box.h * SLIDE_H)
     const ptSize = Math.round((ft.fontSize ?? 14) * 100) // hundredths of a point
     const lines  = ft.text.split('\n')
-    const paraXml = lines.map(line => `        <a:p><a:r><a:rPr lang="en-US" sz="${ptSize}" dirty="0"/><a:t>${line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</a:t></a:r></a:p>`).join('\n')
+    const algn    = ft.textAlign === 'center' ? 'ctr' : ft.textAlign === 'right' ? 'r' : 'l'
+    const paraXml = lines.map(line => {
+      const runs = parseRichText(line).map(seg =>
+        `<a:r><a:rPr lang="en-US" sz="${ptSize}"${seg.bold ? ' b="1"' : ''}${seg.italic ? ' i="1"' : ''} dirty="0"/><a:t>${escapeXml(seg.text)}</a:t></a:r>`
+      ).join('')
+      return `        <a:p><a:pPr algn="${algn}"/>${runs}</a:p>`
+    }).join('\n')
     const ftShape = `<p:sp>
       <p:nvSpPr>
         <p:cNvPr id="${_nextShapeId++}" name="FreeText"/>
@@ -377,7 +392,7 @@ ${paraXml}
 
   // 3c. Inject table shape before </p:spTree> if table data provided
   if (table && table.headers?.length > 0 && table.rows?.length > 0) {
-    const tableXml = buildTableShapeXml(table, accentHex)
+    const tableXml = buildTableShapeXml(table, accentHex, style.tableBox ?? null)
     out = out.replace('</p:spTree>', `${tableXml}\n</p:spTree>`)
   }
 

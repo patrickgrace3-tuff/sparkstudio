@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { api } from '../lib/apiClient.js'
 import { importSlidesFromPptx } from '../lib/importPptx.js'
+import { SlideThumbnail } from './SlideCard.jsx'
 
 // ── Stat tile ─────────────────────────────────────────────────────────────────
 function StatTile({ label, value, color }) {
@@ -789,7 +790,7 @@ function MarketResearchTab() {
         <input ref={fileRef} type="file" accept=".pptx" style={{ display: 'none' }} onChange={handleFile} />
       </div>
       <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: 0 }}>
-        Upload the latest market research PowerPoint. Only the content (titles, bullet text and tables) is kept — the original design is discarded and the slides are recreated on the active PowerPoint template when users add them to a client.
+        Upload the latest market research PowerPoint. All content is kept — titles, bullets, text boxes, images, tables, chart data and speaker notes — but the original design is discarded and each slide is recreated on the active PowerPoint template. Previews below show exactly how slides will look.
       </p>
 
       {err && <div style={S.error}>{err}</div>}
@@ -856,18 +857,31 @@ function MarketResearchTab() {
   )
 }
 
+// Previews each slide exactly as it will be rebuilt on the PowerPoint template
 function MarketResearchSlideList({ slides }) {
   return (
-    <ol style={{ margin: 0, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflowY: 'auto' }}>
-      {slides.map((s, i) => (
-        <li key={i} style={{ fontSize: 12, color: 'var(--color-text-primary)' }}>
-          <strong>{s.title}</strong>
-          <span style={{ color: 'var(--color-text-muted)' }}>
-            {' — '}{s.bullets?.length ?? 0} bullet{s.bullets?.length === 1 ? '' : 's'}{s.table ? ' · table' : ''}
-          </span>
-        </li>
-      ))}
-    </ol>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14, maxHeight: 560, overflowY: 'auto', padding: 2 }}>
+      {slides.map((s, i) => {
+        const parts = [
+          s.bullets?.length ? `${s.bullets.length} bullet${s.bullets.length === 1 ? '' : 's'}` : null,
+          s.freeTextBoxes?.length ? `${s.freeTextBoxes.length} text box${s.freeTextBoxes.length === 1 ? '' : 'es'}` : null,
+          s.style?.images?.length ? `${s.style.images.length} image${s.style.images.length === 1 ? '' : 's'}` : null,
+          s.table ? 'table' : null,
+          s.notes ? 'notes' : null,
+        ].filter(Boolean)
+        return (
+          <div key={i} style={{ border: '0.5px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--color-bg)' }}>
+            <SlideThumbnail slide={s} />
+            <div style={{ padding: '8px 10px' }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {i + 1}. {s.title}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>{parts.join(' · ') || 'Title only'}</div>
+            </div>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 

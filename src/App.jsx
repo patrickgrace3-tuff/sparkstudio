@@ -196,7 +196,7 @@ export default function App() {
       const withIds = imported.map(s => ({
         ...s,
         _id: `s${Date.now()}${Math.random().toString(36).slice(2)}`,
-        style: {},
+        style: s.style ?? {},
       }))
       setSlides({ ...allSlides, [activeDeptId]: [...deptSlides, ...withIds] })
     } catch (err) {
@@ -207,7 +207,8 @@ export default function App() {
   }
 
   // ── Market Research import ────────────────────────────────────────────────
-  // Stored content only — style is reset so slides use the standard template.
+  // Stored content only (text, images, tables and their positions) — rendered
+  // on the standard template, never the source deck's design.
   function handleImportMarketResearch(slides) {
     if (!slides.length) { alert('This market research deck has no slides.'); return }
     const withIds = slides.map(s => ({
@@ -216,8 +217,10 @@ export default function App() {
       body:    s.body ?? (s.bullets ?? []).join('\n'),
       table:   s.table ?? null,
       notes:   s.notes ?? '',
+      source:  s.source ?? '',
+      freeTextBoxes: s.freeTextBoxes ?? null,
       _id:     `s${Date.now()}${Math.random().toString(36).slice(2)}`,
-      style:   {},
+      style:   s.style ?? {},
     }))
     setSlides({ ...allSlides, [activeDeptId]: [...deptSlides, ...withIds] })
     setDeptTab('slides')
