@@ -13,6 +13,7 @@ import AdminPanel          from './components/AdminPanel.jsx'
 import SlideToTemplateModal from './components/SlideToTemplateModal.jsx'
 import AdminDashboard  from './components/AdminDashboard.jsx'
 import LoginScreen   from './components/LoginScreen.jsx'
+import MarketResearchPicker from './components/MarketResearchPicker.jsx'
 import { DEPARTMENTS } from './lib/constants.js'
 import { loadFunnelConfig } from './lib/funnel.js'
 import { loadTeamConfig }  from './lib/team.js'
@@ -40,6 +41,7 @@ export default function App() {
   const [isExporting,    setIsExporting]    = useState(false)
   const [isImporting,    setIsImporting]    = useState(false)
   const importInputRef = useRef(null)
+  const [showMarketResearch, setShowMarketResearch] = useState(false)
   const [editingSlide,   setEditingSlide]   = useState(null)
   const [showGlobal,     setShowGlobal]     = useState(false)
   const [showFunnel,     setShowFunnel]     = useState(false)
@@ -202,6 +204,23 @@ export default function App() {
     } finally {
       setIsImporting(false)
     }
+  }
+
+  // ── Market Research import ────────────────────────────────────────────────
+  // Stored content only — style is reset so slides use the standard template.
+  function handleImportMarketResearch(slides) {
+    if (!slides.length) { alert('This market research deck has no slides.'); return }
+    const withIds = slides.map(s => ({
+      title:   s.title,
+      bullets: s.bullets ?? [],
+      body:    s.body ?? (s.bullets ?? []).join('\n'),
+      table:   s.table ?? null,
+      notes:   s.notes ?? '',
+      _id:     `s${Date.now()}${Math.random().toString(36).slice(2)}`,
+      style:   {},
+    }))
+    setSlides({ ...allSlides, [activeDeptId]: [...deptSlides, ...withIds] })
+    setDeptTab('slides')
   }
 
   // ── AI ─────────────────────────────────────────────────────────────────────
@@ -418,6 +437,13 @@ export default function App() {
           {showAdmin && (
             <AdminPanel onClose={() => setShowAdmin(false)} onTemplatesChange={setTemplates} />
           )}
+          {showMarketResearch && (
+            <MarketResearchPicker
+              deptName={activeDept?.name}
+              onImport={handleImportMarketResearch}
+              onClose={() => setShowMarketResearch(false)}
+            />
+          )}
           {showAdminDashboard && (
             <AdminDashboard
               onClose={() => setShowAdminDashboard(false)}
@@ -562,6 +588,12 @@ export default function App() {
                     disabled={isImporting}
                   >
                     {isImporting ? 'Importing…' : '↑ Import PPTX'}
+                  </button>
+                  <button
+                    style={styles.importBtn}
+                    onClick={() => setShowMarketResearch(true)}
+                  >
+                    ↓ Market Research
                   </button>
                   <input
                     ref={importInputRef}

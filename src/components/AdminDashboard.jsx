@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { api } from '../lib/apiClient.js'
+import { importSlidesFromPptx } from '../lib/importPptx.js'
 
 // ── Stat tile ─────────────────────────────────────────────────────────────────
 function StatTile({ label, value, color }) {
@@ -709,6 +710,167 @@ function OverviewTab() {
   )
 }
 
+// ── Market Research tab ───────────────────────────────────────────────────────
+// Admins upload the latest market research deck. Only its content (titles,
+// bullets, tables) is extracted and stored — users then pull those slides into
+// a client, where they're rebuilt on the standard PowerPoint template.
+function MarketResearchTab() {
+  const [decks,     setDecks]     = useState([])
+  const [loading,   setLoading]   = useState(true)
+  const [pending,   setPending]   = useState(null) // { name, fileName, slides }
+  const [parsing,   setParsing]   = useState(false)
+  const [saving,    setSaving]    = useState(false)
+  const [expanded,  setExpanded]  = useState(null) // { id, slides }
+  const [msg,       setMsg]       = useState('')
+  const [err,       setErr]       = useState('')
+  const fileRef = React.useRef(null)
+
+  function load() {
+    setLoading(true)
+    api.getMarketResearchDecks()
+      .then(setDecks)
+      .catch(e => setErr(e.message))
+      .finally(() => setLoading(false))
+  }
+  useEffect(load, [])
+
+  async function handleFile(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (!file.name.toLowerCase().endsWith('.pptx')) { setErr('Only .pptx files are accepted'); return }
+    setParsing(true); setErr(''); setMsg('')
+    try {
+      const slides = await importSlidesFromPptx(file)
+      if (!slides.length) { setErr('No slide content found in this file.'); return }
+      setPending({ name: file.name.replace(/\.pptx$/i, ''), fileName: file.name, slides })
+    } catch (e) { setErr('Could not read PPTX: ' + e.message) }
+    finally { setParsing(false) }
+  }
+
+  async function handleSave() {
+    if (!pending?.name.trim()) { setErr('Give the deck a name'); return }
+    setSaving(true); setErr('')
+    try {
+      await api.createMarketResearchDeck(pending)
+      setPending(null)
+      setMsg('Market research saved — it is now available to all users.')
+      setTimeout(() => setMsg(''), 4000)
+      load()
+    } catch (e) { setErr(e.message) }
+    finally { setSaving(false) }
+  }
+
+  async function handleDelete(deck) {
+    if (!confirm(`Delete "${deck.name}"? Users will no longer be able to import it.`)) return
+    try {
+      await api.deleteMarketResearchDeck(deck.id)
+      if (expanded?.id === deck.id) setExpanded(null)
+      setDecks(ds => ds.filter(d => d.id !== deck.id))
+    } catch (e) { setErr(e.message) }
+  }
+
+  async function toggleExpand(deck) {
+    if (expanded?.id === deck.id) { setExpanded(null); return }
+    try {
+      const full = await api.getMarketResearchDeck(deck.id)
+      setExpanded({ id: deck.id, slides: full.slides ?? [] })
+    } catch (e) { setErr(e.message) }
+  }
+
+  return (
+    <div style={S.tabContent}>
+      <div style={S.sectionHeader}>
+        <span style={S.sectionTitle}>Market Research</span>
+        <span style={S.sectionSub}>{decks.length} stored deck{decks.length === 1 ? '' : 's'}</span>
+        <button style={{ ...S.primaryBtn, marginLeft: 'auto' }} onClick={() => fileRef.current?.click()} disabled={parsing || saving}>
+          {parsing ? 'Reading…' : '↑ Upload latest slides'}
+        </button>
+        <input ref={fileRef} type="file" accept=".pptx" style={{ display: 'none' }} onChange={handleFile} />
+      </div>
+      <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: 0 }}>
+        Upload the latest market research PowerPoint. Only the content (titles, bullet text and tables) is kept — the original design is discarded and the slides are recreated on the active PowerPoint template when users add them to a client.
+      </p>
+
+      {err && <div style={S.error}>{err}</div>}
+      {msg && <div style={{ fontSize: 13, color: '#1D9E75', background: '#1D9E7510', border: '0.5px solid #1D9E7530', borderRadius: 6, padding: '10px 14px' }}>{msg}</div>}
+
+      {pending && (
+        <div style={{ background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Name</span>
+            <input style={{ ...S.input, flex: 1 }} value={pending.name} onChange={e => setPending(p => ({ ...p, name: e.target.value }))} />
+            <button style={S.primaryBtn} onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save for all users'}</button>
+            <button style={S.ghostBtn} onClick={() => setPending(null)} disabled={saving}>Cancel</button>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+            {pending.slides.length} slide{pending.slides.length === 1 ? '' : 's'} extracted from {pending.fileName}
+          </div>
+          <MarketResearchSlideList slides={pending.slides} />
+        </div>
+      )}
+
+      {loading ? <div style={S.loading}>Loading…</div> : decks.length === 0 ? (
+        <p style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>No market research uploaded yet.</p>
+      ) : (
+        <table style={S.table}>
+          <thead>
+            <tr>
+              <th style={S.th}>Name</th>
+              <th style={S.th}>Slides</th>
+              <th style={S.th}>Uploaded</th>
+              <th style={S.th}>By</th>
+              <th style={S.th}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {decks.map((d, i) => (
+              <React.Fragment key={d.id}>
+                <tr style={S.tr}>
+                  <td style={S.td}>
+                    {d.name}
+                    {i === 0 && <span style={S.youBadge}>latest</span>}
+                    {d.file_name && <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{d.file_name}</div>}
+                  </td>
+                  <td style={{ ...S.td, fontVariantNumeric: 'tabular-nums' }}>{d.slide_count}</td>
+                  <td style={S.td}>{new Date(d.created_at).toLocaleString()}</td>
+                  <td style={S.td}>{d.uploaded_by_name ?? '—'}</td>
+                  <td style={S.td}>
+                    <div style={S.actions}>
+                      <button style={S.ghostBtn} onClick={() => toggleExpand(d)}>{expanded?.id === d.id ? 'Hide' : 'View slides'}</button>
+                      <button style={S.dangerBtn} onClick={() => handleDelete(d)}>Delete</button>
+                    </div>
+                  </td>
+                </tr>
+                {expanded?.id === d.id && (
+                  <tr><td colSpan={5} style={{ ...S.td, background: 'var(--color-bg-secondary)' }}>
+                    <MarketResearchSlideList slides={expanded.slides} />
+                  </td></tr>
+                )}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
+function MarketResearchSlideList({ slides }) {
+  return (
+    <ol style={{ margin: 0, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflowY: 'auto' }}>
+      {slides.map((s, i) => (
+        <li key={i} style={{ fontSize: 12, color: 'var(--color-text-primary)' }}>
+          <strong>{s.title}</strong>
+          <span style={{ color: 'var(--color-text-muted)' }}>
+            {' — '}{s.bullets?.length ?? 0} bullet{s.bullets?.length === 1 ? '' : 's'}{s.table ? ' · table' : ''}
+          </span>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
 // ── Main AdminDashboard ───────────────────────────────────────────────────────
 export default function AdminDashboard({ onClose, currentUser, onClientsChange }) {
   const [tab, setTab] = useState('overview')
@@ -721,6 +883,7 @@ export default function AdminDashboard({ onClose, currentUser, onClientsChange }
     { id: 'clients',   label: 'Clients' },
     { id: 'requests',  label: 'Slide Requests' },
     { id: 'styles',    label: 'PowerPoint Template' },
+    { id: 'market',    label: 'Market Research' },
   ]
 
   return (
@@ -769,6 +932,7 @@ export default function AdminDashboard({ onClose, currentUser, onClientsChange }
               {tab === 'clients'  && <ClientsTab onClientsChange={onClientsChange} />}
               {tab === 'requests' && <SlideRequestsTab />}
               {tab === 'styles'   && <StylesTab />}
+              {tab === 'market'   && <MarketResearchTab />}
             </div>
           </>
         )}
