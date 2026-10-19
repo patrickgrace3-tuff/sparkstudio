@@ -14,6 +14,7 @@
 import JSZip from 'jszip'
 import { parseRichText } from './richtext.js'
 import { exportTableMetrics, DEFAULT_TABLE_BOX } from './tableFit.js'
+import { createOriginalSplicer } from './exportOriginal.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -651,7 +652,7 @@ function buildNotesSlideRels() {
 
 // orderedSlides: the slide descriptor array from PreviewPanel (may be reordered
 // by the user). Each item: { kind, label, slide?, dept?, funnelConfig?, teamConfig? }
-export async function exportToPptx(orderedSlides, deck) {
+export async function exportToPptx(orderedSlides, deck, { clientId = null } = {}) {
   const { createElement } = await import('react')
   const { FunnelSlidePreview } = await import('../components/FunnelBuilder.jsx')
   const { TeamSlidePreview }   = await import('../components/TeamBuilder.jsx')
@@ -673,6 +674,7 @@ export async function exportToPptx(orderedSlides, deck) {
   const slide2Rels = stripNotesRel(await getRels(2))
   const slide3Rels = stripNotesRel(await getRels(3))
 
+  const originals = createOriginalSplicer(zip, clientId)
   const newSlides = []
   const notesFiles = []   // tracks notesSlide filenames for Content_Types registration
   let idx = 4
@@ -694,7 +696,12 @@ export async function exportToPptx(orderedSlides, deck) {
       const notes = item.slide?.notes?.trim() || ''
       const slideFilename = `ppt/slides/slide${idx}.xml`
 
-      let { xml: patchedXml, relsXml: patchedRels } = patchContentSlide(zip, slide3Xml, slide3Rels, item.slide, item.slide.table ?? null)
+      // Imported with "Keep original styling": the original slide, unchanged
+      const original = item.slide?.style?.original?.ref
+        ? await originals.slide(item.slide.style.original, slideFilename)
+        : null
+      let { xml: patchedXml, relsXml: patchedRels } = original
+        ?? patchContentSlide(zip, slide3Xml, slide3Rels, item.slide, item.slide.table ?? null)
 
       // If this slide has notes, create a notesSlide and link it from the slide rels
       if (notes) {
@@ -716,7 +723,7 @@ export async function exportToPptx(orderedSlides, deck) {
       newSlides.push({
         filename:     slideFilename,
         relsFilename: `ppt/slides/_rels/slide${idx}.xml.rels`,
-        xml:          rewriteShapeIds(patchedXml),
+        xml:          original ? patchedXml : rewriteShapeIds(patchedXml),
         relsXml:      patchedRels,
       })
       idx++
@@ -754,6 +761,8 @@ export async function exportToPptx(orderedSlides, deck) {
       idx++
     }
   }
+
+  await originals.finish()
 
   // ── Remove template slides 2 & 3 (and their notesSlides) from zip ──────────
   zip.remove('ppt/slides/slide2.xml')
@@ -807,8 +816,8 @@ export async function exportToPptx(orderedSlides, deck) {
   // ── Update presentation.xml.rels ─────────────────────────────────────────────
   let presRels = await zip.file('ppt/_rels/presentation.xml.rels').async('string')
   presRels = presRels
-    .replace(/<Relationship[^/]*Target="slides\/slide2\.xml"[^/]*\/>/g, '')
-    .replace(/<Relationship[^/]*Target="slides\/slide3\.xml"[^/]*\/>/g, '')
+    .replace(/<Relationship\b[^>]*Target="slides\/slide2\.xml"[^>]*\/>/g, '')
+    .replace(/<Relationship\b[^>]*Target="slides\/slide3\.xml"[^>]*\/>/g, '')
   const newRelsEntries = newSlides
     .map((s, i) => `<Relationship Id="${sldIdEntries[i].rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="${s.filename.replace('ppt/', '')}"/>`)
     .join('\n')

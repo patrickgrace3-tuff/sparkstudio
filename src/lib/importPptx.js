@@ -360,12 +360,12 @@ async function readSmartArtText(zip, rels, relIds) {
 }
 
 // ── Slide walk ────────────────────────────────────────────────────────────────
-async function collectElements(zip, rels, positions, container, transform, out) {
+async function collectElements(zip, rels, positions, container, transform, out, opts = {}) {
   for (const el of Array.from(container.childNodes)) {
     if (el.namespaceURI !== NS_P) continue
 
     if (el.localName === 'grpSp') {
-      await collectElements(zip, rels, positions, el, groupTransform(el, transform), out)
+      await collectElements(zip, rels, positions, el, groupTransform(el, transform), out, opts)
       continue
     }
 
@@ -384,10 +384,17 @@ async function collectElements(zip, rels, positions, container, transform, out) 
         if (src) out.push({ kind: 'image', rect, src })
       }
 
+      // Original-style previews also draw filled shapes (bars, panels, boxes)
+      const fill = opts.colors ? solidColor(kid(spPr, NS_A, 'solidFill'), opts.colors) : null
+      if (fill && rect && !blip) out.push({ kind: 'rect', rect, color: fill, round: kid(spPr, NS_A, 'prstGeom')?.getAttribute('prst') === 'ellipse' })
+
       const txBody = kid(el, NS_P, 'txBody')
       const lines  = bodyParagraphs(txBody)
       if (!lines.length) continue
-      out.push({ kind: 'text', ph, rect, lines, fontSize: firstFontSize(txBody), align: alignOf(txBody) })
+      out.push({
+        kind: 'text', ph, rect, lines, fontSize: firstFontSize(txBody), align: alignOf(txBody),
+        ...(opts.colors ? { color: solidColor(desc(desc(txBody, NS_A, 'rPr'), NS_A, 'solidFill'), opts.colors), anchor: desc(txBody, NS_A, 'bodyPr')?.getAttribute('anchor') ?? null } : {}),
+      })
       continue
     }
 
@@ -570,4 +577,163 @@ export async function importSlidesFromPptx(file) {
   }
 
   return slides
+}
+
+
+// ── Keep original styling ─────────────────────────────────────────────────────
+// For "Keep original styling" imports: every PowerPoint part a slide needs
+// (the slide, its layout, master, theme, images, charts…) is kept verbatim so
+// the export can copy the slide in unchanged, plus a lightweight description
+// of what's on it so the app can draw a close preview.
+
+const TEXT_PART = /\.(xml|rels|vml)$/i
+
+// Theme colour scheme → { dk1: 'RRGGBB', lt1: …, accent1: … }
+async function themeColors(zip, masterPath) {
+  const masterRels = await loadRels(zip, masterPath)
+  const themeRel   = Object.values(masterRels).find(r => r.type.endsWith('/theme'))
+  if (!themeRel || !zip.file(themeRel.path)) return {}
+  const doc = parseXml(await zip.file(themeRel.path).async('string'))
+  const out = {}
+  const scheme = desc(doc, NS_A, 'clrScheme')
+  for (const c of Array.from(scheme?.childNodes ?? []).filter(n => n.nodeType === 1)) {
+    const srgb = desc(c, NS_A, 'srgbClr')?.getAttribute('val')
+    const sys  = desc(c, NS_A, 'sysClr')?.getAttribute('lastClr')
+    if (srgb || sys) out[c.localName] = srgb || sys
+  }
+  return out
+}
+
+function solidColor(solidFill, colors) {
+  if (!solidFill) return null
+  const srgb = desc(solidFill, NS_A, 'srgbClr')?.getAttribute('val')
+  if (srgb) return `#${srgb}`
+  const scheme = desc(solidFill, NS_A, 'schemeClr')?.getAttribute('val')
+  const alias = { bg1: 'lt1', tx1: 'dk1', bg2: 'lt2', tx2: 'dk2' }
+  const hex = scheme && colors[alias[scheme] ?? scheme]
+  return hex ? `#${hex}` : null
+}
+
+// Slide → layout → master: the first background that's set
+async function backgroundOf(zip, docs, colors) {
+  for (const { doc, rels } of docs) {
+    const bg = desc(doc, NS_P, 'bg')
+    if (!bg) continue
+    const bgPr = desc(bg, NS_P, 'bgPr')
+    const blip = desc(kid(bgPr, NS_A, 'blipFill'), NS_A, 'blip')
+    if (blip) {
+      const src = await loadImage(zip, rels, blip.getAttributeNS(NS_R, 'embed'))
+      if (src) return { image: src }
+    }
+    const color = solidColor(kid(bgPr, NS_A, 'solidFill'), colors) ?? solidColor(desc(bg, NS_P, 'bgRef'), colors)
+    if (color) return { color }
+  }
+  return { color: '#FFFFFF' }
+}
+
+function isDark(hex) {
+  const n = parseInt((hex ?? '#FFFFFF').slice(1), 16)
+  return ((n >> 16) * 299 + ((n >> 8) & 255) * 587 + (n & 255) * 114) / 1000 < 128
+}
+
+async function originalPreview(zip, slidePath, slideW, slideH) {
+  const rels      = await loadRels(zip, slidePath)
+  const slideDoc  = parseXml(await zip.file(slidePath).async('string'))
+  const layoutRel = Object.values(rels).find(r => r.type.endsWith('/slideLayout'))
+  const layoutRels = layoutRel ? await loadRels(zip, layoutRel.path) : {}
+  const masterRel = Object.values(layoutRels).find(r => r.type.endsWith('/slideMaster'))
+  const colors    = masterRel ? await themeColors(zip, masterRel.path) : {}
+  const docs = [{ doc: slideDoc, rels }]
+  if (layoutRel && zip.file(layoutRel.path)) docs.push({ doc: parseXml(await zip.file(layoutRel.path).async('string')), rels: layoutRels })
+  if (masterRel && zip.file(masterRel.path)) docs.push({ doc: parseXml(await zip.file(masterRel.path).async('string')), rels: await loadRels(zip, masterRel.path) })
+  const background = await backgroundOf(zip, docs, colors)
+
+  // Decoration from the master and layout (logos, bars) sits behind the slide's own content
+  const elements = []
+  for (const { doc, rels: r } of docs.slice(1).reverse()) {
+    const tree = desc(doc, NS_P, 'spTree')
+    if (!tree) continue
+    const deco = []
+    await collectElements(zip, r, { layout: [], master: [] }, tree, x => x, deco, { colors })
+    elements.push(...deco.filter(e => e.kind !== 'text' || !e.ph)) // placeholder prompts aren't real content
+  }
+  const positions = await placeholderPositions(zip, rels)
+  const own = []
+  await collectElements(zip, rels, positions, desc(slideDoc, NS_P, 'spTree'), x => x, own, { colors })
+  elements.push(...own)
+
+  const scale = TPL_W / slideW // font sizes are drawn relative to a 13.33" wide slide
+  const defaultText = isDark(background.color) ? '#FFFFFF' : '#1A1A1A'
+  const box = r => ({ x: r.x / slideW, y: r.y / slideH, w: r.w / slideW, h: r.h / slideH })
+  const items = elements.filter(e => e.rect).map(e => {
+    if (e.kind === 'image') return { type: 'image', src: e.src, ...box(e.rect) }
+    if (e.kind === 'rect')  return { type: 'rect', color: e.color, round: !!e.round, ...box(e.rect) }
+    if (e.kind === 'table') return { type: 'table', table: e.table, ...box(e.rect) }
+    const isTitle = e.ph?.type === 'title' || e.ph?.type === 'ctrTitle'
+    return {
+      type: 'text', text: e.lines.join('\n'), ...box(e.rect),
+      fontPt: Math.round((e.fontSize ?? (isTitle ? 36 : 18)) * scale * 10) / 10,
+      color: e.color ?? defaultText, align: e.align, anchor: e.anchor ?? (isTitle ? 'ctr' : 't'),
+      bullets: !!e.ph && !isTitle && e.ph.type !== 'subTitle',
+    }
+  })
+  const titleEl = own.find(e => e.kind === 'text' && (e.ph?.type === 'title' || e.ph?.type === 'ctrTitle'))
+  return {
+    background, items,
+    aspect: slideW / slideH,
+    title: titleEl ? titleEl.lines.join(' ').replace(/\*/g, '') : '',
+    notes: await readNotes(zip, rels),
+    text: own.filter(e => e.kind === 'text').flatMap(e => e.lines),
+  }
+}
+
+// Every part reachable from a slide (notes are left out — the export adds its own)
+async function collectParts(zip, path, parts, seen) {
+  if (seen.has(path) || !zip.file(path)) return
+  seen.add(path)
+  parts.push(path)
+  const relsPath = `${path.split('/').slice(0, -1).join('/')}/_rels/${path.split('/').pop()}.rels`
+  if (zip.file(relsPath)) parts.push(relsPath)
+  for (const rel of Object.values(await loadRels(zip, path))) {
+    if (/\/(notesSlide|notesMaster|slide)$/.test(rel.type) && !rel.type.endsWith('/slideLayout')) continue
+    await collectParts(zip, rel.path, parts, seen)
+  }
+}
+
+export async function importOriginalSlidesFromPptx(file) {
+  const zip = await JSZip.loadAsync(file)
+  const presDoc = parseXml(await zip.file('ppt/presentation.xml').async('string'))
+  const sz = desc(presDoc, NS_P, 'sldSz')
+  const slideW = +sz?.getAttribute('cx') || TPL_W
+  const slideH = +sz?.getAttribute('cy') || TPL_H
+
+  // Slides in presentation order
+  const presRels = await loadRels(zip, 'ppt/presentation.xml')
+  const order = Array.from(presDoc.getElementsByTagNameNS(NS_P, 'sldId'))
+    .map(s => presRels[s.getAttributeNS(NS_R, 'id')]?.path).filter(Boolean)
+
+  // Content types for every part, from [Content_Types].xml
+  const ctDoc = parseXml(await zip.file('[Content_Types].xml').async('string'))
+  const ctNs  = 'http://schemas.openxmlformats.org/package/2006/content-types'
+  const defaults  = Object.fromEntries(Array.from(ctDoc.getElementsByTagNameNS(ctNs, 'Default')).map(d => [d.getAttribute('Extension').toLowerCase(), d.getAttribute('ContentType')]))
+  const overrides = Object.fromEntries(Array.from(ctDoc.getElementsByTagNameNS(ctNs, 'Override')).map(o => [o.getAttribute('PartName').replace(/^\//, ''), o.getAttribute('ContentType')]))
+
+  const seen = new Set(), partList = [], slides = []
+  for (const slidePath of order) {
+    const doc = parseXml(await zip.file(slidePath).async('string'))
+    if (doc.documentElement.getAttribute('show') === '0') continue // hidden slide
+    await collectParts(zip, slidePath, partList, seen)
+    slides.push({ slidePath, preview: await originalPreview(zip, slidePath, slideW, slideH) })
+  }
+
+  const parts = {}, types = {}
+  for (const path of partList) {
+    if (parts[path]) continue
+    const f = zip.file(path)
+    parts[path] = TEXT_PART.test(path) ? await f.async('string') : { b64: await f.async('base64') }
+    if (!path.endsWith('.rels')) types[path] = overrides[path] ?? defaults[path.split('.').pop().toLowerCase()] ?? 'application/octet-stream'
+  }
+  // Table styles are kept deck-wide, not per slide — keep them so tables look the same
+  const tableStyles = await zip.file('ppt/tableStyles.xml')?.async('string') ?? null
+  return { pkg: { slideW, slideH, parts, types, tableStyles }, slides }
 }

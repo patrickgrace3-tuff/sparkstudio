@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
+import OriginalSlidePreview from './OriginalSlidePreview.jsx'
 import { buildOrderedSlideList } from '../lib/presentationOrder.js'
 import { previewTable, TABLE_LINE_HEIGHT } from '../lib/tableFit.js'
 import { DEPARTMENTS } from '../lib/constants.js'
@@ -42,6 +43,7 @@ function SectionSlidePreview({ dept }) {
 }
 
 function ContentSlidePreview({ slide }) {
+  if (slide.style?.original?.ref) return <OriginalSlidePreview original={slide.style.original} fill />
   const rawStyle  = slide.style  ?? {}
   const bullets   = slide.bullets ?? []
   const extraBulletBoxes = slide.extraBulletBoxes ?? []
@@ -431,7 +433,7 @@ export default function PreviewPanel({ deck, funnelConfig, teamConfig, presentat
                     </>
                   : <span style={{ ...S.notesText, color: 'var(--color-text-muted)', fontStyle: 'italic' }}>No notes</span>
                 }
-                {onEditSlide && (
+                {onEditSlide && !item.slide?.style?.original?.ref && (
                   <button
                     style={S.notesEditBtn}
                     onClick={e => { e.stopPropagation(); onEditSlide(item) }}
