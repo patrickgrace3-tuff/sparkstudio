@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { randomUUID } from 'crypto'
-import { query } from '../db.js'
+import { query, pool } from '../db.js'
 import { requireAuth } from '../auth.js'
 
 const router = Router()
@@ -112,10 +112,18 @@ router.delete('/:clientId/:slideId', async (req, res) => {
 })
 
 // PUT /api/slides/:clientId/bulk — replace all slides for a client (used after generation)
+// Runs as one transaction holding a per-client lock: overlapping saves (e.g.
+// several quick deletes while a slow save of image-heavy slides is still
+// running) used to interleave their DELETE and INSERTs, so deleted slides came
+// back — or were duplicated. Now each save fully replaces the previous one.
 router.put('/:clientId/bulk', async (req, res) => {
   const { slides } = req.body // { [deptId]: [...slides] }
   if (!slides) return res.status(400).json({ error: 'slides required' })
+  const db = await pool.connect()
+  const query = (text, params) => db.query(text, params)
   try {
+    await query('BEGIN')
+    await query('SELECT pg_advisory_xact_lock(hashtext($1))', [`slides:${req.params.clientId}`])
     await query('DELETE FROM slides WHERE client_id = $1', [req.params.clientId])
     const allSlides = Object.entries(slides).flatMap(([deptId, deptSlides]) =>
       deptSlides.map((s, i) => ({ ...s, dept_id: deptId, sort_order: i }))
@@ -154,10 +162,14 @@ router.put('/:clientId/bulk', async (req, res) => {
         ]
       )
     }
+    await query('COMMIT')
     res.json({ ok: true })
   } catch (err) {
+    await db.query('ROLLBACK').catch(() => {})
     console.error(err)
     res.status(500).json({ error: 'Server error' })
+  } finally {
+    db.release()
   }
 })
 

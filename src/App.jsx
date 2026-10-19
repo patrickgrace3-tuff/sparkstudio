@@ -26,6 +26,7 @@ import { clientDivisions, deptUsesDivisions, splitFilesByDivision, syncedDeptFil
 import { fetchMarketResearchForClient, fetchClientMarketResearchCopy, marketResearchDeckSlides, insertMarketResearch, withoutMarketResearch, MARKET_RESEARCH_DEPT_ID } from './lib/marketResearch.js'
 import ClientMarketResearchEditor from './components/ClientMarketResearchEditor.jsx'
 import { api, setToken } from './lib/apiClient.js'
+import { saveSlides } from './lib/slideSave.js'
 
 export default function App() {
   const [currentUser,    setCurrentUser]    = useState(null)
@@ -203,7 +204,7 @@ export default function App() {
   // ── Slide mutations ────────────────────────────────────────────────────────
   function setSlides(updated) {
     setAllSlidesMap(prev => ({ ...prev, [activeClientId]: updated }))
-    api.bulkSaveSlides(activeClientId, updated).catch(console.error)
+    saveSlides(activeClientId, updated).catch(console.error)
     setHasChanges(true)
   }
 
@@ -425,7 +426,7 @@ export default function App() {
     if (!activeClientId) return
     setIsPushing(true)
     try {
-      await api.bulkSaveSlides(activeClientId, allSlides)
+      await saveSlides(activeClientId, allSlides)
       setHasChanges(false)
       setPushMsg('pushed')
       setTimeout(() => setPushMsg(''), 3000)
@@ -628,7 +629,7 @@ export default function App() {
                         }
                         updated[dept.id] = [...(updated[dept.id] ?? []), slide]
                       })
-                      api.bulkSaveSlides(activeClientId, updated).catch(console.error)
+                      saveSlides(activeClientId, updated).catch(console.error)
                       return { ...prev, [activeClientId]: updated }
                     })
                   } catch (err) {
@@ -713,7 +714,7 @@ export default function App() {
                     ) : (
                       deptSlides.map((slide, i) => (
                         <SlideCard
-                          key={i}
+                          key={slide._id ?? i}
                           slide={slide}
                           index={i}
                           deptColor={activeDept?.color}
