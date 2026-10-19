@@ -410,13 +410,34 @@ function xfrmOf(shape) {
 // Moves and scales the slide's content into the template's content area.
 // Text sizes, line widths, spacing and table sizes shrink by the same factor
 // so everything keeps its proportions.
-function place(tree, { s, dx, dy }) {
+function topShapes(tree) {
   const tops = []
   for (const c of elKids(tree)) {
     if (c.localName === 'AlternateContent') for (const b of elKids(c)) tops.push(...elKids(b))
     else tops.push(c)
   }
-  for (const shape of tops) {
+  return tops
+}
+
+// The area the visible shapes cover, in the slide's own units
+function contentBounds(tree) {
+  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity
+  for (const shape of topShapes(tree)) {
+    const nv = elKids(shape).find(n => n.namespaceURI === NS_P && n.localName.startsWith('nv'))
+    const cNvPr = kid(nv, NS_P, 'cNvPr')
+    if (cNvPr?.getAttribute('hidden') === '1' || cNvPr?.getAttribute('hidden') === 'true') continue
+    const x = xfrmOf(shape)
+    const off = kid(x, NS_A, 'off'), ext = kid(x, NS_A, 'ext')
+    if (!off || !ext) continue
+    const ox = +off.getAttribute('x'), oy = +off.getAttribute('y')
+    x1 = Math.min(x1, ox); y1 = Math.min(y1, oy)
+    x2 = Math.max(x2, ox + +ext.getAttribute('cx')); y2 = Math.max(y2, oy + +ext.getAttribute('cy'))
+  }
+  return x2 > x1 && y2 > y1 ? { x: x1, y: y1, w: x2 - x1, h: y2 - y1 } : null
+}
+
+function place(tree, { s, dx, dy }) {
+  for (const shape of topShapes(tree)) {
     const x = xfrmOf(shape)
     const off = kid(x, NS_A, 'off'), ext = kid(x, NS_A, 'ext')
     if (off) { off.setAttribute('x', String(Math.round(dx + +off.getAttribute('x') * s))); off.setAttribute('y', String(Math.round(dy + +off.getAttribute('y') * s))) }
@@ -443,7 +464,8 @@ function place(tree, { s, dx, dy }) {
 /**
  * The slide's content as stand-alone shapes (XML for inside a p:spTree).
  *   placement:   { s, dx, dy } to move it into the template's content area
- *                (EMU), or null to keep the original coordinates
+ *                (EMU) — or a function of the content's bounds returning
+ *                one — or null to keep the original coordinates
  *   rIdMap:      old relationship id → new id (ids missing from it are kept)
  *   firstId:     first shape id to use
  */
@@ -457,7 +479,8 @@ export function resolveSlideShapes(ctx, { placement = null, rIdMap = null, first
     const r = resolveShape(ctx, c, { defaultTableStyleId })
     if (!r) work.removeChild(c)
   }
-  if (placement) place(work, placement)
+  // placement can depend on where the content sits: (bounds) => { s, dx, dy }
+  if (placement) place(work, typeof placement === 'function' ? placement(contentBounds(work)) : placement)
 
   // Fresh shape ids (connectors refer to shapes by id)
   const ids = new Map()
