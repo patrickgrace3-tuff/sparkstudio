@@ -11,9 +11,13 @@ export const originalPptxKey = importId => `pptxoriginal:${importId}`
 
 export const isLockedOriginal = slide => !!slide?.style?.original?.ref
 
-// The stored package for a slide (cached per export)
+// The stored package for a slide (cached per export). Slides from templates
+// point at a shared copy ('asset:…') usable by every client.
 export function loadOriginalPackage(clientId, ref, cache = new Map()) {
-  if (!cache.has(ref)) cache.set(ref, api.getClientData(clientId, ref).then(r => r?.value ?? null))
+  if (!cache.has(ref)) {
+    const req = ref.startsWith('asset:') ? api.getAsset(ref.slice('asset:'.length)) : api.getClientData(clientId, ref)
+    cache.set(ref, req.then(r => r?.value ?? null))
+  }
   return cache.get(ref)
 }
 

@@ -224,7 +224,7 @@ export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, o
       <div style={styles.actions}>
         <button style={styles.editBtn} onClick={() => onEdit(index)} title={locked ? 'Move, resize, crop or delete elements and change text — the original styling is kept' : undefined}>Edit</button>
         {locked && onView && <button style={styles.editBtn} onClick={() => onView(index)} title="Open a full-size view">View</button>}
-        {onUseAsTemplate && !locked && (
+        {onUseAsTemplate && (
           <button style={styles.templateBtn} onClick={() => onUseAsTemplate(slide)} title="Save this slide as a reusable template">
             + Template
           </button>

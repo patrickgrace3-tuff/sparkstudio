@@ -1,6 +1,8 @@
 import React, { useState } from 'react'
 import { callClaude } from '../lib/api.js'
 import { api } from '../lib/apiClient.js'
+import { originalSlideToShell } from '../lib/templateOriginals.js'
+import { SlideThumbnail } from './SlideCard.jsx'
 
 // Modal: converts a dept slide into a template shell (AI-fills instructions/dos/don'ts).
 // Props:
@@ -10,7 +12,12 @@ import { api } from '../lib/apiClient.js'
 //   clientId   — for token logging
 //   onClose    — dismiss
 //   onSaved    — called with updated templates array after save
-export default function SlideToTemplateModal({ slide, deptName, templates, clientId, onClose, onSaved }) {
+export default function SlideToTemplateModal({ slide, deptName, templates, clientId, onClose, onSaved, siblings = [] }) {
+  // Imported slides ("Keep original styling") keep their design in the template;
+  // the AI rewrites their text for each client when the template is applied
+  const isOriginal = !!slide.style?.original?.ref
+  const fromSameFile = isOriginal ? siblings.filter(sl => sl.style?.original?.importId === slide.style.original.importId) : []
+  const [addAll, setAddAll] = useState(false)
   const [shell, setShell] = useState({ title: slide.title, content: '', doThis: '', dontDoThis: '' })
   const [generating, setGenerating] = useState(false)
   const [mode, setMode] = useState('existing') // 'existing' | 'new'
@@ -64,12 +71,16 @@ Return ONLY valid JSON (no markdown):
     }
     setSaving(true)
     try {
+      // Imported slides: a shared copy of each slide's design goes with the template
+      const toAdd = !isOriginal ? [shell]
+        : await Promise.all((addAll && fromSameFile.length > 1 ? fromSameFile : [slide]).map(sl =>
+          originalSlideToShell(sl, clientId, { ...shell, title: sl === slide ? shell.title : sl.title })))
       let template
       if (mode === 'new') {
         template = await api.createTemplate({
           name: newTemplateName.trim(),
           description: '',
-          departments: { [deptName]: [shell] },
+          departments: { [deptName]: toAdd },
         })
       } else {
         template = templates.find(t => t.id === selectedTemplateId)
@@ -77,7 +88,7 @@ Return ONLY valid JSON (no markdown):
         const existing = template.departments[deptName] ?? []
         template = await api.updateTemplate(template.id, {
           ...template,
-          departments: { ...template.departments, [deptName]: [...existing, shell] },
+          departments: { ...template.departments, [deptName]: [...existing, ...toAdd] },
         })
       }
       // Refresh full template list and return it
@@ -97,11 +108,26 @@ Return ONLY valid JSON (no markdown):
 
         <div style={S.header}>
           <div>
-            <div style={S.title}>Save as Template Slide</div>
+            <div style={S.title}>{addAll && fromSameFile.length > 1 ? `Save ${fromSameFile.length} slides to a template` : 'Save as Template Slide'}</div>
             <div style={S.sub}>{deptName} · {slide.title}</div>
           </div>
           <button style={S.closeBtn} onClick={onClose}>✕</button>
         </div>
+
+        {isOriginal && (
+          <div style={S.origBox}>
+            <div style={{ width: 150, flexShrink: 0 }}><SlideThumbnail slide={slide} /></div>
+            <div style={{ fontSize: 12, lineHeight: 1.55, color: 'var(--color-text-secondary)' }}>
+              <strong style={{ color: 'var(--color-text-primary)' }}>Keeps this slide's design.</strong> When the template is applied, the slide is added with the same layout, fonts, colours and pictures, and the AI rewrites its text for that client (using the instructions below and the client's files).
+              {fromSameFile.length > 1 && (
+                <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8, color: 'var(--color-text-primary)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={addAll} onChange={e => setAddAll(e.target.checked)} />
+                  Add all {fromSameFile.length} slides from {slide.style.original.fileName || 'this file'}
+                </label>
+              )}
+            </div>
+          </div>
+        )}
 
         <div style={S.genBanner}>
           {generating ? (
@@ -117,14 +143,18 @@ Return ONLY valid JSON (no markdown):
         </div>
 
         <div style={S.fields}>
-          <label style={S.label}>Slide Title</label>
-          <input
-            style={S.input}
-            value={shell.title}
-            onChange={e => setShell(s => ({ ...s, title: e.target.value }))}
-          />
+          {!(addAll && fromSameFile.length > 1) && (
+            <>
+              <label style={S.label}>Slide Title</label>
+              <input
+                style={S.input}
+                value={shell.title}
+                onChange={e => setShell(s => ({ ...s, title: e.target.value }))}
+              />
+            </>
+          )}
 
-          <label style={S.label}>Slide Instructions</label>
+          <label style={S.label}>{addAll && fromSameFile.length > 1 ? 'Instructions for every slide' : 'Slide Instructions'}</label>
           <textarea
             style={S.textarea}
             value={shell.content}
@@ -233,6 +263,7 @@ const S = {
   sub:   { fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 },
   closeBtn: { background: 'none', border: 'none', fontSize: 16, color: 'var(--color-text-muted)', cursor: 'pointer', padding: '2px 6px' },
 
+  origBox: { display: 'flex', gap: 12, alignItems: 'flex-start', padding: '12px 20px', borderBottom: '0.5px solid var(--color-border)' },
   genBanner: {
     display: 'flex', alignItems: 'center', gap: 10,
     padding: '10px 20px', background: 'var(--color-bg-secondary)',

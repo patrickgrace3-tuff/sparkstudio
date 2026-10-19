@@ -17,7 +17,8 @@ import MarketResearchPicker from './components/MarketResearchPicker.jsx'
 import { DEPARTMENTS } from './lib/constants.js'
 import { loadFunnelConfig } from './lib/funnel.js'
 import { loadTeamConfig }  from './lib/team.js'
-import { buildSeedSlides } from './lib/templates.js'
+import { seedFromShell } from './lib/templates.js'
+import { isOriginalShell, slideFromOriginalShell } from './lib/templateOriginals.js'
 import { loadFiles, loadFilesRemote, buildAIContext, loadGlobalFiles, loadGlobalFilesRemote } from './lib/files.js'
 import { enhanceSlideBody, generateDeck } from './lib/api.js'
 import { exportToPptx } from './lib/export.js'
@@ -320,6 +321,88 @@ export default function App() {
     const files = [...deptSplit.shared, ...(deptSplit.byDivision[division.id] ?? []), ...(globalSplit.byDivision[division.id] ?? [])]
     const ctx = buildAIContext({ ...fileData, files }, `${d.name} — ${division.name}`, sharedGlobal)
     return { dept: d.name, division: division.name, slides, deptSummary: ctx.deptSummary, globalSummary: ctx.globalSummary, imageFiles: ctx.imageFiles, pdfFiles: ctx.pdfFiles }
+  }
+
+  // Applies a template: each department gets the template's slides (one set per
+  // division where the department uses divisions), in the template's order.
+  // Regular template slides are written by the AI on the standard layout;
+  // imported slides keep their design and the AI rewrites their text.
+  async function applyTemplate(tmpl) {
+    const divisions = clientDivisions(activeClient)
+    const newId = () => `s${Date.now()}${Math.random().toString(36).slice(2)}`
+    const plan = []
+    for (const d of DEPARTMENTS) {
+      const shells = tmpl.departments[d.name] || []
+      if (!shells.length) continue
+      const divs = deptUsesDivisions(activeClient, d.id) && divisions.length ? divisions : [null]
+      for (const div of divs) {
+        plan.push({
+          d, div,
+          entries: shells.map(shell => (isOriginalShell(shell) ? { shell } : { seed: { ...seedFromShell(shell, d.name), _id: newId() } })),
+        })
+      }
+    }
+    if (!plan.length) return
+
+    setIsApplyingTemplate(true)
+    try {
+      const contributions = plan
+        .filter(p => p.entries.some(e => e.seed))
+        .map(p => buildDeptContribution(p.d, p.entries.filter(e => e.seed).map(e => e.seed), p.div?.id ?? null))
+      const originalJobs = plan.flatMap(p => p.entries.filter(e => e.shell).map(e => {
+        const ctx = buildDeptContribution(p.d, [], p.div?.id ?? null)
+        return slideFromOriginalShell(e.shell, { ...ctx, clientName: activeClient?.name ?? '', deptName: p.d.name, division: p.div?.name ?? null }, activeClientId)
+          .then(slide => { e.slide = slide })
+          .catch(err => { console.error(err); e.error = err.message })
+      }))
+      const [result] = await Promise.all([
+        contributions.length ? generateDeck(contributions, activeClient?.name ?? '') : Promise.resolve({ slides: [] }),
+        ...originalJobs,
+      ])
+
+      const generated = [...(result.slides ?? [])]
+      const takeGenerated = (seed, deptName, divName) => {
+        let i = generated.findIndex(g => g.sourceId === seed._id)
+        if (i === -1) i = generated.findIndex(g => g.dept === deptName && (g.division ?? null) === divName)
+        return i === -1 ? null : generated.splice(i, 1)[0]
+      }
+      const failed = []
+      const additions = {} // dept id → new slides, in template order
+      for (const p of plan) {
+        const divName = p.div?.name ?? null
+        const withDivision = title => (divName && !title?.includes(`— ${divName}`) ? `${title} — ${divName}` : title)
+        for (const e of p.entries) {
+          let slide = null
+          if (e.seed) {
+            const gen = takeGenerated(e.seed, p.d.name, divName)
+            if (!gen) continue
+            slide = {
+              _id: newId(), title: withDivision(gen.title), divisionId: p.div?.id ?? null,
+              body: (gen.bullets ?? []).join('\n'), bullets: gen.bullets ?? [], table: gen.table ?? null,
+              dept: gen.dept, style: gen.style ?? {}, _fromTemplate: true,
+            }
+          } else if (e.slide) {
+            slide = { ...e.slide, _id: newId(), title: withDivision(e.slide.title), divisionId: p.div?.id ?? null, dept: p.d.name }
+          } else {
+            failed.push(e.shell.title || 'Imported slide')
+            continue
+          }
+          ;(additions[p.d.id] ??= []).push(slide)
+        }
+      }
+      setAllSlidesMap(prev => {
+        const current = prev[activeClientId] ?? {}
+        const updated = { ...current }
+        for (const [deptId, slides] of Object.entries(additions)) updated[deptId] = [...(updated[deptId] ?? []), ...slides]
+        saveSlides(activeClientId, updated).catch(console.error)
+        return { ...prev, [activeClientId]: updated }
+      })
+      if (failed.length) alert(`Some template slides could not be added:\n${failed.join('\n')}`)
+    } catch (err) {
+      alert('Template generation failed: ' + err.message)
+    } finally {
+      setIsApplyingTemplate(false)
+    }
   }
 
   // Puts slides imported with their original styling back into the deck, in
@@ -655,54 +738,7 @@ export default function App() {
                   setSelectedTemplate(tmpl)
                   if (!tmpl || !activeClientId) return
 
-                  // Departments that use divisions get one set of template slides per
-                  // division, each built from that division's files
-                  const divisions = clientDivisions(activeClient)
-                  const deptContributions = DEPARTMENTS
-                    .filter(d => (tmpl.departments[d.name] || []).length > 0)
-                    .flatMap(d => {
-                      const seedsFor = () => buildSeedSlides(tmpl, d.name).map((s, idx) => ({
-                        ...s,
-                        _id: `s${Date.now()}${idx}${Math.random().toString(36).slice(2)}`,
-                      }))
-                      if (!deptUsesDivisions(activeClient, d.id) || !divisions.length) return [buildDeptContribution(d, seedsFor())]
-                      return divisions.map(div => buildDeptContribution(d, seedsFor(), div.id))
-                    })
-
-                  if (!deptContributions.length) return
-
-                  setIsApplyingTemplate(true)
-                  try {
-                    const result = await generateDeck(deptContributions, activeClient?.name ?? '')
-                    const divisionIdByName = Object.fromEntries(divisions.map(dv => [dv.name, dv.id]))
-                    setAllSlidesMap(prev => {
-                      const current = prev[activeClientId] ?? {}
-                      const updated = { ...current }
-                      result.slides.forEach(gen => {
-                        const dept = DEPARTMENTS.find(d => d.name === gen.dept)
-                        if (!dept) return
-                        const divisionId = gen.division ? divisionIdByName[gen.division] ?? null : null
-                        const slide = {
-                          _id: `s${Date.now()}${Math.random().toString(36).slice(2)}`,
-                          title: gen.division && !gen.title?.includes(`— ${gen.division}`) ? `${gen.title} — ${gen.division}` : gen.title,
-                          divisionId,
-                          body: (gen.bullets ?? []).join('\n'),
-                          bullets: gen.bullets ?? [],
-                          table: gen.table ?? null,
-                          dept: gen.dept,
-                          style: gen.style ?? {},
-                          _fromTemplate: true,
-                        }
-                        updated[dept.id] = [...(updated[dept.id] ?? []), slide]
-                      })
-                      saveSlides(activeClientId, updated).catch(console.error)
-                      return { ...prev, [activeClientId]: updated }
-                    })
-                  } catch (err) {
-                    alert('Template generation failed: ' + err.message)
-                  } finally {
-                    setIsApplyingTemplate(false)
-                  }
+                  await applyTemplate(tmpl)
                 }}
               >
                 <option value="">None</option>
@@ -969,6 +1005,7 @@ export default function App() {
         <SlideToTemplateModal
           slide={templateSlide.slide}
           deptName={templateSlide.deptName}
+          siblings={deptSlides}
           templates={templates}
           clientId={activeClientId}
           onClose={() => setTemplateSlide(null)}

@@ -122,4 +122,7 @@ export const api = {
   createTemplate: (t)         => apiFetch('/api/templates',       { method: 'POST', body: t }),
   updateTemplate: (id, t)     => apiFetch(`/api/templates/${id}`, { method: 'PUT',  body: t }),
   deleteTemplate: (id)        => apiFetch(`/api/templates/${id}`, { method: 'DELETE' }),
+  // Shared assets (data used across clients, e.g. imported slides in templates)
+  getAsset:       (key)        => apiFetch(`/api/assets/${encodeURIComponent(key)}`),
+  setAsset:       (key, value) => apiFetch(`/api/assets/${encodeURIComponent(key)}`, { method: 'PUT', body: { value } }),
 }
