@@ -21,7 +21,8 @@ import { buildSeedSlides } from './lib/templates.js'
 import { loadFiles, loadFilesRemote, buildAIContext, loadGlobalFiles, loadGlobalFilesRemote } from './lib/files.js'
 import { enhanceSlideBody, generateDeck } from './lib/api.js'
 import { exportToPptx } from './lib/export.js'
-import { importSlidesFromPptx } from './lib/importPptx.js'
+import { importSlidesFromPptx, importOriginalSlidesFromPptx } from './lib/importPptx.js'
+import { isLockedOriginal, originalPptxKey } from './lib/originalSlides.js'
 import { clientDivisions, deptUsesDivisions, splitFilesByDivision, syncedDeptFiles, syncedGlobalFiles } from './lib/divisions.js'
 import { fetchMarketResearchForClient, fetchClientMarketResearchCopy, marketResearchDeckSlides, insertMarketResearch, withoutMarketResearch, MARKET_RESEARCH_DEPT_ID } from './lib/marketResearch.js'
 import ClientMarketResearchEditor from './components/ClientMarketResearchEditor.jsx'
@@ -45,6 +46,7 @@ export default function App() {
   const [isExporting,    setIsExporting]    = useState(false)
   const [isImporting,    setIsImporting]    = useState(false)
   const importInputRef = useRef(null)
+  const [pendingImport,  setPendingImport]  = useState(null) // { file, keepStyling } while the import dialog is open
   const [showMarketResearch, setShowMarketResearch] = useState(false)
   const [presentationOrder,  setPresentationOrder]  = useState(null) // platform default, null = built-in order
   const [marketResearch,     setMarketResearch]     = useState(null) // latest deck summary, added to Marketing on generate
@@ -223,19 +225,41 @@ export default function App() {
   }
 
   // ── PPTX Import ───────────────────────────────────────────────────────────
-  async function handleImportPptx(e) {
+  // Picking a file opens a small dialog. "Keep original styling" imports each
+  // slide as an exact, locked copy of the original (exported unchanged);
+  // otherwise only the content is taken and rebuilt on the template.
+  function handleImportPptx(e) {
     const file = e.target.files?.[0]
-    if (!file) return
     e.target.value = ''
+    if (file) setPendingImport({ file, keepStyling: false })
+  }
+
+  async function runImport({ file, keepStyling }) {
+    setPendingImport(null)
     setIsImporting(true)
     try {
-      const imported = await importSlidesFromPptx(file)
-      if (!imported.length) { alert('No slides found in this file.'); return }
-      const withIds = imported.map(s => ({
-        ...s,
-        _id: `s${Date.now()}${Math.random().toString(36).slice(2)}`,
-        style: s.style ?? {},
-      }))
+      const newId = () => `s${Date.now()}${Math.random().toString(36).slice(2)}`
+      let withIds
+      if (keepStyling) {
+        const { pkg, slides } = await importOriginalSlidesFromPptx(file)
+        if (!slides.length) { alert('No slides found in this file.'); return }
+        const importId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
+        const ref = originalPptxKey(importId)
+        await api.setClientData(activeClientId, ref, { ...pkg, fileName: file.name, importedAt: new Date().toISOString() })
+        withIds = slides.map(({ slidePath, preview }) => ({
+          _id:     newId(),
+          title:   preview.title || file.name.replace(/\.pptx$/i, ''),
+          bullets: preview.text.filter(t => t.trim() && t.trim() !== preview.title),
+          body:    preview.text.join('\n'),
+          notes:   preview.notes ?? '',
+          table:   null,
+          style:   { original: { ref, importId, slidePath, fileName: file.name, slideW: pkg.slideW, slideH: pkg.slideH, preview } },
+        }))
+      } else {
+        const imported = await importSlidesFromPptx(file)
+        if (!imported.length) { alert('No slides found in this file.'); return }
+        withIds = imported.map(s => ({ ...s, _id: newId(), style: s.style ?? {} }))
+      }
       setSlides({ ...allSlides, [activeDeptId]: [...deptSlides, ...withIds] })
     } catch (err) {
       alert('Import failed: ' + err.message)
@@ -294,9 +318,44 @@ export default function App() {
     return { dept: d.name, division: division.name, slides, deptSummary: ctx.deptSummary, globalSummary: ctx.globalSummary, imageFiles: ctx.imageFiles, pdfFiles: ctx.pdfFiles }
   }
 
+  // Puts slides imported with their original styling back into the deck, in
+  // their slide-builder position. Generated slides of a department keep their
+  // order; each original sits after the generated slides of the builder slides
+  // above it.
+  function withLockedOriginals(all) {
+    const generated = all.filter(g => !isLockedOriginal(g))
+    if (!DEPARTMENTS.some(d => (allSlides[d.id] || []).some(isLockedOriginal))) return generated
+    const out = []
+    const used = new Set()
+    for (const d of DEPARTMENTS) {
+      const builder = allSlides[d.id] || []
+      const gen = generated.filter(g => g.dept === d.name)
+      const bySource = new Map()
+      for (const g of gen) {
+        if (!g.sourceId) continue
+        if (!bySource.has(g.sourceId)) bySource.set(g.sourceId, [])
+        bySource.get(g.sourceId).push(g)
+      }
+      for (const b of builder) {
+        if (isLockedOriginal(b)) {
+          const { _id, ...rest } = b
+          out.push({ ...rest, dept: d.name, sourceId: _id })
+          continue
+        }
+        for (const g of bySource.get(b._id) ?? []) { out.push(g); used.add(g) }
+      }
+      // Generated slides not tied to a builder slide stay with their department
+      for (const g of gen) if (!used.has(g)) { out.push(g); used.add(g) }
+    }
+    for (const g of generated) if (!used.has(g)) out.push(g)
+    return out
+  }
+
   async function handleGenerate() {
-    const contributions = DEPARTMENTS.filter(d => (allSlides[d.id] || []).length > 0)
-    if (!contributions.length && !marketResearch) return
+    const hasSlides = DEPARTMENTS.filter(d => (allSlides[d.id] || []).length > 0)
+    if (!hasSlides.length && !marketResearch) return
+    // Slides imported with their original styling are used exactly as they are
+    const contributions = hasSlides.filter(d => allSlides[d.id].some(sl => !isLockedOriginal(sl)))
 
     setIsGenerating(true)
     setActiveTab('preview')
@@ -313,6 +372,7 @@ export default function App() {
       const withData = contributions.flatMap(d => {
         const groups = new Map()
         for (const sl of allSlides[d.id] || []) {
+          if (isLockedOriginal(sl)) continue
           const key = sl.divisionId ?? ''
           if (!groups.has(key)) groups.set(key, [])
           groups.get(key).push(sl)
@@ -320,7 +380,7 @@ export default function App() {
         return [...groups].map(([divisionId, slides]) => buildDeptContribution(d, slides, divisionId || null))
       })
       // Market Research slides are re-added fresh below, so never carry old ones over
-      const previousDeck = deck ? { ...deck, slides: withoutMarketResearch(deck.slides) } : null
+      const previousDeck = deck ? { ...deck, slides: withoutMarketResearch(deck.slides).filter(sl => !isLockedOriginal(sl)) } : null
       const result = withData.length
         ? await generateDeck(withData, activeClient.name, activeClientId, previousDeck)
         : { title: `${activeClient.name} Presentation`, slides: [], _deptFingerprints: {} }
@@ -332,7 +392,7 @@ export default function App() {
       // (whose fingerprint ignores layout, so their saved settings would
       // otherwise go stale). Slides whose bullets were edited are not split
       // into "(cont'd)" slides, so they come out exactly as built.
-      const allSlidesFlat = Object.values(allSlides).flat()
+      const allSlidesFlat = Object.values(allSlides).flat().filter(sl => !isLockedOriginal(sl))
       const isContd = sl => /\(cont'd\)\s*$/i.test(sl.title ?? '')
       result.slides = result.slides.flatMap(genSlide => {
         const { _fromExisting: _, ...slide } = genSlide
@@ -363,6 +423,7 @@ export default function App() {
         }]
       })
 
+      result.slides = withLockedOriginals(result.slides)
       result.slides = insertMarketResearch(result.slides, mrSlides)
       result.slides.forEach((sl, i) => { sl.num = i + 1 })
 
@@ -384,6 +445,7 @@ export default function App() {
   }
 
   function handleEditDeckSlide(slideItem) {
+    if (isLockedOriginal(slideItem.slide)) return
     setEditingSlide({ deckSlide: true, slide: slideItem.slide, item: slideItem })
   }
 
@@ -408,7 +470,7 @@ export default function App() {
   async function handleExport(orderedSlides) {
     if (!deck) return
     setIsExporting(true)
-    try { await exportToPptx(orderedSlides, deck) }
+    try { await exportToPptx(orderedSlides, deck, { clientId: activeClientId }) }
     catch (err) { alert('Export failed: ' + err.message) }
     finally { setIsExporting(false) }
   }
@@ -719,7 +781,7 @@ export default function App() {
                           index={i}
                           deptColor={activeDept?.color}
                           onDelete={deleteSlide}
-                          onEdit={idx => setEditingSlide({ index: idx, slide: deptSlides[idx] })}
+                          onEdit={idx => { if (!isLockedOriginal(deptSlides[idx])) setEditingSlide({ index: idx, slide: deptSlides[idx] }) }}
                           onUseAsTemplate={currentUser?.role === 'admin' ? slide => setTemplateSlide({ slide, deptName: activeDept?.name }) : undefined}
                           divisionName={slide.divisionId && deptUsesDivisions(activeClient, activeDeptId) ? clientDivisions(activeClient).find(dv => dv.id === slide.divisionId)?.name : undefined}
                         />
@@ -838,6 +900,34 @@ export default function App() {
         />
       )}
 
+      {pendingImport && (
+        <div style={styles.importOverlay} onClick={() => setPendingImport(null)}>
+          <div style={styles.importModal} role="dialog" aria-label="Import PowerPoint" onClick={e => e.stopPropagation()}>
+            <div style={styles.importTitle}>Import PowerPoint</div>
+            <div style={styles.importFile} title={pendingImport.file.name}>📄 {pendingImport.file.name}</div>
+            <label style={styles.importOption}>
+              <input
+                type="checkbox"
+                checked={pendingImport.keepStyling}
+                onChange={e => setPendingImport(p => ({ ...p, keepStyling: e.target.checked }))}
+              />
+              <span>
+                <strong>Keep original styling</strong>
+                <span style={styles.importHint}>
+                  {pendingImport.keepStyling
+                    ? 'Slides are kept exactly as they are in this file — same design, fonts, colours and layout — and exported unchanged. They are locked: you can reorder or delete them, but not edit them.'
+                    : 'Unticked: the content (text, images, tables, charts) is taken from the file and rebuilt on the Spark Studio template, where you can edit it.'}
+                </span>
+              </span>
+            </label>
+            <div style={styles.importActions}>
+              <button style={styles.pullBtn} onClick={() => setPendingImport(null)}>Cancel</button>
+              <button style={styles.importGo} onClick={() => runImport(pendingImport)}>Import</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {templateSlide && (
         <SlideToTemplateModal
           slide={templateSlide.slide}
@@ -895,6 +985,14 @@ const styles = {
   globalTitle:     { fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: '0.03em', color: 'var(--color-text-primary)' },
   globalSub:       { fontSize: 12, color: 'var(--color-text-muted)', flex: 1 },
   globalClose:     { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '5px 12px', fontSize: 12, cursor: 'pointer', color: 'var(--color-text-secondary)', flexShrink: 0 },
+  importOverlay:   { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 },
+  importModal:     { background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', width: '100%', maxWidth: 460, padding: 20, display: 'flex', flexDirection: 'column', gap: 14 },
+  importTitle:     { fontSize: 15, fontWeight: 700, color: 'var(--color-text-primary)' },
+  importFile:      { fontSize: 12, color: 'var(--color-text-secondary)', background: 'var(--color-bg-secondary)', borderRadius: 6, padding: '8px 10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  importOption:    { display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13, color: 'var(--color-text-primary)', cursor: 'pointer' },
+  importHint:      { display: 'block', fontSize: 12, color: 'var(--color-text-muted)', marginTop: 4, lineHeight: 1.5 },
+  importActions:   { display: 'flex', justifyContent: 'flex-end', gap: 8 },
+  importGo:        { background: 'var(--color-accent)', border: 'none', borderRadius: 'var(--radius-pill)', padding: '6px 18px', fontSize: 12, fontWeight: 700, color: '#fff', cursor: 'pointer' },
   templatePicker:       { marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, paddingRight: 4 },
   templateLabel:        { fontSize: 11, color: 'var(--color-text-muted)', fontWeight: 500 },
   templateSelect:       { background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 6, padding: '4px 8px', fontSize: 11, color: 'var(--color-text-secondary)', cursor: 'pointer', outline: 'none' },

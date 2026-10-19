@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { parseRichText } from '../lib/richtext.js'
 import { previewTable, TABLE_LINE_HEIGHT } from '../lib/tableFit.js'
+import OriginalSlidePreview from './OriginalSlidePreview.jsx'
 
 function RichText({ text }) {
   return parseRichText(text).map((seg, i) => {
@@ -13,6 +14,7 @@ function RichText({ text }) {
 
 // Lightweight read-only slide thumbnail — mirrors the exact positions the editor uses
 export function SlideThumbnail({ slide }) {
+  if (slide.style?.original?.ref) return <OriginalSlidePreview original={slide.style.original} rounded />
   const style   = slide.style ?? {}
   const accent  = style.accent  ?? '#CD2F37'
   const textCol = style.textCol ?? '#1a1a1a'
@@ -178,6 +180,7 @@ export function SlideThumbnail({ slide }) {
 
 export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, onUseAsTemplate, divisionName }) {
   const [confirming, setConfirming] = useState(false)
+  const locked = !!slide.style?.original?.ref
 
   return (
     <div style={styles.card}>
@@ -189,6 +192,7 @@ export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, o
         <div style={styles.content}>
           <p style={styles.title}>
             {slide.title}
+            {locked && <span style={styles.lockedBadge} title={`Imported from ${slide.style.original.fileName ?? 'a PowerPoint file'} with its original styling. It's exported exactly as it is in that file, so it can't be edited.`}>🔒 Original styling</span>}
             {divisionName && <span style={styles.divisionBadge} title="Created from a template for this division — uses this division's files">{divisionName}</span>}
           </p>
           {slide.bullets?.length > 0 ? (
@@ -226,8 +230,10 @@ export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, o
 
       {/* Actions */}
       <div style={styles.actions}>
-        <button style={styles.editBtn} onClick={() => onEdit(index)}>Edit</button>
-        {onUseAsTemplate && (
+        {locked
+          ? <button style={{ ...styles.editBtn, opacity: 0.45, cursor: 'not-allowed' }} disabled title="Imported with its original styling — locked so it stays exactly like the original">Locked</button>
+          : <button style={styles.editBtn} onClick={() => onEdit(index)}>Edit</button>}
+        {onUseAsTemplate && !locked && (
           <button style={styles.templateBtn} onClick={() => onUseAsTemplate(slide)} title="Save this slide as a reusable template">
             + Template
           </button>
@@ -249,6 +255,7 @@ export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, o
 }
 
 const styles = {
+  lockedBadge:   { display: 'inline-block', marginLeft: 8, verticalAlign: 'middle', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#7F77DD', background: '#7F77DD14', border: '0.5px solid #7F77DD55', borderRadius: 99, padding: '1px 7px' },
   divisionBadge: { display: 'inline-block', marginLeft: 8, verticalAlign: 'middle', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#D85A30', background: '#D85A3014', border: '0.5px solid #D85A3055', borderRadius: 99, padding: '1px 7px' },
   card: {
     display: 'flex', gap: 12, alignItems: 'stretch',
