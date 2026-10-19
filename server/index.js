@@ -17,6 +17,7 @@ import claudeRoutes        from './routes/claude.js'
 import slideRequestRoutes  from './routes/slideRequests.js'
 import marketResearchRoutes from './routes/marketResearch.js'
 import settingsRoutes      from './routes/settings.js'
+import assetRoutes         from './routes/assets.js'
 
 const app  = express()
 const PORT = process.env.PORT || 3001
@@ -48,13 +49,14 @@ app.use('/api/claude',         claudeRoutes)
 app.use('/api/slide-requests', slideRequestRoutes)
 app.use('/api/market-research', marketResearchRoutes)
 app.use('/api/settings',        settingsRoutes)
+app.use('/api/assets',          assetRoutes)
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }))
 
 // Run migrations on every startup (all statements use IF NOT EXISTS — safe to repeat)
 async function start() {
   try {
-    for (const file of ['001_initial.sql', '002_slide_requests.sql', '003_slides_table_field.sql', '004_user_metrics.sql', '005_slides_free_text_boxes.sql', '006_market_research.sql', '007_client_divisions.sql', '008_slides_division.sql']) {
+    for (const file of ['001_initial.sql', '002_slide_requests.sql', '003_slides_table_field.sql', '004_user_metrics.sql', '005_slides_free_text_boxes.sql', '006_market_research.sql', '007_client_divisions.sql', '008_slides_division.sql', '009_shared_assets.sql']) {
       const sql = readFileSync(`./migrations/${file}`, 'utf8')
       await pool.query(sql)
     }

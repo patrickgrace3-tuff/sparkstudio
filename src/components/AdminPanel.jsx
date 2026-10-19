@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react'
 import { DEPARTMENTS } from '../lib/constants.js'
 import { createTemplate, createSlideShell } from '../lib/templates.js'
 import { api } from '../lib/apiClient.js'
+import { isOriginalShell, loadShellOriginal } from '../lib/templateOriginals.js'
+import OriginalSlidePreview from './OriginalSlidePreview.jsx'
 
 // ── Writing tips modal ────────────────────────────────────────────────────────
 function TipsModal({ onClose }) {
@@ -70,11 +72,36 @@ function TipsModal({ onClose }) {
 }
 
 // ── Single slide shell editor row ────────────────────────────────────────────
+// Preview of an imported slide saved to the template (keeps its design)
+function OriginalShellPreview({ shell }) {
+  const [original, setOriginal] = useState(null)
+  const [missing, setMissing] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    loadShellOriginal(shell).then(o => { if (!cancelled) { setOriginal(o); setMissing(!o) } }).catch(() => !cancelled && setMissing(true))
+    return () => { cancelled = true }
+  }, [shell])
+  return (
+    <div style={S.origRow}>
+      <div style={{ width: 170, flexShrink: 0 }}>
+        {original ? <OriginalSlidePreview original={original} /> : <div style={S.origPlaceholder}>{missing ? 'Slide not found' : 'Loading…'}</div>}
+      </div>
+      <div style={{ fontSize: 11, lineHeight: 1.5, color: 'var(--color-text-muted)' }}>
+        <span style={S.origBadge}>Imported design</span>
+        <div style={{ marginTop: 4 }}>
+          Added with this exact design{shell.fileName ? ` (from ${shell.fileName})` : ''}. The AI rewrites its text for each client using the instructions below and the client's files.
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function SlideShellRow({ shell, onChange, onRemove, index }) {
   const [showTips, setShowTips] = useState(false)
   return (
     <div style={S.shellRow}>
       {showTips && <TipsModal onClose={() => setShowTips(false)} />}
+      {isOriginalShell(shell) && <OriginalShellPreview shell={shell} />}
       <div style={S.shellTop}>
         <span style={S.shellIdx}>{index + 1}</span>
         <input
@@ -488,6 +515,9 @@ export default function AdminPanel({ onClose, onTemplatesChange }) {
 }
 
 const S = {
+  origRow:         { display: 'flex', gap: 12, alignItems: 'flex-start', padding: '4px 0 8px 28px' },
+  origPlaceholder: { aspectRatio: '16 / 9', background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--color-text-muted)' },
+  origBadge:       { fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#7F77DD', background: '#7F77DD14', border: '0.5px solid #7F77DD55', borderRadius: 99, padding: '1px 7px' },
   overlay:      { position: 'fixed', inset: 0, background: 'var(--color-bg)', zIndex: 1000, display: 'flex', alignItems: 'stretch', justifyContent: 'stretch' },
   modal:        { width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
   header:       { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '0.5px solid var(--color-border)', flexShrink: 0, gap: 16 },
