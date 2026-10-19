@@ -17,14 +17,25 @@ export function loadOriginalPackage(clientId, ref, cache = new Map()) {
   return cache.get(ref)
 }
 
-// Where the original slide goes on the template: below the logo and header
-// line, clear of the corner graphic. The whole slide is scaled as one block,
-// so everything keeps its position and proportions. Fractions of the template.
+// Where the original content goes on the template: the open area below the
+// logo and header line, clear of the corner graphic. The area the content
+// actually covers (not the whole original slide, whose own header or margins
+// may be empty now) is scaled as one block to fill it and centred, so every
+// item keeps its position and proportions. It's never enlarged past its
+// original size.
 export const TEMPLATE_W = 12192000
 export const TEMPLATE_H = 6858000
-export const CONTENT_AREA = { x: 0.03, y: 0.17, w: 0.80, h: 0.80 }
+export const CONTENT_AREA = { x: 0.05, y: 0.19, w: 0.84, h: 0.72 }
 
-export function fitOnTemplate(slideW, slideH) {
-  const s = Math.min((CONTENT_AREA.w * TEMPLATE_W) / slideW, (CONTENT_AREA.h * TEMPLATE_H) / slideH)
-  return { s, x: CONTENT_AREA.x, y: CONTENT_AREA.y, w: (s * slideW) / TEMPLATE_W, h: (s * slideH) / TEMPLATE_H }
+// bounds: { x, y, w, h } of the content in the original slide (EMU), or null
+// for the whole slide. Returns template EMU = d + original EMU × s.
+export function fitOnTemplate(slideW, slideH, bounds = null) {
+  const b = bounds && bounds.w > 0 && bounds.h > 0 ? bounds : { x: 0, y: 0, w: slideW, h: slideH }
+  const aw = CONTENT_AREA.w * TEMPLATE_W, ah = CONTENT_AREA.h * TEMPLATE_H
+  const s = Math.min(aw / b.w, ah / b.h, 1)
+  return {
+    s,
+    dx: CONTENT_AREA.x * TEMPLATE_W + (aw - b.w * s) / 2 - b.x * s,
+    dy: CONTENT_AREA.y * TEMPLATE_H + (ah - b.h * s) / 2 - b.y * s,
+  }
 }

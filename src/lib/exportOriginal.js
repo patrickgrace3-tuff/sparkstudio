@@ -8,7 +8,7 @@
  * use are copied from the stored original under new names.
  */
 
-import { loadOriginalPackage, fitOnTemplate, TEMPLATE_W, TEMPLATE_H } from './originalSlides.js'
+import { loadOriginalPackage, fitOnTemplate } from './originalSlides.js'
 import { themeContext, readRels, relsPathOf, resolveSlideShapes, resolveChartXml, resolveThemeRefs, resolvedTableStyle, defaultTableStyleId } from './pptxResolve.js'
 
 const REL_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
@@ -107,9 +107,8 @@ export function createOriginalSplicer(zip, clientId) {
         rIdMap[id] = newId
       }
 
-      const fit = fitOnTemplate(pkg.slideW ?? original.slideW, pkg.slideH ?? original.slideH)
       let content = resolveSlideShapes(ctx, {
-        placement: { s: fit.s, dx: fit.x * TEMPLATE_W, dy: fit.y * TEMPLATE_H },
+        placement: bounds => fitOnTemplate(pkg.slideW ?? original.slideW, pkg.slideH ?? original.slideH, bounds),
         rIdMap,
         defaultTableStyleId: defaultTableStyleId(pkg.tableStyles),
       })

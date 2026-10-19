@@ -1,5 +1,5 @@
 import React from 'react'
-import { fitOnTemplate } from '../lib/originalSlides.js'
+import { fitOnTemplate, TEMPLATE_W, TEMPLATE_H } from '../lib/originalSlides.js'
 
 // Preview of a slide imported with "Keep original styling": the original
 // slide's content — text with its fonts, sizes and colours, shapes, pictures,
@@ -125,6 +125,12 @@ function Item({ item, u, pt }) {
   const flip = [item.flipH && 'scaleX(-1)', item.flipV && 'scaleY(-1)'].filter(Boolean).join(' ') || undefined
 
   if (item.type === 'line') {
+    const width = u(Math.max(item.line.w, 6350))
+    const style = item.line.dash !== 'solid' ? 'dashed' : 'solid'
+    // Straight horizontal or vertical lines have no height or width to draw an SVG in
+    if (!item.h || !item.w) {
+      return <div style={{ ...box, boxSizing: 'content-box', [!item.h ? 'borderTop' : 'borderLeft']: `${width} ${style} ${item.line.color}`, height: item.h ? box.height : 0, width: item.w ? box.width : 0 }} />
+    }
     const [x1, x2] = item.flipH ? [100, 0] : [0, 100]
     const [y1, y2] = item.flipV ? [100, 0] : [0, 100]
     return (
@@ -198,7 +204,16 @@ function Item({ item, u, pt }) {
 }
 
 function TemplateSlide({ p, fill }) {
-  const fit = fitOnTemplate(p.slideW, p.slideH)
+  // Same placement as the export: the area the content covers, scaled and centred
+  const items = p.items ?? []
+  let bounds = null
+  if (items.length) {
+    const x1 = Math.min(...items.map(i => i.x)), y1 = Math.min(...items.map(i => i.y))
+    const x2 = Math.max(...items.map(i => i.x + i.w)), y2 = Math.max(...items.map(i => i.y + i.h))
+    bounds = { x: x1 * p.slideW, y: y1 * p.slideH, w: (x2 - x1) * p.slideW, h: (y2 - y1) * p.slideH }
+  }
+  const { s, dx, dy } = fitOnTemplate(p.slideW, p.slideH, bounds)
+  const fit = { x: dx / TEMPLATE_W, y: dy / TEMPLATE_H, w: (s * p.slideW) / TEMPLATE_W, h: (s * p.slideH) / TEMPLATE_H }
   // Lengths inside the block, relative to its width (container query units)
   const u  = emu => `${(emu / p.slideW) * 100}cqw`
   const pt = points => `${((points * 12700) / p.slideW) * 100}cqw`
@@ -213,7 +228,7 @@ function TemplateSlide({ p, fill }) {
         width: `${fit.w * 100}%`, height: `${fit.h * 100}%`, containerType: 'inline-size',
         fontFamily: 'Arial, sans-serif',
       }}>
-        {(p.items ?? []).map((it, i) => <Item key={i} item={it} u={u} pt={pt} />)}
+        {items.map((it, i) => <Item key={i} item={it} u={u} pt={pt} />)}
       </div>
     </div>
   )
