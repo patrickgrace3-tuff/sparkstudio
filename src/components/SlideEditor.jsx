@@ -2,6 +2,9 @@ import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { DEPARTMENTS } from '../lib/constants.js'
 import { parseRichText } from '../lib/richtext.js'
 import { previewTable, TABLE_LINE_HEIGHT } from '../lib/tableFit.js'
+import FramedImage from './FramedImage.jsx'
+import FrameEditor from './FrameEditor.jsx'
+import { upgradeImage, loadImageSize } from '../lib/imageFrame.js'
 
 function RichText({ text }) {
   return parseRichText(text).map((seg, i) => {
@@ -22,180 +25,86 @@ function clamp(v, min, max) {
   return Math.min(Math.max(v, min), max)
 }
 
-// ── Freely positioned/resized images overlaid on the slide, PowerPoint-style ──
-// Scale mode (default): drag = move box, resize = aspect-locked (Shift to unlock)
-// Crop  mode:           drag = pan image inside box, ⊹ handle = move box, resize = free crop window
-function FreeImageLayer({ images, onChange }) {
-  const containerRef = useRef(null)
-  const dragRef = useRef(null)
-
-  function updateImage(idx, patch) {
+// ── Pictures on the slide, edited like PowerPoint ─────────────────────────────
+// Click to select · drag to move · corner handles keep proportions (Shift for
+// free) · side handles stretch · double-click to crop (drag the picture under
+// the frame, trim with the black handles) · rounded corners from the toolbar.
+function ImageLayer({ images, onChange, sel, onSel }) {
+  const ref = useRef(null)
+  const set = (i, patch) => {
     const next = [...images]
-    next[idx] = { ...next[idx], ...patch }
+    next[i] = { ...next[i], ...patch }
     onChange(next)
   }
-
-  function onPointerMove(e) {
-    const d = dragRef.current
-    if (!d) return
-    const rect = containerRef.current.getBoundingClientRect()
-    const dx = (e.clientX - d.startX) / rect.width
-    const dy = (e.clientY - d.startY) / rect.height
-    const next = [...images]
-    const img  = next[d.idx]
-    const isCrop = img.mode === 'crop'
-
-    if (d.mode === 'move-box') {
-      next[d.idx] = {
-        ...img,
-        x: clamp(d.orig.x + dx, 0, 1 - d.orig.w),
-        y: clamp(d.orig.y + dy, 0, 1 - d.orig.h),
-      }
-    } else if (d.mode === 'pan') {
-      // Shift background position to pan image inside crop window
-      next[d.idx] = {
-        ...img,
-        bgX: clamp(d.orig.bgX - dx * 200, 0, 100),
-        bgY: clamp(d.orig.bgY - dy * 200, 0, 100),
-      }
-    } else if (d.mode === 'resize') {
-      if (isCrop || e.shiftKey) {
-        // Free resize: crop mode always free, or Shift held in scale mode
-        next[d.idx] = {
-          ...img,
-          w: clamp(d.orig.w + dx, 0.05, 1 - d.orig.x),
-          h: clamp(d.orig.h + dy, 0.05, 1 - d.orig.y),
-        }
-      } else {
-        // Aspect-locked scale (default)
-        const aspect = d.orig.aspect ?? (d.orig.w / d.orig.h)
-        const newW   = clamp(d.orig.w + dx, 0.05, 1 - d.orig.x)
-        const newH   = clamp(newW / aspect, 0.05, 1 - d.orig.y)
-        next[d.idx]  = { ...img, w: newW, h: newH }
-      }
-    }
-    onChange(next)
-  }
-
-  function onPointerUp() {
-    dragRef.current = null
-    window.removeEventListener('pointermove', onPointerMove)
-    window.removeEventListener('pointerup', onPointerUp)
-  }
-
-  function startDrag(e, idx, mode) {
-    e.stopPropagation()
-    e.preventDefault()
-    const img = images[idx]
-    dragRef.current = {
-      idx, mode,
-      startX: e.clientX, startY: e.clientY,
-      orig: {
-        ...img,
-        bgX: img.bgX ?? 50,
-        bgY: img.bgY ?? 50,
-        aspect: img.aspect ?? (img.w / img.h),
-      },
-    }
-    window.addEventListener('pointermove', onPointerMove)
-    window.addEventListener('pointerup', onPointerUp)
-  }
-
-  function removeImage(idx) {
-    onChange(images.filter((_, i) => i !== idx))
-  }
-
-  function toggleMode(e, idx) {
-    e.stopPropagation()
-    const img  = images[idx]
-    const next = img.mode === 'crop' ? 'scale' : 'crop'
-    updateImage(idx, { mode: next })
-  }
-
+  const selected = sel != null ? images[sel.index] : null
   return (
-    <div ref={containerRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-      {images.map((img, i) => {
-        const isCrop = img.mode === 'crop'
-        const bgX    = img.bgX ?? 50
-        const bgY    = img.bgY ?? 50
-        return (
-          <div
-            key={i}
-            onPointerDown={e => startDrag(e, i, isCrop ? 'pan' : 'move-box')}
-            style={{
-              position: 'absolute',
-              pointerEvents: 'auto',
-              left: `${img.x * 100}%`,
-              top: `${img.y * 100}%`,
-              width: `${img.w * 100}%`,
-              height: `${img.h * 100}%`,
-              backgroundImage: `url(${img.src})`,
-              backgroundSize: isCrop ? 'cover' : '100% 100%',
-              backgroundPosition: isCrop ? `${bgX}% ${bgY}%` : 'center',
-              backgroundRepeat: 'no-repeat',
-              border: `2px solid ${isCrop ? '#a78bfa' : 'rgba(255,255,255,0.9)'}`,
-              outline: '1px solid rgba(0,0,0,0.35)',
-              cursor: isCrop ? 'grab' : 'move',
-              boxSizing: 'border-box',
-              userSelect: 'none',
-              overflow: 'hidden',
-            }}
-          >
-            {/* Remove button */}
-            <button
-              onPointerDown={e => e.stopPropagation()}
-              onClick={() => removeImage(i)}
-              style={{
-                position: 'absolute', top: 4, right: 4, width: 20, height: 20,
-                borderRadius: '50%', background: '#ef4444', color: '#fff', border: 'none',
-                fontSize: 11, cursor: 'pointer', lineHeight: 1, zIndex: 3,
-              }}
-            >✕</button>
-
-            {/* Crop/Scale toggle */}
-            <button
-              onPointerDown={e => e.stopPropagation()}
-              onClick={e => toggleMode(e, i)}
-              title={isCrop ? 'Switch to Scale mode' : 'Switch to Crop mode'}
-              style={{
-                position: 'absolute', top: 4, left: 4,
-                padding: '2px 6px', fontSize: 9, fontWeight: 700,
-                background: isCrop ? '#7c3aed' : 'rgba(0,0,0,0.55)',
-                color: '#fff', border: 'none', borderRadius: 3,
-                cursor: 'pointer', letterSpacing: '0.04em', zIndex: 3,
-              }}
-            >{isCrop ? 'CROP' : 'SCALE'}</button>
-
-            {/* In crop mode: separate move-box handle so drag = pan */}
-            {isCrop && (
-              <div
-                onPointerDown={e => startDrag(e, i, 'move-box')}
-                title="Move image box"
-                style={{
-                  position: 'absolute', top: 4, left: '50%', transform: 'translateX(-50%)',
-                  width: 22, height: 22, borderRadius: '50%',
-                  background: 'rgba(0,0,0,0.55)', color: '#fff',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 13, cursor: 'move', zIndex: 3, userSelect: 'none',
-                }}
-              >⊹</div>
-            )}
-
-            {/* Resize handle */}
-            <div
-              onPointerDown={e => startDrag(e, i, 'resize')}
-              title={isCrop ? 'Resize crop window' : 'Resize (Shift = free aspect)'}
-              style={{
-                position: 'absolute', bottom: 4, right: 4, width: 14, height: 14,
-                background: '#fff', border: `2px solid ${isCrop ? '#7c3aed' : 'var(--color-accent)'}`,
-                borderRadius: 3, cursor: 'nwse-resize', zIndex: 3,
-              }}
-            />
-          </div>
-        )
-      })}
+    <div ref={ref} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+      {images.map((img, i) => <FramedImage key={`img${i}`} img={img} />)}
+      {images.map((img, i) => (
+        <FrameEditor
+          key={`frame${i}`}
+          frame={img} areaRef={ref} image={img} keepAspect
+          selected={sel?.index === i}
+          cropMode={sel?.index === i && !!sel.crop}
+          onSelect={() => onSel({ index: i, crop: false })}
+          onCropModeChange={crop => onSel({ index: i, crop })}
+          onChange={next => set(i, next)}
+          title="Drag to move · double-click to crop"
+        />
+      ))}
+      {selected && (
+        <ImageToolbar
+          img={selected}
+          cropping={!!sel.crop}
+          onCrop={() => onSel({ ...sel, crop: !sel.crop })}
+          onRadius={radius => set(sel.index, { radius })}
+          onReset={() => {
+            // Back to the whole picture at its natural shape, same width
+            const ratio = selected.aspect ? selected.aspect / (16 / 9) : null
+            set(sel.index, { crop: { l: 0, t: 0, r: 0, b: 0 }, ...(ratio ? { h: selected.w / ratio } : {}) })
+          }}
+          onDelete={() => { onChange(images.filter((_, k) => k !== sel.index)); onSel(null) }}
+        />
+      )}
     </div>
   )
+}
+
+export function ImageToolbar({ img, cropping, onCrop, onRadius, onReset, onDelete, extra = null }) {
+  const top = img.y > 0.12
+  return (
+    <div
+      onPointerDown={e => e.stopPropagation()}
+      style={{
+        position: 'absolute', zIndex: 8, pointerEvents: 'auto',
+        left: `${Math.min(Math.max(img.x, 0), 0.6) * 100}%`,
+        ...(top ? { top: `calc(${img.y * 100}% - 40px)` } : { top: `calc(${(img.y + img.h) * 100}% + 8px)` }),
+        display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px',
+        background: '#1f2937', color: '#fff', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+        fontSize: 11, whiteSpace: 'nowrap', fontFamily: 'Arial, sans-serif',
+      }}
+    >
+      {onCrop && (
+        <button onClick={onCrop} style={TB.btn(cropping)} title={cropping ? 'Finish cropping (Enter)' : 'Crop (or double-click the picture)'}>
+          {cropping ? '✓ Done' : '✂ Crop'}
+        </button>
+      )}
+      {onRadius && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 5 }} title="Round the corners">
+          <span>Corners</span>
+          <input type="range" min={0} max={50} step={1} value={Math.round((img.radius ?? 0) * 100)}
+            onChange={e => onRadius(+e.target.value / 100)} style={{ width: 70, accentColor: '#60a5fa' }} />
+        </label>
+      )}
+      {onReset && <button onClick={onReset} style={TB.btn(false)} title="Remove cropping">Reset</button>}
+      {extra}
+      {onDelete && <button onClick={onDelete} style={{ ...TB.btn(false), color: '#fca5a5' }} title="Delete">🗑</button>}
+    </div>
+  )
+}
+
+const TB = {
+  btn: on => ({ background: on ? '#2563eb' : 'rgba(255,255,255,0.12)', color: '#fff', border: 'none', borderRadius: 5, padding: '3px 8px', fontSize: 11, cursor: 'pointer' }),
 }
 
 // ── A single draggable/resizable box (PowerPoint-style) overlaid on the slide,
@@ -412,7 +321,7 @@ function SlideCanvas({
   slide, bgImage, table, onImagesChange, onBodyBoxChange, onTableBoxChange,
   onTitleChange, onBulletChange, onTableHeaderChange, onTableCellChange, onSourceChange,
   onExtraBoxChange, onExtraBulletChange, onFreeTextBoxChange, onFreeTextChange, freeTextRefs,
-  onElementContextMenu,
+  onElementContextMenu, imageSel = null, onImageSel = () => {},
 }) {
   const { title, bullets, source, style = {}, extraBulletBoxes = [], freeTextBoxes = [] } = slide
   const font    = style.font    ?? FONTS[0].value
@@ -699,7 +608,7 @@ function SlideCanvas({
           style={{ outline: 'none', cursor: onSourceChange ? 'text' : 'default' }}
         >{source}</span>
       </div>
-      <FreeImageLayer images={style.images || []} onChange={onImagesChange} />
+      <ImageLayer images={style.images || []} onChange={onImagesChange} sel={imageSel} onSel={onImageSel} />
     </div>
   )
 }
@@ -736,6 +645,24 @@ export default function SlideEditor({ slide, onSave, onClose }) {
     },
   })
   const [bgImage,       setBgImage]       = useState(slide.style?.bgImage ?? null)
+  const [imageSel,      setImageSel]      = useState(null) // { index, crop } — selected picture
+
+  // Pictures saved by older versions (no crop data) are converted once their
+  // size is known, so cropping works the same everywhere
+  useEffect(() => {
+    const imgs = slide.style?.images ?? []
+    if (!imgs.some(img => !img.crop || !img.aspect)) return
+    let cancelled = false
+    Promise.all(imgs.map(img => (img.crop && img.aspect ? null : loadImageSize(img.src)))).then(sizes => {
+      if (cancelled) return
+      setDraft(d => ({
+        ...d,
+        style: { ...d.style, images: (d.style.images ?? []).map((img, i) => (sizes[i] ? upgradeImage(img, sizes[i].w, sizes[i].h) : img)) },
+      }))
+    })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [activePanel,   setActivePanel]   = useState('content') // content | images | notes
   const [fullscreen,    setFullscreen]    = useState(true)
   const [ctxMenu,       setCtxMenu]       = useState(null) // { x, y }
@@ -955,12 +882,11 @@ export default function SlideEditor({ slide, onSave, onClose }) {
       imgEl.onload = () => {
         const aspect = imgEl.naturalWidth / (imgEl.naturalHeight || 1)
         const w = 0.35
-        const h = w / aspect
-        const entry = { src, x: 0.3, y: 0.3, w, h: clamp(h, 0.05, 0.9), aspect, mode: 'scale' }
+        const entry = { src, x: 0.3, y: 0.3, w, h: (w * 16 / 9) / aspect, aspect, crop: { l: 0, t: 0, r: 0, b: 0 } }
         updateStyle('images', [...(draft.style.images || []), entry])
       }
       imgEl.onerror = () => {
-        updateStyle('images', [...(draft.style.images || []), { src, x: 0.3, y: 0.3, w: 0.3, h: 0.3, mode: 'scale' }])
+        updateStyle('images', [...(draft.style.images || []), { src, x: 0.3, y: 0.3, w: 0.3, h: 0.3, crop: { l: 0, t: 0, r: 0, b: 0 } }])
       }
       imgEl.src = src
     }
@@ -968,6 +894,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
   }
 
   function removeFreeImage(i) {
+    setImageSel(null)
     updateStyle('images', draft.style.images.filter((_, idx) => idx !== i))
   }
 
@@ -1336,7 +1263,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
               <div style={styles.panel}>
                 <label style={styles.label}>Overlay images</label>
                 <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: 0 }}>
-                  Upload images and position them on the slide. Default drag scales with locked aspect ratio — hold <strong>Shift</strong> to resize freely.
+                  Click a picture on the slide to select it. Drag to move; corner handles keep its proportions (hold <strong>Shift</strong> to stretch). Double-click — or <strong>Crop</strong> — to crop: drag the picture inside the frame and trim with the black handles. <strong>Corners</strong> rounds the edges.
                 </p>
                 <div style={styles.uploadRow}>
                   <button style={styles.uploadBtn} onClick={() => freeImgRef.current?.click()}>+ Add image</button>
@@ -1345,20 +1272,16 @@ export default function SlideEditor({ slide, onSave, onClose }) {
                 {draft.style.images?.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {draft.style.images.map((img, i) => {
-                      const isCrop = img.mode === 'crop'
+                      const isCrop = imageSel?.index === i && imageSel.crop
                       return (
-                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <img src={img.src} style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4, border: '0.5px solid var(--color-border)', flexShrink: 0 }} />
-                          <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', flex: 1 }}>Image {i + 1}</span>
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 4, borderRadius: 6, background: imageSel?.index === i ? 'var(--color-accent-tint)' : 'transparent' }}>
+                          <img src={img.src} onClick={() => setImageSel({ index: i, crop: false })} style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4, border: '0.5px solid var(--color-border)', flexShrink: 0, cursor: 'pointer' }} />
+                          <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', flex: 1, cursor: 'pointer' }} onClick={() => setImageSel({ index: i, crop: false })}>Image {i + 1}</span>
                           <button
                             style={{ ...styles.microBtn, color: isCrop ? '#7c3aed' : 'var(--color-text-secondary)', borderColor: isCrop ? '#7c3aed55' : undefined, fontSize: 10 }}
-                            title={isCrop ? 'Switch to Scale mode' : 'Switch to Crop mode'}
-                            onClick={() => {
-                              const next = [...draft.style.images]
-                              next[i] = { ...next[i], mode: isCrop ? 'scale' : 'crop' }
-                              updateStyle('images', next)
-                            }}
-                          >{isCrop ? 'Crop' : 'Scale'}</button>
+                            title={isCrop ? 'Finish cropping' : 'Crop this picture'}
+                            onClick={() => setImageSel({ index: i, crop: !isCrop })}
+                          >{isCrop ? 'Done' : 'Crop'}</button>
                           <button style={styles.microBtn} onClick={() => removeFreeImage(i)}>✕</button>
                         </div>
                       )
@@ -1406,12 +1329,14 @@ export default function SlideEditor({ slide, onSave, onClose }) {
           <div style={styles.preview}>
             <div style={styles.previewInner}>
               <div style={styles.previewLabel}>Live preview · <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>right-click slide to format</span></div>
-              <div onContextMenu={handleCanvasContextMenu}>
+              <div onContextMenu={handleCanvasContextMenu} onPointerDown={() => setImageSel(null)}>
               <SlideCanvas
                 slide={draft}
                 bgImage={bgImage}
                 table={table}
                 onImagesChange={next => updateStyle('images', next)}
+                imageSel={imageSel}
+                onImageSel={setImageSel}
                 onBodyBoxChange={next => updateStyle('bodyBox', next)}
                 onTableBoxChange={next => updateStyle('tableBox', next)}
                 onTitleChange={text => {

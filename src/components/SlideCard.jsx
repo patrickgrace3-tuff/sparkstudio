@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { parseRichText } from '../lib/richtext.js'
 import { previewTable, TABLE_LINE_HEIGHT } from '../lib/tableFit.js'
 import OriginalSlidePreview from './OriginalSlidePreview.jsx'
+import FramedImage from './FramedImage.jsx'
 
 function RichText({ text }) {
   return parseRichText(text).map((seg, i) => {
@@ -159,21 +160,8 @@ export function SlideThumbnail({ slide }) {
         </div>
       )}
 
-      {/* Free-positioned images — match editor backgroundSize/crop logic */}
-      {images.map((img, i) => {
-        const isCrop = img.mode === 'crop'
-        return (
-          <div key={i} style={{
-            position: 'absolute',
-            left: `${img.x * 100}%`, top: `${img.y * 100}%`,
-            width: `${img.w * 100}%`, height: `${img.h * 100}%`,
-            backgroundImage: `url(${img.src})`,
-            backgroundSize: isCrop ? 'cover' : '100% 100%',
-            backgroundPosition: isCrop ? `${img.bgX ?? 50}% ${img.bgY ?? 50}%` : 'center',
-            backgroundRepeat: 'no-repeat',
-          }} />
-        )
-      })}
+      {/* Free-positioned images — cropped and rounded as in the editor and export */}
+      {images.map((img, i) => <FramedImage key={i} img={img} />)}
     </div>
   )
 }
@@ -192,7 +180,7 @@ export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, o
         <div style={styles.content}>
           <p style={styles.title}>
             {slide.title}
-            {locked && <span style={styles.lockedBadge} title={`Imported from ${slide.style.original.fileName ?? 'a PowerPoint file'} with its original styling. Its content is exported exactly as it is in that file, on the Spark Studio template, so it can't be edited.`}>🔒 Original styling</span>}
+            {locked && <span style={styles.lockedBadge} title={`Imported from ${slide.style.original.fileName ?? 'a PowerPoint file'} with its original styling. Its content keeps the file's fonts, colours and layout on the Spark Studio template.`}>Original styling</span>}
             {divisionName && <span style={styles.divisionBadge} title="Created from a template for this division — uses this division's files">{divisionName}</span>}
           </p>
           {slide.bullets?.length > 0 ? (
@@ -234,9 +222,8 @@ export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, o
 
       {/* Actions */}
       <div style={styles.actions}>
-        {locked
-          ? <button style={styles.editBtn} onClick={() => onView?.(index)} title="Locked so it stays exactly like the original — open a full-size view">View slides</button>
-          : <button style={styles.editBtn} onClick={() => onEdit(index)}>Edit</button>}
+        <button style={styles.editBtn} onClick={() => onEdit(index)} title={locked ? 'Move, resize, crop or delete elements and change text — the original styling is kept' : undefined}>Edit</button>
+        {locked && onView && <button style={styles.editBtn} onClick={() => onView(index)} title="Open a full-size view">View</button>}
         {onUseAsTemplate && !locked && (
           <button style={styles.templateBtn} onClick={() => onUseAsTemplate(slide)} title="Save this slide as a reusable template">
             + Template

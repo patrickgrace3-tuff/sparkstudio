@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import OriginalSlidePreview from './OriginalSlidePreview.jsx'
+import FramedImage from './FramedImage.jsx'
 import { buildOrderedSlideList } from '../lib/presentationOrder.js'
 import { previewTable, TABLE_LINE_HEIGHT } from '../lib/tableFit.js'
 import { DEPARTMENTS } from '../lib/constants.js'
@@ -146,28 +147,8 @@ function ContentSlidePreview({ slide }) {
       {/* Source */}
       <div style={{ position: 'absolute', left: '1.8%', top: '90.4%', width: '48.4%', fontSize: '1.2cqw', fontStyle: 'italic', color: bgImg ? 'rgba(255,255,255,0.7)' : '#7F7F7F' }}>Source: {source}</div>
 
-      {/* Overlay images — match editor backgroundSize/crop logic */}
-      {(style.images || []).map((img, i) => {
-        const isCrop = img.mode === 'crop'
-        const bgX    = img.bgX ?? 50
-        const bgY    = img.bgY ?? 50
-        return (
-          <div
-            key={i}
-            style={{
-              position: 'absolute',
-              left: `${img.x * 100}%`,
-              top: `${img.y * 100}%`,
-              width: `${img.w * 100}%`,
-              height: `${img.h * 100}%`,
-              backgroundImage: `url(${img.src})`,
-              backgroundSize: isCrop ? 'cover' : '100% 100%',
-              backgroundPosition: isCrop ? `${bgX}% ${bgY}%` : 'center',
-              backgroundRepeat: 'no-repeat',
-            }}
-          />
-        )
-      })}
+      {/* Overlay images — cropped and rounded as in the editor and export */}
+      {(style.images || []).map((img, i) => <FramedImage key={i} img={img} />)}
     </div>
   )
 }
@@ -433,7 +414,7 @@ export default function PreviewPanel({ deck, funnelConfig, teamConfig, presentat
                     </>
                   : <span style={{ ...S.notesText, color: 'var(--color-text-muted)', fontStyle: 'italic' }}>No notes</span>
                 }
-                {onEditSlide && !item.slide?.style?.original?.ref && (
+                {onEditSlide && (
                   <button
                     style={S.notesEditBtn}
                     onClick={e => { e.stopPropagation(); onEditSlide(item) }}

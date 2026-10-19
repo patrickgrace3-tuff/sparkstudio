@@ -19,8 +19,9 @@ const TARGET   = { x: 0.045, y: 0.19, w: 0.91, h: 0.69 }
 const TPL_W    = 12192000
 const TPL_H    = 6858000
 const SKIP_PH  = new Set(['sldNum', 'dt', 'ftr', 'hdr', 'sldImg'])
-const MAX_IMG_DIM   = 1600
-const MAX_IMG_BYTES = 350 * 1024
+// Pictures are kept sharp: only very large ones are scaled down
+const MAX_IMG_DIM   = 2560
+const MAX_IMG_BYTES = 1200 * 1024
 
 const parseXml = xml => new DOMParser().parseFromString(xml, 'text/xml')
 const kids = (el, ns, name) => Array.from(el?.childNodes ?? []).filter(n => n.namespaceURI === ns && n.localName === name)
@@ -177,7 +178,7 @@ async function bytesToDataUrl(bytes, mime) {
       canvas.height = Math.max(1, Math.round(bmp.height * scale))
       canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height)
       const outMime = mime === 'image/jpeg' ? 'image/jpeg' : 'image/png'
-      const resized = await new Promise(res => canvas.toBlob(res, outMime, 0.85))
+      const resized = await new Promise(res => canvas.toBlob(res, outMime, 0.92))
       if (resized && resized.size < blob.size) blob = resized
       else if (mime !== 'image/png' && mime !== 'image/jpeg' && resized) blob = resized
     } catch { /* keep original */ }
@@ -198,6 +199,20 @@ async function loadImage(zip, rels, rId) {
   const file = zip.file(rel.path)
   if (!mime || !file) return null // EMF/WMF/SVG/TIFF can't be rendered in the browser
   return bytesToDataUrl(await file.async('uint8array'), mime)
+}
+
+// A picture's cropping (srcRect) and rounded corners (roundRect/ellipse frame)
+function pictureLook(spPr, blipFill) {
+  const src = desc(blipFill, NS_A, 'srcRect')
+  const v = k => +(src?.getAttribute(k) ?? 0) / 100000
+  const geom = kid(spPr, NS_A, 'prstGeom')
+  const prst = geom?.getAttribute('prst')
+  let radius = 0
+  if (prst === 'roundRect') {
+    const fmla = Array.from(geom.getElementsByTagNameNS(NS_A, 'gd')).find(g => g.getAttribute('name') === 'adj')?.getAttribute('fmla')
+    radius = Math.min(0.5, (fmla ? +fmla.replace(/^val\s+/, '') : 16667) / 100000)
+  } else if (prst === 'ellipse') radius = 0.5
+  return { crop: { l: v('l'), t: v('t'), r: v('r'), b: v('b') }, radius }
 }
 
 // ── Tables, charts, SmartArt ──────────────────────────────────────────────────
@@ -391,7 +406,7 @@ async function collectElements(zip, rels, positions, container, transform, out) 
       const blip = desc(kid(spPr, NS_A, 'blipFill'), NS_A, 'blip')
       if (blip && rect) {
         const src = await loadImage(zip, rels, blip.getAttributeNS(NS_R, 'embed'))
-        if (src) out.push({ kind: 'image', rect, src })
+        if (src) out.push({ kind: 'image', rect, src, ...pictureLook(spPr, kid(spPr, NS_A, 'blipFill')) })
       }
 
       const txBody = kid(el, NS_P, 'txBody')
@@ -406,7 +421,7 @@ async function collectElements(zip, rels, positions, container, transform, out) 
       const blip = desc(kid(el, NS_P, 'blipFill'), NS_A, 'blip')
       if (!rect || !blip) continue
       const src = await loadImage(zip, rels, blip.getAttributeNS(NS_R, 'embed'))
-      if (src) out.push({ kind: 'image', rect: transform(rect), src })
+      if (src) out.push({ kind: 'image', rect: transform(rect), src, ...pictureLook(kid(el, NS_P, 'spPr'), kid(el, NS_P, 'blipFill')) })
       continue
     }
 
@@ -506,7 +521,7 @@ function buildSlide(elements, slideW, slideH, notes) {
   for (const e of rest) {
     const box = toBox(e.rect)
     if (e.kind === 'image') {
-      images.push({ src: e.src, ...box, mode: 'scale' })
+      images.push({ src: e.src, ...box, crop: e.crop ?? { l: 0, t: 0, r: 0, b: 0 }, ...(e.radius ? { radius: e.radius } : {}) })
     } else if (e.kind === 'table') {
       if (e === primaryTable) {
         table = { headers: e.table.headers, rows: e.table.rows }
@@ -702,6 +717,14 @@ function textOf(txBody, fallbackColor = null, fallbackFont = null) {
   }
 }
 
+// Drop shadow (outer shadow effect) → offsets and blur in EMU
+function shadowOf(spPr) {
+  const sh = desc(kid(spPr, NS_A, 'effectLst'), NS_A, 'outerShdw')
+  if (!sh) return null
+  const dist = +(sh.getAttribute('dist') ?? 0), dir = (+(sh.getAttribute('dir') ?? 0) / 60000) * Math.PI / 180
+  return { dx: Math.cos(dir) * dist, dy: Math.sin(dir) * dist, blur: +(sh.getAttribute('blurRad') ?? 0), color: colorOf(sh) ?? 'rgba(0,0,0,0.35)' }
+}
+
 function tableOf(ctx, tbl, tableStyles) {
   const tblPr = kid(tbl, NS_A, 'tblPr')
   const flag = n => isOn(tblPr?.getAttribute(n))
@@ -751,19 +774,21 @@ function tableOf(ctx, tbl, tableStyles) {
   return { cols, rows }
 }
 
-async function describeShapes(zip, ctx, rels, container, transform, out, tableStyles) {
+async function describeShapes(zip, ctx, rels, container, transform, out, tableStyles, parentKey = null) {
   for (const el of elKids(container)) {
     if (el.localName === 'AlternateContent') {
       const branch = elKids(el).find(b => b.localName === 'Fallback') ?? elKids(el).find(b => b.localName === 'Choice')
-      if (branch) await describeShapes(zip, ctx, rels, branch, transform, out, tableStyles)
+      if (branch) await describeShapes(zip, ctx, rels, branch, transform, out, tableStyles, parentKey)
       continue
     }
     if (el.namespaceURI !== NS_P) continue
     const nv = elKids(el).find(n => n.localName.startsWith('nv'))
     if (isOn(kid(nv, NS_P, 'cNvPr')?.getAttribute('hidden'))) continue
+    // Edits in the app refer to top-level shapes by id (a group moves as one)
+    const key = parentKey ?? kid(nv, NS_P, 'cNvPr')?.getAttribute('id') ?? null
 
     if (el.localName === 'grpSp') {
-      await describeShapes(zip, ctx, rels, el, groupTransform(el, transform), out, tableStyles)
+      await describeShapes(zip, ctx, rels, el, groupTransform(el, transform), out, tableStyles, key)
       continue
     }
 
@@ -781,18 +806,21 @@ async function describeShapes(zip, ctx, rels, container, transform, out, tableSt
       }
       const line = lineOf(spPr)
       if (el.localName === 'cxnSp' || base.geom === 'line' || /Connector/.test(base.geom)) {
-        if (line) out.push({ type: 'line', ...base, line })
+        if (line) out.push({ type: 'line', ...base, key, line })
         continue
       }
       const blip = desc(kid(el, el.localName === 'pic' ? NS_P : NS_A, 'blipFill') ?? kid(spPr, NS_A, 'blipFill'), NS_A, 'blip')
       const src  = blip ? await loadImage(zip, rels, blip.getAttributeNS(NS_R, 'embed')) : null
       const crop = desc(kid(el, NS_P, 'blipFill'), NS_A, 'srcRect')
+      const look = pictureLook(spPr, kid(el, NS_P, 'blipFill') ?? kid(spPr, NS_A, 'blipFill'))
       out.push({
-        type: el.localName === 'pic' ? 'image' : 'shape', ...base,
+        type: src ? 'image' : 'shape', ...base, key,
         fill: src ? null : fillColor(spPr),
         line,
         src,
-        crop: crop ? ['l', 't', 'r', 'b'].map(k => +(crop.getAttribute(k) ?? 0) / 100000) : null,
+        crop: src || crop ? [look.crop.l, look.crop.t, look.crop.r, look.crop.b] : null,
+        radius: look.radius,
+        shadow: shadowOf(spPr),
         text: textOf(kid(el, NS_P, 'txBody')),
       })
       continue
@@ -805,15 +833,15 @@ async function describeShapes(zip, ctx, rels, container, transform, out, tableSt
       const rect = transform(raw)
       const uri = data.getAttribute('uri') ?? ''
       if (uri.endsWith('/table')) {
-        out.push({ type: 'table', ...rect, table: tableOf(ctx, desc(data, NS_A, 'tbl'), tableStyles) })
+        out.push({ type: 'table', ...rect, key, table: tableOf(ctx, desc(data, NS_A, 'tbl'), tableStyles) })
       } else if (uri.endsWith('/chart')) {
         const rel = rels[desc(data, NS_C, 'chart')?.getAttributeNS(NS_R, 'id')]
         const xml = rel && zip.file(rel.path) ? await zip.file(rel.path).async('string') : null
         const chart = xml && readChartXml(resolveChartXml(ctx, xml))
-        if (chart) out.push({ type: 'image', ...rect, src: renderChartImage(chart, rect) })
+        if (chart) out.push({ type: 'image', ...rect, key, chart: true, src: renderChartImage(chart, rect) })
       } else if (uri.endsWith('/diagram')) {
         const lines = await readSmartArtText(zip, rels, desc(data, NS_DGM, 'relIds'))
-        if (lines.length) out.push({ type: 'shape', ...rect, geom: 'rect', text: { anchor: 't', ins: [91440, 45720, 91440, 45720], wrap: true, fontScale: 1, lnRed: 0, paras: lines.map(t => ({ algn: 'l', marL: 0, indent: 0, bullet: null, runs: [{ t: t.replace(/\*/g, ''), sz: 16, color: schemeHex(ctx, 'tx1') && `#${schemeHex(ctx, 'tx1')}` }], endSz: 16 })) } })
+        if (lines.length) out.push({ type: 'shape', ...rect, key, smartArt: true, geom: 'rect', text: { anchor: 't', ins: [91440, 45720, 91440, 45720], wrap: true, fontScale: 1, lnRed: 0, paras: lines.map(t => ({ algn: 'l', marL: 0, indent: 0, bullet: null, runs: [{ t: t.replace(/\*/g, ''), sz: 16, color: schemeHex(ctx, 'tx1') && `#${schemeHex(ctx, 'tx1')}` }], endSz: 16 })) } })
       }
     }
   }
@@ -821,7 +849,7 @@ async function describeShapes(zip, ctx, rels, container, transform, out, tableSt
 
 async function originalPreview(zip, ctx, slidePath, slideW, slideH, tableStyles) {
   const rels = await loadRels(zip, slidePath)
-  const xml  = resolveSlideShapes(ctx, { defaultTableStyleId: defaultTableStyleId(tableStyles) })
+  const xml  = resolveSlideShapes(ctx, { defaultTableStyleId: defaultTableStyleId(tableStyles), keepIds: true })
   const doc  = parseXml(`<p:spTree xmlns:p="${NS_P}" xmlns:a="${NS_A}" xmlns:r="${NS_R}">${xml}</p:spTree>`)
   const raw  = []
   await describeShapes(zip, ctx, rels, doc.documentElement, r => r, raw, tableStyles)
@@ -838,7 +866,7 @@ async function originalPreview(zip, ctx, slidePath, slideW, slideH, tableStyles)
     if (!title && (ph?.type === 'title' || ph?.type === 'ctrTitle')) title = lines.join(' ').replace(/\*/g, '')
     else if (!ph || !SKIP_PH.has(ph.type)) text.push(...lines.map(l => l.replace(/\*\*/g, '')))
   }
-  return { version: 2, slideW, slideH, aspect: slideW / slideH, items, title, text, notes: await readNotes(zip, rels) }
+  return { version: 3, slideW, slideH, aspect: slideW / slideH, items, title, text, notes: await readNotes(zip, rels) }
 }
 
 export async function importOriginalSlidesFromPptx(file) {
@@ -886,4 +914,17 @@ export async function importOriginalSlidesFromPptx(file) {
     slides.push({ slidePath, preview: await originalPreview(zip, ctx, slidePath, slideW, slideH, tableStyles) })
   }
   return { pkg: { version: 2, slideW, slideH, parts, types, tableStyles, defaultTextStyle }, slides }
+}
+
+// Rebuilds the preview description of an imported slide from its stored
+// original parts (used when a slide imported by an older version is edited)
+export async function rebuildOriginalPreview(pkg, slidePath) {
+  const zip = new JSZip()
+  for (const [path, data] of Object.entries(pkg.parts ?? {})) {
+    if (typeof data === 'string') zip.file(path, data)
+    else if (data?.b64 != null) zip.file(path, data.b64, { base64: true })
+  }
+  const get = p => (typeof pkg.parts[p] === 'string' ? pkg.parts[p] : null)
+  const ctx = themeContext(get, slidePath, pkg.defaultTextStyle ?? null)
+  return originalPreview(zip, ctx, slidePath, pkg.slideW, pkg.slideH, pkg.tableStyles ?? null)
 }
