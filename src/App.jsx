@@ -26,6 +26,7 @@ import { isLockedOriginal, originalPptxKey } from './lib/originalSlides.js'
 import { clientDivisions, deptUsesDivisions, splitFilesByDivision, syncedDeptFiles, syncedGlobalFiles } from './lib/divisions.js'
 import { fetchMarketResearchForClient, fetchClientMarketResearchCopy, marketResearchDeckSlides, insertMarketResearch, withoutMarketResearch, MARKET_RESEARCH_DEPT_ID } from './lib/marketResearch.js'
 import ClientMarketResearchEditor from './components/ClientMarketResearchEditor.jsx'
+import OriginalSlideViewer from './components/OriginalSlideViewer.jsx'
 import { api, setToken } from './lib/apiClient.js'
 import { saveSlides } from './lib/slideSave.js'
 
@@ -47,6 +48,7 @@ export default function App() {
   const [isImporting,    setIsImporting]    = useState(false)
   const importInputRef = useRef(null)
   const [pendingImport,  setPendingImport]  = useState(null) // { file, keepStyling } while the import dialog is open
+  const [viewingOriginal, setViewingOriginal] = useState(null) // { slides, index } for the full-size viewer
   const [showMarketResearch, setShowMarketResearch] = useState(false)
   const [presentationOrder,  setPresentationOrder]  = useState(null) // platform default, null = built-in order
   const [marketResearch,     setMarketResearch]     = useState(null) // latest deck summary, added to Marketing on generate
@@ -782,6 +784,10 @@ export default function App() {
                           deptColor={activeDept?.color}
                           onDelete={deleteSlide}
                           onEdit={idx => { if (!isLockedOriginal(deptSlides[idx])) setEditingSlide({ index: idx, slide: deptSlides[idx] }) }}
+                          onView={idx => {
+                            const locked = deptSlides.filter(isLockedOriginal)
+                            setViewingOriginal({ slides: locked, index: Math.max(0, locked.indexOf(deptSlides[idx])) })
+                          }}
                           onUseAsTemplate={currentUser?.role === 'admin' ? slide => setTemplateSlide({ slide, deptName: activeDept?.name }) : undefined}
                           divisionName={slide.divisionId && deptUsesDivisions(activeClient, activeDeptId) ? clientDivisions(activeClient).find(dv => dv.id === slide.divisionId)?.name : undefined}
                         />
@@ -900,6 +906,14 @@ export default function App() {
         />
       )}
 
+      {viewingOriginal && (
+        <OriginalSlideViewer
+          slides={viewingOriginal.slides}
+          startIndex={viewingOriginal.index}
+          onClose={() => setViewingOriginal(null)}
+        />
+      )}
+
       {pendingImport && (
         <div style={styles.importOverlay} onClick={() => setPendingImport(null)}>
           <div style={styles.importModal} role="dialog" aria-label="Import PowerPoint" onClick={e => e.stopPropagation()}>
@@ -915,7 +929,7 @@ export default function App() {
                 <strong>Keep original styling</strong>
                 <span style={styles.importHint}>
                   {pendingImport.keepStyling
-                    ? 'Slides are kept exactly as they are in this file — same design, fonts, colours and layout — and exported unchanged. They are locked: you can reorder or delete them, but not edit them.'
+                    ? 'Text, fonts, sizes, colours, images, tables and charts stay exactly as they are in this file, placed on the Spark Studio template background. The slides are locked: you can view, reorder or delete them, but not edit them.'
                     : 'Unticked: the content (text, images, tables, charts) is taken from the file and rebuilt on the Spark Studio template, where you can edit it.'}
                 </span>
               </span>

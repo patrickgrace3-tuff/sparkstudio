@@ -1,4 +1,5 @@
 import JSZip from 'jszip'
+import { themeContext, resolveSlideShapes, resolveChartXml, resolvedTableStyle, defaultTableStyleId, tableStyleLook, colorOf, schemeHex } from './pptxResolve.js'
 
 // Reads a .pptx and extracts each slide's content — title, bullets, free text
 // boxes, pictures, tables, charts (redrawn as images), SmartArt text and speaker notes — with
@@ -212,7 +213,11 @@ function readTable(tbl) {
 async function readChart(zip, rels, rId) {
   const rel = rels[rId]
   if (!rel || !zip.file(rel.path)) return null
-  const doc    = parseXml(await zip.file(rel.path).async('string'))
+  return readChartXml(await zip.file(rel.path).async('string'))
+}
+
+function readChartXml(xml) {
+  const doc    = parseXml(xml)
   const points = el => {
     const out = []
     for (const pt of el?.getElementsByTagNameNS(NS_C, 'pt') ?? []) out[+pt.getAttribute('idx')] = desc(pt, NS_C, 'v')?.textContent ?? ''
@@ -227,6 +232,11 @@ async function readChart(zip, rels, rId) {
     cats:   points(kid(ser, NS_C, 'cat') ?? kid(ser, NS_C, 'xVal')),
     values: points(kid(ser, NS_C, 'val') ?? kid(ser, NS_C, 'yVal')).map(v => Number(v) || 0),
     color:  desc(desc(kid(ser, NS_C, 'spPr'), NS_A, 'solidFill'), NS_A, 'srgbClr')?.getAttribute('val') ?? null,
+    pointColors: kids(ser, NS_C, 'dPt').reduce((acc, dPt) => {
+      const c = desc(desc(kid(dPt, NS_C, 'spPr'), NS_A, 'solidFill'), NS_A, 'srgbClr')?.getAttribute('val')
+      if (c) acc[+(kid(dPt, NS_C, 'idx')?.getAttribute('val') ?? 0)] = `#${c}`
+      return acc
+    }, []),
   }))
   if (!series.length) return null
   const titleEl = kid(desc(doc, NS_C, 'chart'), NS_C, 'title')
@@ -255,7 +265,7 @@ function renderChartImage(chart, rect) {
 
   const isPie = chart.type === 'pieChart' || chart.type === 'doughnutChart' || chart.type === 'pie3DChart'
   // Legend (series for bar/line, categories for pie)
-  const legend = isPie ? chart.cats.map((c, i) => ({ label: c, color: chart.series[0].color && i === 0 ? `#${chart.series[0].color}` : PALETTE[i % PALETTE.length] }))
+  const legend = isPie ? chart.cats.map((c, i) => ({ label: c, color: chart.series[0].pointColors?.[i] ?? (chart.series[0].color && i === 0 ? `#${chart.series[0].color}` : PALETTE[i % PALETTE.length]) }))
     : chart.series.length > 1 ? chart.series.map((s, i) => ({ label: s.name, color: colorOf(s, i) })) : []
   const bottomPad = legend.length ? 60 : 20
   if (legend.length) {
@@ -360,12 +370,12 @@ async function readSmartArtText(zip, rels, relIds) {
 }
 
 // ── Slide walk ────────────────────────────────────────────────────────────────
-async function collectElements(zip, rels, positions, container, transform, out, opts = {}) {
+async function collectElements(zip, rels, positions, container, transform, out) {
   for (const el of Array.from(container.childNodes)) {
     if (el.namespaceURI !== NS_P) continue
 
     if (el.localName === 'grpSp') {
-      await collectElements(zip, rels, positions, el, groupTransform(el, transform), out, opts)
+      await collectElements(zip, rels, positions, el, groupTransform(el, transform), out)
       continue
     }
 
@@ -384,17 +394,10 @@ async function collectElements(zip, rels, positions, container, transform, out, 
         if (src) out.push({ kind: 'image', rect, src })
       }
 
-      // Original-style previews also draw filled shapes (bars, panels, boxes)
-      const fill = opts.colors ? solidColor(kid(spPr, NS_A, 'solidFill'), opts.colors) : null
-      if (fill && rect && !blip) out.push({ kind: 'rect', rect, color: fill, round: kid(spPr, NS_A, 'prstGeom')?.getAttribute('prst') === 'ellipse' })
-
       const txBody = kid(el, NS_P, 'txBody')
       const lines  = bodyParagraphs(txBody)
       if (!lines.length) continue
-      out.push({
-        kind: 'text', ph, rect, lines, fontSize: firstFontSize(txBody), align: alignOf(txBody),
-        ...(opts.colors ? { color: solidColor(desc(desc(txBody, NS_A, 'rPr'), NS_A, 'solidFill'), opts.colors), anchor: desc(txBody, NS_A, 'bodyPr')?.getAttribute('anchor') ?? null } : {}),
-      })
+      out.push({ kind: 'text', ph, rect, lines, fontSize: firstFontSize(txBody), align: alignOf(txBody) })
       continue
     }
 
@@ -579,133 +582,275 @@ export async function importSlidesFromPptx(file) {
   return slides
 }
 
-
 // ── Keep original styling ─────────────────────────────────────────────────────
-// For "Keep original styling" imports: every PowerPoint part a slide needs
-// (the slide, its layout, master, theme, images, charts…) is kept verbatim so
-// the export can copy the slide in unchanged, plus a lightweight description
-// of what's on it so the app can draw a close preview.
+// For "Keep original styling" imports the slide's own parts are kept (the
+// slide, its pictures and charts, plus the layout, master and theme its look
+// comes from). The export turns them into stand-alone shapes on the Spark
+// Studio template (see pptxResolve.js) so text, fonts, sizes, colours, images,
+// tables and charts stay exactly as they were. A description of the result is
+// saved for previews.
 
 const TEXT_PART = /\.(xml|rels|vml)$/i
 
-// Theme colour scheme → { dk1: 'RRGGBB', lt1: …, accent1: … }
-async function themeColors(zip, masterPath) {
-  const masterRels = await loadRels(zip, masterPath)
-  const themeRel   = Object.values(masterRels).find(r => r.type.endsWith('/theme'))
-  if (!themeRel || !zip.file(themeRel.path)) return {}
-  const doc = parseXml(await zip.file(themeRel.path).async('string'))
-  const out = {}
-  const scheme = desc(doc, NS_A, 'clrScheme')
-  for (const c of Array.from(scheme?.childNodes ?? []).filter(n => n.nodeType === 1)) {
-    const srgb = desc(c, NS_A, 'srgbClr')?.getAttribute('val')
-    const sys  = desc(c, NS_A, 'sysClr')?.getAttribute('lastClr')
-    if (srgb || sys) out[c.localName] = srgb || sys
-  }
-  return out
-}
-
-function solidColor(solidFill, colors) {
-  if (!solidFill) return null
-  const srgb = desc(solidFill, NS_A, 'srgbClr')?.getAttribute('val')
-  if (srgb) return `#${srgb}`
-  const scheme = desc(solidFill, NS_A, 'schemeClr')?.getAttribute('val')
-  const alias = { bg1: 'lt1', tx1: 'dk1', bg2: 'lt2', tx2: 'dk2' }
-  const hex = scheme && colors[alias[scheme] ?? scheme]
-  return hex ? `#${hex}` : null
-}
-
-// Slide → layout → master: the first background that's set
-async function backgroundOf(zip, docs, colors) {
-  for (const { doc, rels } of docs) {
-    const bg = desc(doc, NS_P, 'bg')
-    if (!bg) continue
-    const bgPr = desc(bg, NS_P, 'bgPr')
-    const blip = desc(kid(bgPr, NS_A, 'blipFill'), NS_A, 'blip')
-    if (blip) {
-      const src = await loadImage(zip, rels, blip.getAttributeNS(NS_R, 'embed'))
-      if (src) return { image: src }
-    }
-    const color = solidColor(kid(bgPr, NS_A, 'solidFill'), colors) ?? solidColor(desc(bg, NS_P, 'bgRef'), colors)
-    if (color) return { color }
-  }
-  return { color: '#FFFFFF' }
-}
-
-function isDark(hex) {
-  const n = parseInt((hex ?? '#FFFFFF').slice(1), 16)
-  return ((n >> 16) * 299 + ((n >> 8) & 255) * 587 + (n & 255) * 114) / 1000 < 128
-}
-
-async function originalPreview(zip, slidePath, slideW, slideH) {
-  const rels      = await loadRels(zip, slidePath)
-  const slideDoc  = parseXml(await zip.file(slidePath).async('string'))
-  const layoutRel = Object.values(rels).find(r => r.type.endsWith('/slideLayout'))
-  const layoutRels = layoutRel ? await loadRels(zip, layoutRel.path) : {}
-  const masterRel = Object.values(layoutRels).find(r => r.type.endsWith('/slideMaster'))
-  const colors    = masterRel ? await themeColors(zip, masterRel.path) : {}
-  const docs = [{ doc: slideDoc, rels }]
-  if (layoutRel && zip.file(layoutRel.path)) docs.push({ doc: parseXml(await zip.file(layoutRel.path).async('string')), rels: layoutRels })
-  if (masterRel && zip.file(masterRel.path)) docs.push({ doc: parseXml(await zip.file(masterRel.path).async('string')), rels: await loadRels(zip, masterRel.path) })
-  const background = await backgroundOf(zip, docs, colors)
-
-  // Decoration from the master and layout (logos, bars) sits behind the slide's own content
-  const elements = []
-  for (const { doc, rels: r } of docs.slice(1).reverse()) {
-    const tree = desc(doc, NS_P, 'spTree')
-    if (!tree) continue
-    const deco = []
-    await collectElements(zip, r, { layout: [], master: [] }, tree, x => x, deco, { colors })
-    elements.push(...deco.filter(e => e.kind !== 'text' || !e.ph)) // placeholder prompts aren't real content
-  }
-  const positions = await placeholderPositions(zip, rels)
-  const own = []
-  await collectElements(zip, rels, positions, desc(slideDoc, NS_P, 'spTree'), x => x, own, { colors })
-  elements.push(...own)
-
-  const scale = TPL_W / slideW // font sizes are drawn relative to a 13.33" wide slide
-  const defaultText = isDark(background.color) ? '#FFFFFF' : '#1A1A1A'
-  const box = r => ({ x: r.x / slideW, y: r.y / slideH, w: r.w / slideW, h: r.h / slideH })
-  const items = elements.filter(e => e.rect).map(e => {
-    if (e.kind === 'image') return { type: 'image', src: e.src, ...box(e.rect) }
-    if (e.kind === 'rect')  return { type: 'rect', color: e.color, round: !!e.round, ...box(e.rect) }
-    if (e.kind === 'table') return { type: 'table', table: e.table, ...box(e.rect) }
-    const isTitle = e.ph?.type === 'title' || e.ph?.type === 'ctrTitle'
-    return {
-      type: 'text', text: e.lines.join('\n'), ...box(e.rect),
-      fontPt: Math.round((e.fontSize ?? (isTitle ? 36 : 18)) * scale * 10) / 10,
-      color: e.color ?? defaultText, align: e.align, anchor: e.anchor ?? (isTitle ? 'ctr' : 't'),
-      bullets: !!e.ph && !isTitle && e.ph.type !== 'subTitle',
-    }
-  })
-  const titleEl = own.find(e => e.kind === 'text' && (e.ph?.type === 'title' || e.ph?.type === 'ctrTitle'))
-  return {
-    background, items,
-    aspect: slideW / slideH,
-    title: titleEl ? titleEl.lines.join(' ').replace(/\*/g, '') : '',
-    notes: await readNotes(zip, rels),
-    text: own.filter(e => e.kind === 'text').flatMap(e => e.lines),
-  }
-}
-
-// Every part reachable from a slide (notes are left out — the export adds its own)
 async function collectParts(zip, path, parts, seen) {
   if (seen.has(path) || !zip.file(path)) return
   seen.add(path)
   parts.push(path)
   const relsPath = `${path.split('/').slice(0, -1).join('/')}/_rels/${path.split('/').pop()}.rels`
   if (zip.file(relsPath)) parts.push(relsPath)
+  if (path.includes('/theme/')) return
   for (const rel of Object.values(await loadRels(zip, path))) {
-    if (/\/(notesSlide|notesMaster|slide)$/.test(rel.type) && !rel.type.endsWith('/slideLayout')) continue
+    const t = rel.type
+    if (/\/(notesSlide|notesMaster|handoutMaster|slide)$/.test(t)) continue
+    // From the layout and master only what the look comes from is needed
+    if (path.includes('/slideLayouts/') && !t.endsWith('/slideMaster')) continue
+    if (path.includes('/slideMasters/') && !t.endsWith('/theme')) continue
     await collectParts(zip, rel.path, parts, seen)
   }
 }
 
+const isOn = v => v === '1' || v === 'true'
+const elKids = el => Array.from(el?.childNodes ?? []).filter(n => n.nodeType === 1)
+const childOf = (el, names) => elKids(el).find(n => n.namespaceURI === NS_A && names.includes(n.localName)) ?? null
+
+function spacing(el) {
+  if (!el) return null
+  const pct = kid(el, NS_A, 'spcPct'), pts = kid(el, NS_A, 'spcPts')
+  if (pct) return { pct: +pct.getAttribute('val') / 100000 }
+  if (pts) return { pt: +pts.getAttribute('val') / 100 }
+  return null
+}
+
+function fillColor(spPr) {
+  if (!spPr) return null
+  const f = childOf(spPr, ['noFill', 'solidFill', 'gradFill', 'pattFill'])
+  if (!f || f.localName === 'noFill') return null
+  if (f.localName === 'solidFill') return colorOf(f)
+  if (f.localName === 'gradFill') {
+    const stops = Array.from(f.getElementsByTagNameNS(NS_A, 'gs')).map(gs => ({ pos: +gs.getAttribute('pos') / 1000, color: colorOf(gs) })).filter(s => s.color)
+    if (!stops.length) return null
+    const ang = (+(desc(f, NS_A, 'lin')?.getAttribute('ang') ?? 0) / 60000 + 90) % 360
+    return `linear-gradient(${ang}deg, ${stops.map(s => `${s.color} ${s.pos}%`).join(', ')})`
+  }
+  return colorOf(kid(f, NS_A, 'fgClr'))
+}
+
+function lineOf(spPr) {
+  const ln = kid(spPr, NS_A, 'ln')
+  if (!ln) return null
+  const f = childOf(ln, ['noFill', 'solidFill', 'gradFill', 'pattFill'])
+  if (!f || f.localName === 'noFill') return null
+  const color = f.localName === 'solidFill' ? colorOf(f) : colorOf(desc(f, NS_A, 'gs')) ?? '#000000'
+  return color ? { color, w: +(ln.getAttribute('w') ?? 9525), dash: kid(ln, NS_A, 'prstDash')?.getAttribute('val') ?? 'solid' } : null
+}
+
+function textOf(txBody, fallbackColor = null, fallbackFont = null) {
+  if (!txBody) return null
+  const bodyPr = kid(txBody, NS_A, 'bodyPr')
+  const lst = kid(txBody, NS_A, 'lstStyle')
+  const auto = kid(bodyPr, NS_A, 'normAutofit')
+  const paras = kids(txBody, NS_A, 'p').map(p => {
+    const pPr = kid(p, NS_A, 'pPr')
+    const lvl = +(pPr?.getAttribute('lvl') ?? 0)
+    const L = kid(lst, NS_A, `lvl${lvl + 1}pPr`)
+    const defR = kid(L, NS_A, 'defRPr')
+    const pick = n => pPr?.getAttribute(n) ?? L?.getAttribute(n) ?? null
+    const child = names => childOf(pPr, names) ?? childOf(L, names)
+    const bu = child(['buNone', 'buAutoNum', 'buChar', 'buBlip'])
+    const runProps = rPr => {
+      const a = n => rPr?.getAttribute(n) ?? defR?.getAttribute(n) ?? null
+      const fill = childOf(rPr, ['noFill', 'solidFill', 'gradFill']) ?? childOf(defR, ['noFill', 'solidFill', 'gradFill'])
+      return {
+        sz: +(a('sz') ?? 1800) / 100,
+        b: isOn(a('b')), i: isOn(a('i')),
+        u: (a('u') ?? 'none') !== 'none',
+        strike: (a('strike') ?? 'noStrike') !== 'noStrike',
+        baseline: +(a('baseline') ?? 0) / 1000,
+        caps: a('cap') === 'all',
+        color: fill?.localName === 'noFill' ? 'transparent' : fill?.localName === 'gradFill' ? colorOf(desc(fill, NS_A, 'gs')) : fill ? colorOf(fill) : fallbackColor,
+        font: kid(rPr, NS_A, 'latin')?.getAttribute('typeface') ?? kid(defR, NS_A, 'latin')?.getAttribute('typeface') ?? fallbackFont,
+      }
+    }
+    const runs = []
+    for (const n of elKids(p)) {
+      if (n.localName === 'br') runs.push({ br: true })
+      else if (n.localName === 'r' || n.localName === 'fld') runs.push({ t: kid(n, NS_A, 't')?.textContent ?? '', ...runProps(kid(n, NS_A, 'rPr')) })
+    }
+    const end = runProps(kid(p, NS_A, 'endParaRPr'))
+    return {
+      algn: pick('algn') ?? 'l', lvl,
+      marL: +(pick('marL') ?? 0), indent: +(pick('indent') ?? 0),
+      lnSpc: spacing(child(['lnSpc'])), spcBef: spacing(child(['spcBef'])), spcAft: spacing(child(['spcAft'])),
+      bullet: bu?.localName === 'buChar' ? { char: bu.getAttribute('char') }
+        : bu?.localName === 'buAutoNum' ? { auto: bu.getAttribute('type') ?? 'arabicPeriod', start: +(bu.getAttribute('startAt') ?? 1) }
+        : null,
+      buColor: colorOf(child(['buClr'])),
+      buSize: child(['buSzPct']) ? +child(['buSzPct']).getAttribute('val') / 100000 : null,
+      buFont: child(['buFont'])?.getAttribute('typeface') ?? null,
+      runs, endSz: end.sz,
+    }
+  })
+  if (!paras.some(p => p.runs.some(r => r.t?.trim()))) return null
+  return {
+    anchor: bodyPr?.getAttribute('anchor') ?? 't',
+    ins: [+(bodyPr?.getAttribute('lIns') ?? 91440), +(bodyPr?.getAttribute('tIns') ?? 45720), +(bodyPr?.getAttribute('rIns') ?? 91440), +(bodyPr?.getAttribute('bIns') ?? 45720)],
+    wrap: bodyPr?.getAttribute('wrap') !== 'none',
+    vert: bodyPr?.getAttribute('vert') ?? null,
+    fontScale: auto ? +(auto.getAttribute('fontScale') ?? 100000) / 100000 : 1,
+    lnRed: auto ? +(auto.getAttribute('lnSpcReduction') ?? 0) / 100000 : 0,
+    paras,
+  }
+}
+
+function tableOf(ctx, tbl, tableStyles) {
+  const tblPr = kid(tbl, NS_A, 'tblPr')
+  const flag = n => isOn(tblPr?.getAttribute(n))
+  const styleId = kid(tblPr, NS_A, 'tableStyleId')?.textContent ?? null
+  const look = styleId ? tableStyleLook(resolvedTableStyle(ctx, tableStyles, styleId, styleId)) ?? {} : {}
+  const cols = kids(kid(tbl, NS_A, 'tblGrid'), NS_A, 'gridCol').map(c => +c.getAttribute('w'))
+  const trs = kids(tbl, NS_A, 'tr')
+  const nR = trs.length, nC = cols.length
+  const rows = trs.map((tr, r) => ({
+    h: +tr.getAttribute('h'),
+    cells: kids(tr, NS_A, 'tc').map((tc, c) => {
+      const parts = ['wholeTbl']
+      const dataRow = r - (flag('firstRow') ? 1 : 0)
+      if (flag('bandRow') && dataRow >= 0) parts.push(dataRow % 2 === 0 ? 'band1H' : 'band2H')
+      if (flag('firstCol') && c === 0) parts.push('firstCol')
+      if (flag('lastCol') && c === nC - 1) parts.push('lastCol')
+      if (flag('firstRow') && r === 0) parts.push('firstRow')
+      if (flag('lastRow') && r === nR - 1) parts.push('lastRow')
+      let fill = null, color = null, bold = false, border = look.wholeTbl?.border ?? null
+      for (const p of parts) {
+        const l = look[p]
+        if (!l) continue
+        if (l.fill) fill = l.fill
+        if (l.color) color = l.color
+        if (l.bold) bold = true
+      }
+      const tcPr = kid(tc, NS_A, 'tcPr')
+      const own = childOf(tcPr, ['noFill', 'solidFill', 'gradFill'])
+      if (own) fill = own.localName === 'noFill' ? null : fillColor(tcPr)
+      const lines = ['lnL', 'lnR', 'lnT', 'lnB'].map(n => {
+        const ln = kid(tcPr, NS_A, n)
+        const f = ln && childOf(ln, ['noFill', 'solidFill'])
+        return f ? (f.localName === 'noFill' ? null : { color: colorOf(f), w: +(ln.getAttribute('w') ?? 12700) }) : undefined
+      })
+      const text = textOf(kid(tc, NS_A, 'txBody'), color, ctx.fonts.mn.lt)
+      if (text && bold) for (const p of text.paras) for (const run of p.runs) run.b = true
+      return {
+        span: +(tc.getAttribute('gridSpan') ?? 1), rowSpan: +(tc.getAttribute('rowSpan') ?? 1),
+        skip: isOn(tc.getAttribute('hMerge')) || isOn(tc.getAttribute('vMerge')),
+        fill, border, lines,
+        anchor: tcPr?.getAttribute('anchor') ?? 't',
+        ins: [+(tcPr?.getAttribute('marL') ?? 91440), +(tcPr?.getAttribute('marT') ?? 45720), +(tcPr?.getAttribute('marR') ?? 91440), +(tcPr?.getAttribute('marB') ?? 45720)],
+        text,
+      }
+    }),
+  }))
+  return { cols, rows }
+}
+
+async function describeShapes(zip, ctx, rels, container, transform, out, tableStyles) {
+  for (const el of elKids(container)) {
+    if (el.localName === 'AlternateContent') {
+      const branch = elKids(el).find(b => b.localName === 'Fallback') ?? elKids(el).find(b => b.localName === 'Choice')
+      if (branch) await describeShapes(zip, ctx, rels, branch, transform, out, tableStyles)
+      continue
+    }
+    if (el.namespaceURI !== NS_P) continue
+    const nv = elKids(el).find(n => n.localName.startsWith('nv'))
+    if (isOn(kid(nv, NS_P, 'cNvPr')?.getAttribute('hidden'))) continue
+
+    if (el.localName === 'grpSp') {
+      await describeShapes(zip, ctx, rels, el, groupTransform(el, transform), out, tableStyles)
+      continue
+    }
+
+    if (el.localName === 'sp' || el.localName === 'cxnSp' || el.localName === 'pic') {
+      const spPr = kid(el, NS_P, 'spPr')
+      const xfrm = kid(spPr, NS_A, 'xfrm')
+      const raw  = readXfrm(xfrm)
+      if (!raw) continue
+      const rect = transform(raw)
+      const base = {
+        ...rect,
+        rot: +(xfrm.getAttribute('rot') ?? 0) / 60000,
+        flipH: isOn(xfrm.getAttribute('flipH')), flipV: isOn(xfrm.getAttribute('flipV')),
+        geom: kid(spPr, NS_A, 'prstGeom')?.getAttribute('prst') ?? (kid(spPr, NS_A, 'custGeom') ? 'custom' : 'rect'),
+      }
+      const line = lineOf(spPr)
+      if (el.localName === 'cxnSp' || base.geom === 'line' || /Connector/.test(base.geom)) {
+        if (line) out.push({ type: 'line', ...base, line })
+        continue
+      }
+      const blip = desc(kid(el, el.localName === 'pic' ? NS_P : NS_A, 'blipFill') ?? kid(spPr, NS_A, 'blipFill'), NS_A, 'blip')
+      const src  = blip ? await loadImage(zip, rels, blip.getAttributeNS(NS_R, 'embed')) : null
+      const crop = desc(kid(el, NS_P, 'blipFill'), NS_A, 'srcRect')
+      out.push({
+        type: el.localName === 'pic' ? 'image' : 'shape', ...base,
+        fill: src ? null : fillColor(spPr),
+        line,
+        src,
+        crop: crop ? ['l', 't', 'r', 'b'].map(k => +(crop.getAttribute(k) ?? 0) / 100000) : null,
+        text: textOf(kid(el, NS_P, 'txBody')),
+      })
+      continue
+    }
+
+    if (el.localName === 'graphicFrame') {
+      const raw = readXfrm(kid(el, NS_P, 'xfrm'))
+      const data = desc(el, NS_A, 'graphicData')
+      if (!raw || !data) continue
+      const rect = transform(raw)
+      const uri = data.getAttribute('uri') ?? ''
+      if (uri.endsWith('/table')) {
+        out.push({ type: 'table', ...rect, table: tableOf(ctx, desc(data, NS_A, 'tbl'), tableStyles) })
+      } else if (uri.endsWith('/chart')) {
+        const rel = rels[desc(data, NS_C, 'chart')?.getAttributeNS(NS_R, 'id')]
+        const xml = rel && zip.file(rel.path) ? await zip.file(rel.path).async('string') : null
+        const chart = xml && readChartXml(resolveChartXml(ctx, xml))
+        if (chart) out.push({ type: 'image', ...rect, src: renderChartImage(chart, rect) })
+      } else if (uri.endsWith('/diagram')) {
+        const lines = await readSmartArtText(zip, rels, desc(data, NS_DGM, 'relIds'))
+        if (lines.length) out.push({ type: 'shape', ...rect, geom: 'rect', text: { anchor: 't', ins: [91440, 45720, 91440, 45720], wrap: true, fontScale: 1, lnRed: 0, paras: lines.map(t => ({ algn: 'l', marL: 0, indent: 0, bullet: null, runs: [{ t: t.replace(/\*/g, ''), sz: 16, color: schemeHex(ctx, 'tx1') && `#${schemeHex(ctx, 'tx1')}` }], endSz: 16 })) } })
+      }
+    }
+  }
+}
+
+async function originalPreview(zip, ctx, slidePath, slideW, slideH, tableStyles) {
+  const rels = await loadRels(zip, slidePath)
+  const xml  = resolveSlideShapes(ctx, { defaultTableStyleId: defaultTableStyleId(tableStyles) })
+  const doc  = parseXml(`<p:spTree xmlns:p="${NS_P}" xmlns:a="${NS_A}" xmlns:r="${NS_R}">${xml}</p:spTree>`)
+  const raw  = []
+  await describeShapes(zip, ctx, rels, doc.documentElement, r => r, raw, tableStyles)
+  const box = r => ({ x: r.x / slideW, y: r.y / slideH, w: r.w / slideW, h: r.h / slideH })
+  const items = raw.map(it => ({ ...it, ...box(it) }))
+
+  // Title, text and notes for the slide list and search
+  const slideDoc = ctx.slideDoc
+  let title = '', text = []
+  for (const sp of slideDoc.getElementsByTagNameNS(NS_P, 'sp')) {
+    const ph = placeholderInfo(sp, 'nvSpPr')
+    const lines = bodyParagraphs(kid(sp, NS_P, 'txBody'))
+    if (!lines.length) continue
+    if (!title && (ph?.type === 'title' || ph?.type === 'ctrTitle')) title = lines.join(' ').replace(/\*/g, '')
+    else if (!ph || !SKIP_PH.has(ph.type)) text.push(...lines.map(l => l.replace(/\*\*/g, '')))
+  }
+  return { version: 2, slideW, slideH, aspect: slideW / slideH, items, title, text, notes: await readNotes(zip, rels) }
+}
+
 export async function importOriginalSlidesFromPptx(file) {
   const zip = await JSZip.loadAsync(file)
-  const presDoc = parseXml(await zip.file('ppt/presentation.xml').async('string'))
+  const presXml = await zip.file('ppt/presentation.xml').async('string')
+  const presDoc = parseXml(presXml)
   const sz = desc(presDoc, NS_P, 'sldSz')
   const slideW = +sz?.getAttribute('cx') || TPL_W
   const slideH = +sz?.getAttribute('cy') || TPL_H
+  const defaultTextStyle = presXml.match(/<p:defaultTextStyle\b[\s\S]*?<\/p:defaultTextStyle>/)?.[0]
+    ?.replace('<p:defaultTextStyle', `<p:defaultTextStyle xmlns:p="${NS_P}" xmlns:a="${NS_A}"`) ?? null
+  const tableStyles = (await zip.file('ppt/tableStyles.xml')?.async('string')) ?? null
 
   // Slides in presentation order
   const presRels = await loadRels(zip, 'ppt/presentation.xml')
@@ -718,12 +863,12 @@ export async function importOriginalSlidesFromPptx(file) {
   const defaults  = Object.fromEntries(Array.from(ctDoc.getElementsByTagNameNS(ctNs, 'Default')).map(d => [d.getAttribute('Extension').toLowerCase(), d.getAttribute('ContentType')]))
   const overrides = Object.fromEntries(Array.from(ctDoc.getElementsByTagNameNS(ctNs, 'Override')).map(o => [o.getAttribute('PartName').replace(/^\//, ''), o.getAttribute('ContentType')]))
 
-  const seen = new Set(), partList = [], slides = []
+  const seen = new Set(), partList = [], slidePaths = []
   for (const slidePath of order) {
     const doc = parseXml(await zip.file(slidePath).async('string'))
     if (doc.documentElement.getAttribute('show') === '0') continue // hidden slide
     await collectParts(zip, slidePath, partList, seen)
-    slides.push({ slidePath, preview: await originalPreview(zip, slidePath, slideW, slideH) })
+    slidePaths.push(slidePath)
   }
 
   const parts = {}, types = {}
@@ -733,7 +878,12 @@ export async function importOriginalSlidesFromPptx(file) {
     parts[path] = TEXT_PART.test(path) ? await f.async('string') : { b64: await f.async('base64') }
     if (!path.endsWith('.rels')) types[path] = overrides[path] ?? defaults[path.split('.').pop().toLowerCase()] ?? 'application/octet-stream'
   }
-  // Table styles are kept deck-wide, not per slide — keep them so tables look the same
-  const tableStyles = await zip.file('ppt/tableStyles.xml')?.async('string') ?? null
-  return { pkg: { slideW, slideH, parts, types, tableStyles }, slides }
+  const get = p => (typeof parts[p] === 'string' ? parts[p] : null)
+
+  const slides = []
+  for (const slidePath of slidePaths) {
+    const ctx = themeContext(get, slidePath, defaultTextStyle)
+    slides.push({ slidePath, preview: await originalPreview(zip, ctx, slidePath, slideW, slideH, tableStyles) })
+  }
+  return { pkg: { version: 2, slideW, slideH, parts, types, tableStyles, defaultTextStyle }, slides }
 }

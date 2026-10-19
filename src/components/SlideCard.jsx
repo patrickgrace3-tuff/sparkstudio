@@ -178,7 +178,7 @@ export function SlideThumbnail({ slide }) {
   )
 }
 
-export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, onUseAsTemplate, divisionName }) {
+export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, onView, onUseAsTemplate, divisionName }) {
   const [confirming, setConfirming] = useState(false)
   const locked = !!slide.style?.original?.ref
 
@@ -192,7 +192,7 @@ export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, o
         <div style={styles.content}>
           <p style={styles.title}>
             {slide.title}
-            {locked && <span style={styles.lockedBadge} title={`Imported from ${slide.style.original.fileName ?? 'a PowerPoint file'} with its original styling. It's exported exactly as it is in that file, so it can't be edited.`}>🔒 Original styling</span>}
+            {locked && <span style={styles.lockedBadge} title={`Imported from ${slide.style.original.fileName ?? 'a PowerPoint file'} with its original styling. Its content is exported exactly as it is in that file, on the Spark Studio template, so it can't be edited.`}>🔒 Original styling</span>}
             {divisionName && <span style={styles.divisionBadge} title="Created from a template for this division — uses this division's files">{divisionName}</span>}
           </p>
           {slide.bullets?.length > 0 ? (
@@ -224,14 +224,18 @@ export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, o
       </div>
 
       {/* Right — live slide thumbnail */}
-      <div style={styles.previewWrap}>
+      <div
+        style={{ ...styles.previewWrap, ...(locked && onView ? { cursor: 'zoom-in' } : {}) }}
+        onClick={locked && onView ? () => onView(index) : undefined}
+        title={locked && onView ? 'View full size' : undefined}
+      >
         <SlideThumbnail slide={slide} />
       </div>
 
       {/* Actions */}
       <div style={styles.actions}>
         {locked
-          ? <button style={{ ...styles.editBtn, opacity: 0.45, cursor: 'not-allowed' }} disabled title="Imported with its original styling — locked so it stays exactly like the original">Locked</button>
+          ? <button style={styles.editBtn} onClick={() => onView?.(index)} title="Locked so it stays exactly like the original — open a full-size view">View slides</button>
           : <button style={styles.editBtn} onClick={() => onEdit(index)}>Edit</button>}
         {onUseAsTemplate && !locked && (
           <button style={styles.templateBtn} onClick={() => onUseAsTemplate(slide)} title="Save this slide as a reusable template">

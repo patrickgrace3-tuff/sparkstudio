@@ -1,31 +1,19 @@
 /**
  * exportOriginal.js
  *
- * Copies slides imported with "Keep original styling" into an export
- * unchanged. Each slide's XML is written verbatim, and every part it needs
- * (layout, master, theme, images, charts…) is copied from the stored original
- * under a new name so it can't clash with the template's own parts. Masters
- * and layouts shared by several slides of the same import are copied once.
+ * Writes slides imported with "Keep original styling" into an export: each
+ * becomes a Spark Studio content slide (the template's background, logo and
+ * header) carrying the original slide's shapes, unchanged apart from being
+ * scaled to fit under the header. Pictures, charts and other parts the shapes
+ * use are copied from the stored original under new names.
  */
 
-import { loadOriginalPackage } from './originalSlides.js'
+import { loadOriginalPackage, fitOnTemplate, TEMPLATE_W, TEMPLATE_H } from './originalSlides.js'
+import { themeContext, readRels, relsPathOf, resolveSlideShapes, resolveChartXml, resolveThemeRefs, resolvedTableStyle, defaultTableStyleId } from './pptxResolve.js'
 
-const REL_NS   = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
-const MASTER_T = `${REL_NS}/slideMaster`
-
+const REL_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
 const dirOf  = p => p.split('/').slice(0, -1).join('/')
-const relsOf = p => `${dirOf(p)}/_rels/${p.split('/').pop()}.rels`
-
-// "../media/image1.png" from "ppt/slides" → "ppt/media/image1.png"
-function resolve(baseDir, target) {
-  if (target.startsWith('/')) return target.slice(1)
-  const out = baseDir ? baseDir.split('/') : []
-  for (const seg of target.split('/')) {
-    if (seg === '..') out.pop()
-    else if (seg && seg !== '.') out.push(seg)
-  }
-  return out.join('/')
-}
+const SKIP_RELS = /\/(slideLayout|notesSlide|notesMaster|slide)$/
 
 // Relative path from one folder to a part, e.g. ppt/slides → ppt/media/x.png = ../media/x.png
 function relative(fromDir, toPath) {
@@ -36,26 +24,25 @@ function relative(fromDir, toPath) {
   return [...from.slice(i).map(() => '..'), ...to.slice(i)].join('/')
 }
 
-const attr = (tag, name) => tag.match(new RegExp(`\\s${name}="([^"]*)"`))?.[1] ?? null
+const escapeAttr = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
+
+// Stable GUID-like id from a string
+function guidFor(str) {
+  let h1 = 0x811c9dc5, h2 = 0x01000193
+  for (let i = 0; i < str.length; i++) {
+    h1 = Math.imul(h1 ^ str.charCodeAt(i), 16777619) >>> 0
+    h2 = Math.imul(h2 + str.charCodeAt(i), 2246822519) >>> 0
+  }
+  const hex = (h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0')).repeat(2).toUpperCase()
+  return `{${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}}`
+}
 
 export function createOriginalSplicer(zip, clientId) {
-  const pkgCache = new Map()
-  const copied   = new Map()  // `${ref}|${origPath}` → new path
-  const types    = []         // [path, contentType] for [Content_Types].xml
-  const masters  = []         // new slide master paths
-  const tableStyles = new Map() // styleId → <a:tblStyle> from the originals
-  let hasTables = false
+  const pkgCache    = new Map()
+  const copied      = new Map()  // `${ref}|${origPath}` → new path
+  const types       = []         // [path, contentType] for [Content_Types].xml
+  const tableStyles = new Map()  // new style id → <a:tblStyle>
   let counter = 0
-  let nextLayoutId = null     // master and layout ids share one numbering
-
-  async function initIds() {
-    if (nextLayoutId != null) return
-    let max = 2147483647
-    const take = xml => { for (const m of xml.matchAll(/<p:(?:sldMasterId|sldLayoutId)\s[^>]*?id="(\d+)"/g)) max = Math.max(max, +m[1]) }
-    take(await zip.file('ppt/presentation.xml').async('string'))
-    for (const f of Object.keys(zip.files).filter(f => /^ppt\/slideMasters\/[^/]+\.xml$/.test(f))) take(await zip.file(f).async('string'))
-    nextLayoutId = max + 1
-  }
 
   const newName = path => {
     const dir = dirOf(path), file = path.split('/').pop()
@@ -64,113 +51,114 @@ export function createOriginalSplicer(zip, clientId) {
     return `${dir}/${dot > 0 ? file.slice(0, dot) : file}_k${counter}${dot > 0 ? file.slice(dot) : ''}`
   }
 
-  // Rewrites a part's relationships so they point at the copied parts.
-  // Links to parts that weren't kept (notes, other slides) are dropped.
-  async function rewriteRels(pkg, ref, origPath, newPath) {
-    const relsXml = pkg.parts[relsOf(origPath)]
-    if (typeof relsXml !== 'string') return null
-    const baseDir = dirOf(origPath)
-    const out = []
-    for (const tag of relsXml.match(/<Relationship\b[^>]*\/>/g) ?? []) {
-      if (attr(tag, 'TargetMode') === 'External') { out.push(tag); continue }
-      const target = attr(tag, 'Target')
-      const origTarget = target && resolve(baseDir, target)
-      if (!origTarget || !(origTarget in pkg.parts)) continue
-      const copiedTarget = await copyPart(pkg, ref, origTarget)
-      out.push(tag.replace(/\sTarget="[^"]*"/, ` Target="${relative(dirOf(newPath), copiedTarget)}"`))
-    }
-    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${out.join('')}</Relationships>`
-  }
-
-  async function copyPart(pkg, ref, origPath) {
+  // Copies a part (and what it links to). Theme colours and fonts in XML parts
+  // are fixed to the original theme's values.
+  async function copyPart(pkg, ctx, ref, origPath) {
     const key = `${ref}|${origPath}`
     if (copied.has(key)) return copied.get(key)
     const path = newName(origPath)
-    copied.set(key, path) // set first — masters and layouts point at each other
+    copied.set(key, path)
 
-    let data = pkg.parts[origPath]
-    const relsXml = await rewriteRels(pkg, ref, origPath, path)
     const type = pkg.types?.[origPath] ?? 'application/octet-stream'
-    if (type.includes('slideMaster+xml') && typeof data === 'string') {
-      await initIds()
-      data = data.replace(/(<p:sldLayoutId\s[^>]*?id=")(\d+)(")/g, (_, a, __, c) => `${a}${nextLayoutId++}${c}`)
-      masters.push(path)
+    let data = pkg.parts[origPath]
+    if (typeof data === 'string' && /\.xml$/i.test(origPath)) {
+      data = type.includes('drawingml.chart+xml') ? resolveChartXml(ctx, data) : resolveThemeRefs(ctx, data)
+    }
+    const get = p => (typeof pkg.parts[p] === 'string' ? pkg.parts[p] : null)
+    const tags = []
+    for (const [id, rel] of Object.entries(readRels(get, origPath))) {
+      if (rel.external) { tags.push(`<Relationship Id="${id}" Type="${rel.type}" Target="${escapeAttr(rel.target)}" TargetMode="External"/>`); continue }
+      if (!(rel.path in pkg.parts) || SKIP_RELS.test(rel.type)) continue
+      const target = await copyPart(pkg, ctx, ref, rel.path)
+      tags.push(`<Relationship Id="${id}" Type="${rel.type}" Target="${relative(dirOf(path), target)}"/>`)
     }
     if (typeof data === 'string') zip.file(path, data)
     else zip.file(path, data?.b64 ?? '', { base64: true })
-    if (relsXml) zip.file(relsOf(path), relsXml)
+    if (tags.length || get(relsPathOf(origPath))) {
+      zip.file(relsPathOf(path), `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${tags.join('')}</Relationships>`)
+    }
     types.push([path, type])
     return path
   }
 
-  // Adds the originals' table styles to the deck (creating ppt/tableStyles.xml
-  // when the template has none)
-  async function addTableStyles() {
-    const path = 'ppt/tableStyles.xml'
-    const file = zip.file(path)
-    if (file) {
-      const xml = await file.async('string')
-      const add = [...tableStyles].filter(([id]) => !xml.includes(`styleId="${id}"`)).map(([, m]) => m).join('')
-      if (!add) return
-      zip.file(path, /<a:tblStyleLst\b[^>]*\/>/.test(xml)
-        ? xml.replace(/<a:tblStyleLst\b([^>]*)\/>/, `<a:tblStyleLst$1>${add}</a:tblStyleLst>`)
-        : xml.replace('</a:tblStyleLst>', `${add}</a:tblStyleLst>`))
-      return
-    }
-    zip.file(path, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<a:tblStyleLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" def="{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}">${[...tableStyles.values()].join('')}</a:tblStyleLst>`)
-    types.push([path, 'application/vnd.openxmlformats-officedocument.presentationml.tableStyles+xml'])
-    const rels = await zip.file('ppt/_rels/presentation.xml.rels').async('string')
-    zip.file('ppt/_rels/presentation.xml.rels', rels.replace('</Relationships>', `<Relationship Id="rIdOrigTableStyles" Type="${REL_NS}/tableStyles" Target="tableStyles.xml"/>\n</Relationships>`))
-  }
-
   return {
-    // → { xml, relsXml } for the slide written at slideFilename, or null when
-    // the stored original can't be found (the caller then falls back)
-    async slide(original, slideFilename) {
+    // → { xml, relsXml } for the slide written at slideFilename, built on the
+    // template's content slide (base = { xml, rels }), or null when the stored
+    // original can't be found (the caller then falls back)
+    async slide(original, slideFilename, base) {
       const pkg = await loadOriginalPackage(clientId, original.ref, pkgCache).catch(() => null)
-      const xml = pkg?.parts?.[original.slidePath]
-      if (typeof xml !== 'string') return null
-      if (xml.includes('<a:tbl>')) hasTables = true
-      for (const m of pkg.tableStyles?.match(/<a:tblStyle\b[\s\S]*?<\/a:tblStyle>/g) ?? []) {
-        const id = attr(m, 'styleId')
-        if (id && xml.includes(id) && !tableStyles.has(id)) tableStyles.set(id, m)
-      }
-      const baseDir = dirOf(original.slidePath)
+      if (typeof pkg?.parts?.[original.slidePath] !== 'string') return null
+      const get = p => (typeof pkg.parts[p] === 'string' ? pkg.parts[p] : null)
+      const ctx = themeContext(get, original.slidePath, pkg.defaultTextStyle ?? null)
+
+      // The slide's pictures, charts, links… (its old layout and notes aren't needed)
+      const rIdMap = {}
       const tags = []
-      for (const tag of pkg.parts[relsOf(original.slidePath)]?.match(/<Relationship\b[^>]*\/>/g) ?? []) {
-        if (attr(tag, 'TargetMode') === 'External') { tags.push(tag); continue }
-        const origTarget = resolve(baseDir, attr(tag, 'Target') ?? '')
-        if (!(origTarget in pkg.parts) || origTarget === original.slidePath) continue
-        const copiedTarget = await copyPart(pkg, original.ref, origTarget)
-        tags.push(tag.replace(/\sTarget="[^"]*"/, ` Target="${relative(dirOf(slideFilename), copiedTarget)}"`))
+      let n = 0
+      for (const [id, rel] of Object.entries(readRels(get, original.slidePath))) {
+        if (SKIP_RELS.test(rel.type)) continue
+        const newId = `rIdO${++n}`
+        if (rel.external) {
+          tags.push(`<Relationship Id="${newId}" Type="${rel.type}" Target="${escapeAttr(rel.target)}" TargetMode="External"/>`)
+        } else if (rel.path in pkg.parts) {
+          const target = await copyPart(pkg, ctx, original.ref, rel.path)
+          tags.push(`<Relationship Id="${newId}" Type="${rel.type}" Target="${relative(dirOf(slideFilename), target)}"/>`)
+        } else continue
+        rIdMap[id] = newId
       }
-      return {
-        xml,
-        relsXml: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${tags.join('')}</Relationships>`,
-      }
+
+      const fit = fitOnTemplate(pkg.slideW ?? original.slideW, pkg.slideH ?? original.slideH)
+      let content = resolveSlideShapes(ctx, {
+        placement: { s: fit.s, dx: fit.x * TEMPLATE_W, dy: fit.y * TEMPLATE_H },
+        rIdMap,
+        defaultTableStyleId: defaultTableStyleId(pkg.tableStyles),
+      })
+
+      // Table styles, with the original theme's colours, under new ids
+      content = content.replace(/(<a:tableStyleId>)([^<]+)(<\/a:tableStyleId>)/g, (m, a, id, b) => {
+        const newId = guidFor(`${original.ref}|${id}`)
+        if (!tableStyles.has(newId)) {
+          const xml = resolvedTableStyle(ctx, pkg.tableStyles, id, newId)
+          if (!xml) return m
+          tableStyles.set(newId, xml)
+        }
+        return `${a}${newId}${b}`
+      })
+
+      // Template content slide with its text boxes replaced by the original's shapes
+      let xml = base.xml.replace(/(<\/p:grpSpPr>)[\s\S]*(<\/p:spTree>)/, (_, a, b) => `${a}${content}${b}`)
+      // Namespaces the original declared (e.g. ones named in mc:Ignorable/Requires)
+      const origRoot = get(original.slidePath).match(/<p:sld\b[^>]*>/)?.[0] ?? ''
+      const extra = [...origRoot.matchAll(/\sxmlns:([\w]+)="([^"]*)"/g)].filter(([, p]) => !new RegExp(`\\sxmlns:${p}=`).test(xml.match(/<p:sld\b[^>]*>/)?.[0] ?? ''))
+      if (extra.length) xml = xml.replace(/<p:sld\b/, `<p:sld${extra.map(([, p, u]) => ` xmlns:${p}="${u}"`).join('')}`)
+
+      const relsXml = (base.rels ?? '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>')
+        .replace('</Relationships>', `${tags.join('')}</Relationships>`)
+      return { xml, relsXml }
     },
 
-    // Registers the copied parts: content types, plus the copied masters in
-    // presentation.xml (PowerPoint needs every master listed there)
+    // Registers the copied parts and table styles
     async finish() {
-      if (hasTables || tableStyles.size) await addTableStyles()
+      if (tableStyles.size) {
+        const path = 'ppt/tableStyles.xml'
+        const file = zip.file(path)
+        if (file) {
+          const xml = await file.async('string')
+          const add = [...tableStyles.values()].join('')
+          zip.file(path, /<a:tblStyleLst\b[^>]*\/>/.test(xml)
+            ? xml.replace(/<a:tblStyleLst\b([^>]*)\/>/, `<a:tblStyleLst$1>${add}</a:tblStyleLst>`)
+            : xml.replace('</a:tblStyleLst>', `${add}</a:tblStyleLst>`))
+        } else {
+          zip.file(path, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<a:tblStyleLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" def="{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}">${[...tableStyles.values()].join('')}</a:tblStyleLst>`)
+          types.push([path, 'application/vnd.openxmlformats-officedocument.presentationml.tableStyles+xml'])
+          const rels = await zip.file('ppt/_rels/presentation.xml.rels').async('string')
+          zip.file('ppt/_rels/presentation.xml.rels', rels.replace('</Relationships>', `<Relationship Id="rIdOrigTableStyles" Type="${REL_NS}/tableStyles" Target="tableStyles.xml"/>\n</Relationships>`))
+        }
+      }
       if (!types.length) return
       let ct = await zip.file('[Content_Types].xml').async('string')
       ct = ct.replace('</Types>', `${types.map(([p, t]) => `<Override PartName="/${p}" ContentType="${t}"/>`).join('\n')}\n</Types>`)
       zip.file('[Content_Types].xml', ct)
-      if (!masters.length) return
-
-      await initIds()
-      let pres = await zip.file('ppt/presentation.xml').async('string')
-      let rels = await zip.file('ppt/_rels/presentation.xml.rels').async('string')
-      const entries = masters.map((m, i) => ({ id: nextLayoutId++, rId: `rIdOrigMaster${i + 1}`, target: relative('ppt', m) }))
-      const ids = entries.map(e => `<p:sldMasterId id="${e.id}" r:id="${e.rId}"/>`).join('')
-      pres = pres.includes('</p:sldMasterIdLst>')
-        ? pres.replace('</p:sldMasterIdLst>', `${ids}</p:sldMasterIdLst>`)
-        : pres.replace(/(<p:presentation\b[^>]*>)/, `$1<p:sldMasterIdLst>${ids}</p:sldMasterIdLst>`)
-      rels = rels.replace('</Relationships>', `${entries.map(e => `<Relationship Id="${e.rId}" Type="${MASTER_T}" Target="${e.target}"/>`).join('\n')}\n</Relationships>`)
-      zip.file('ppt/presentation.xml', pres)
-      zip.file('ppt/_rels/presentation.xml.rels', rels)
     },
   }
 }

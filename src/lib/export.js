@@ -698,7 +698,7 @@ export async function exportToPptx(orderedSlides, deck, { clientId = null } = {}
 
       // Imported with "Keep original styling": the original slide, unchanged
       const original = item.slide?.style?.original?.ref
-        ? await originals.slide(item.slide.style.original, slideFilename)
+        ? await originals.slide(item.slide.style.original, slideFilename, { xml: slide3Xml, rels: slide3Rels })
         : null
       let { xml: patchedXml, relsXml: patchedRels } = original
         ?? patchContentSlide(zip, slide3Xml, slide3Rels, item.slide, item.slide.table ?? null)
