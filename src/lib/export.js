@@ -15,6 +15,7 @@ import JSZip from 'jszip'
 import { parseRichText } from './richtext.js'
 import { exportTableMetrics, DEFAULT_TABLE_BOX } from './tableFit.js'
 import { createOriginalSplicer } from './exportOriginal.js'
+import { cropOf, legacyCrop, imageSizeFromDataUrl } from './imageFrame.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -240,7 +241,15 @@ function embedImage(zip, relsXml, dataUrl) {
 /**
  * Builds a <p:pic> shape XML covering the given EMU bounding box.
  */
-function buildPictureXml(rId, x, y, cx, cy, name = 'SlideImage') {
+function buildPictureXml(rId, x, y, cx, cy, name = 'SlideImage', { crop = null, radius = 0 } = {}) {
+  const pct = v => Math.round((v || 0) * 100000)
+  const srcRect = crop && (crop.l || crop.t || crop.r || crop.b)
+    ? `<a:srcRect l="${pct(crop.l)}" t="${pct(crop.t)}" r="${pct(crop.r)}" b="${pct(crop.b)}"/>`
+    : ''
+  const r = Math.max(0, Math.min(0.5, radius || 0))
+  const geom = r > 0
+    ? `<a:prstGeom prst="roundRect"><a:avLst><a:gd name="adj" fmla="val ${Math.round(r * 100000)}"/></a:avLst></a:prstGeom>`
+    : '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
   return `<p:pic>
         <p:nvPicPr>
           <p:cNvPr id="${_nextShapeId++}" name="${name}"/>
@@ -249,11 +258,11 @@ function buildPictureXml(rId, x, y, cx, cy, name = 'SlideImage') {
         </p:nvPicPr>
         <p:blipFill>
           <a:blip r:embed="${rId}"/>
-          <a:stretch><a:fillRect/></a:stretch>
+          ${srcRect}<a:stretch><a:fillRect/></a:stretch>
         </p:blipFill>
         <p:spPr>
           <a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>
-          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+          ${geom}
         </p:spPr>
       </p:pic>`
 }
@@ -441,7 +450,14 @@ ${paraXml}
         const y  = Math.round((img.y ?? 0.3) * SLIDE_H)
         const cx = Math.round((img.w ?? 0.3) * SLIDE_W)
         const cy = Math.round((img.h ?? 0.3) * SLIDE_H)
-        const picXml = buildPictureXml(embedded.rId, x, y, cx, cy, 'SlideFreeImage')
+        // Cropping and rounded corners, as in the editor. Older crops stored
+        // as a "cover" position need the picture's size to convert.
+        let crop = img.crop ? cropOf(img) : null
+        if (!crop && img.mode === 'crop') {
+          const size = imageSizeFromDataUrl(img.src)
+          crop = size ? legacyCrop(img, size.w, size.h) : null
+        }
+        const picXml = buildPictureXml(embedded.rId, x, y, cx, cy, 'SlideFreeImage', { crop, radius: img.radius ?? 0 })
         out = out.replace('</p:spTree>', `${picXml}\n</p:spTree>`)
       }
     }

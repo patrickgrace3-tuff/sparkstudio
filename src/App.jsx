@@ -27,6 +27,7 @@ import { clientDivisions, deptUsesDivisions, splitFilesByDivision, syncedDeptFil
 import { fetchMarketResearchForClient, fetchClientMarketResearchCopy, marketResearchDeckSlides, insertMarketResearch, withoutMarketResearch, MARKET_RESEARCH_DEPT_ID } from './lib/marketResearch.js'
 import ClientMarketResearchEditor from './components/ClientMarketResearchEditor.jsx'
 import OriginalSlideViewer from './components/OriginalSlideViewer.jsx'
+import OriginalSlideEditor from './components/OriginalSlideEditor.jsx'
 import { api, setToken } from './lib/apiClient.js'
 import { saveSlides } from './lib/slideSave.js'
 
@@ -49,6 +50,7 @@ export default function App() {
   const importInputRef = useRef(null)
   const [pendingImport,  setPendingImport]  = useState(null) // { file, keepStyling } while the import dialog is open
   const [viewingOriginal, setViewingOriginal] = useState(null) // { slides, index } for the full-size viewer
+  const [editingOriginal, setEditingOriginal] = useState(null) // { slide, deckSlide? } for the original-styling editor
   const [showMarketResearch, setShowMarketResearch] = useState(false)
   const [presentationOrder,  setPresentationOrder]  = useState(null) // platform default, null = built-in order
   const [marketResearch,     setMarketResearch]     = useState(null) // latest deck summary, added to Marketing on generate
@@ -447,15 +449,15 @@ export default function App() {
   }
 
   function handleEditDeckSlide(slideItem) {
-    if (isLockedOriginal(slideItem.slide)) return
+    if (isLockedOriginal(slideItem.slide)) { setEditingOriginal({ slide: slideItem.slide, deckSlide: true }); return }
     setEditingSlide({ deckSlide: true, slide: slideItem.slide, item: slideItem })
   }
 
-  function saveDeckSlide(updated) {
+  function saveDeckSlide(updated, original = editingSlide.slide) {
     if (!deck) return
     const newDeck = {
       ...deck,
-      slides: deck.slides.map(s => s === editingSlide.slide ? updated : s),
+      slides: deck.slides.map(s => s === original ? updated : s),
     }
     setDeckMap(prev => {
       const prevDeck = prev[activeClientId]
@@ -783,7 +785,11 @@ export default function App() {
                           index={i}
                           deptColor={activeDept?.color}
                           onDelete={deleteSlide}
-                          onEdit={idx => { if (!isLockedOriginal(deptSlides[idx])) setEditingSlide({ index: idx, slide: deptSlides[idx] }) }}
+                          onEdit={idx => {
+                            const sl = deptSlides[idx]
+                            if (isLockedOriginal(sl)) setEditingOriginal({ slide: sl })
+                            else setEditingSlide({ index: idx, slide: sl })
+                          }}
                           onView={idx => {
                             const locked = deptSlides.filter(isLockedOriginal)
                             setViewingOriginal({ slides: locked, index: Math.max(0, locked.indexOf(deptSlides[idx])) })
@@ -911,6 +917,23 @@ export default function App() {
           slides={viewingOriginal.slides}
           startIndex={viewingOriginal.index}
           onClose={() => setViewingOriginal(null)}
+          onEdit={sl => { setViewingOriginal(null); setEditingOriginal({ slide: sl }) }}
+        />
+      )}
+
+      {editingOriginal && (
+        <OriginalSlideEditor
+          slide={editingOriginal.slide}
+          clientId={activeClientId}
+          onClose={() => setEditingOriginal(null)}
+          onSave={updated => {
+            if (editingOriginal.deckSlide) saveDeckSlide(updated, editingOriginal.slide)
+            else {
+              const idx = deptSlides.findIndex(sl => sl._id === editingOriginal.slide._id)
+              if (idx !== -1) saveEditedSlide(idx, updated)
+            }
+            setEditingOriginal(null)
+          }}
         />
       )}
 
@@ -929,7 +952,7 @@ export default function App() {
                 <strong>Keep original styling</strong>
                 <span style={styles.importHint}>
                   {pendingImport.keepStyling
-                    ? 'Text, fonts, sizes, colours, images, tables and charts stay exactly as they are in this file, placed on the Spark Studio template background. The slides are locked: you can view, reorder or delete them, but not edit them.'
+                    ? 'Text, fonts, sizes, colours, images, tables and charts stay exactly as they are in this file, placed on the Spark Studio template background. You can still edit each element — move, resize, crop, round corners, change text or delete — without losing the original look.'
                     : 'Unticked: the content (text, images, tables, charts) is taken from the file and rebuilt on the Spark Studio template, where you can edit it.'}
                 </span>
               </span>

@@ -4,7 +4,7 @@ import OriginalSlidePreview from './OriginalSlidePreview.jsx'
 // Full-size viewer for slides imported with "Keep original styling" (they're
 // locked, so this is how to look at them closely). Arrow keys move between
 // slides; Esc closes.
-export default function OriginalSlideViewer({ slides, startIndex = 0, onClose }) {
+export default function OriginalSlideViewer({ slides, startIndex = 0, onClose, onEdit }) {
   const [index, setIndex] = useState(Math.min(startIndex, Math.max(0, slides.length - 1)))
   const prev = useCallback(() => setIndex(i => Math.max(0, i - 1)), [])
   const next = useCallback(() => setIndex(i => Math.min(slides.length - 1, i + 1)), [slides.length])
@@ -29,10 +29,11 @@ export default function OriginalSlideViewer({ slides, startIndex = 0, onClose })
         <div style={{ minWidth: 0 }}>
           <div style={S.title}>{slide.title || 'Untitled slide'}</div>
           <div style={S.sub}>
-            {original?.fileName ? `From ${original.fileName} · ` : ''}Original styling · locked
+            {original?.fileName ? `From ${original.fileName} · ` : ''}Original styling
           </div>
         </div>
         <span style={S.count}>{index + 1} / {slides.length}</span>
+        {onEdit && <button style={S.close} onClick={() => onEdit(slide)}>✎ Edit</button>}
         <button style={S.close} onClick={onClose}>✕ Close</button>
       </div>
 

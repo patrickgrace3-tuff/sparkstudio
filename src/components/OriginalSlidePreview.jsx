@@ -1,5 +1,6 @@
 import React from 'react'
-import { fitOnTemplate, TEMPLATE_W, TEMPLATE_H } from '../lib/originalSlides.js'
+import { fitOnTemplate, contentBoundsOf, applyEditsToItems, TEMPLATE_W, TEMPLATE_H } from '../lib/originalSlides.js'
+import FramedImage from './FramedImage.jsx'
 
 // Preview of a slide imported with "Keep original styling": the original
 // slide's content — text with its fonts, sizes and colours, shapes, pictures,
@@ -28,6 +29,8 @@ const CLIP = {
   plus:          'polygon(35% 0, 65% 0, 65% 35%, 100% 35%, 100% 65%, 65% 65%, 65% 100%, 35% 100%, 35% 65%, 0 65%, 0 35%, 35% 35%)',
 }
 const RADIUS = { ellipse: '50%', roundRect: '8%', round2SameRect: '8% 8% 0 0', snipRoundRect: '8%', flowChartTerminator: '50%' }
+
+const shadowCss = (sh, u) => (sh ? `${u(sh.dx)} ${u(sh.dy)} ${u(sh.blur)} ${sh.color}` : undefined)
 
 const fontStack = f => `${f ? `"${f}", ` : ''}${f === 'Calibri' ? 'Carlito, ' : ''}Arial, sans-serif`
 
@@ -115,7 +118,7 @@ function TextLayer({ text, u, pt, style }) {
   )
 }
 
-function Item({ item, u, pt }) {
+function Item({ item, u, pt, aspect }) {
   const box = {
     position: 'absolute',
     left: `${item.x * 100}%`, top: `${item.y * 100}%`,
@@ -143,12 +146,13 @@ function Item({ item, u, pt }) {
 
   if (item.type === 'image') {
     const [l, t, r, b] = item.crop ?? [0, 0, 0, 0]
-    const w = 1 - l - r || 1, h = 1 - t - b || 1
     return (
-      <div style={{ ...box, overflow: 'hidden' }}>
-        {item.src && <img src={item.src} alt="" style={{ position: 'absolute', left: `${(-l / w) * 100}%`, top: `${(-t / h) * 100}%`, width: `${100 / w}%`, height: `${100 / h}%`, transform: flip }} />}
-        {item.line && <div style={{ position: 'absolute', inset: 0, border: `${u(item.line.w)} solid ${item.line.color}` }} />}
-      </div>
+      <FramedImage
+        img={{ src: item.src, x: item.x, y: item.y, w: item.w, h: item.h, crop: { l, t, r, b }, radius: item.radius ?? 0 }}
+        areaAspect={aspect}
+        style={{ transform: item.rot ? `rotate(${item.rot}deg)` : undefined, boxShadow: shadowCss(item.shadow, u), border: item.line ? `${u(item.line.w)} solid ${item.line.color}` : undefined, boxSizing: 'border-box' }}
+        imgStyle={{ transform: flip }}
+      />
     )
   }
 
@@ -195,7 +199,9 @@ function Item({ item, u, pt }) {
         <div style={{
           position: 'absolute', inset: 0, background: item.fill ?? 'transparent',
           border: item.line && !clip ? `${u(item.line.w)} ${item.line.dash !== 'solid' ? 'dashed' : 'solid'} ${item.line.color}` : 'none',
-          borderRadius: RADIUS[item.geom] ?? 0, clipPath: clip, transform: flip, boxSizing: 'border-box',
+          borderRadius: item.geom === 'roundRect' && item.radius ? `${item.radius * Math.min(item.w, item.h / aspect) * 100}cqw` : RADIUS[item.geom] ?? 0,
+          clipPath: clip, transform: flip, boxSizing: 'border-box',
+          boxShadow: item.fill && !clip ? shadowCss(item.shadow, u) : undefined,
         }} />
       )}
       {item.text && <TextLayer text={item.text} u={u} pt={pt} />}
@@ -203,23 +209,18 @@ function Item({ item, u, pt }) {
   )
 }
 
-function TemplateSlide({ p, fill }) {
-  // Same placement as the export: the area the content covers, scaled and centred
-  const items = p.items ?? []
-  let bounds = null
-  if (items.length) {
-    const x1 = Math.min(...items.map(i => i.x)), y1 = Math.min(...items.map(i => i.y))
-    const x2 = Math.max(...items.map(i => i.x + i.w)), y2 = Math.max(...items.map(i => i.y + i.h))
-    bounds = { x: x1 * p.slideW, y: y1 * p.slideH, w: (x2 - x1) * p.slideW, h: (y2 - y1) * p.slideH }
-  }
-  const { s, dx, dy } = fitOnTemplate(p.slideW, p.slideH, bounds)
+export function TemplateSlide({ p, fill, edits = null, children = null, clip = true }) {
+  // Same placement as the export: the area the (unedited) content covers,
+  // scaled and centred — then any edits made in the app
+  const { s, dx, dy } = fitOnTemplate(p.slideW, p.slideH, contentBoundsOf(p))
+  const items = applyEditsToItems(p.items ?? [], edits)
   const fit = { x: dx / TEMPLATE_W, y: dy / TEMPLATE_H, w: (s * p.slideW) / TEMPLATE_W, h: (s * p.slideH) / TEMPLATE_H }
   // Lengths inside the block, relative to its width (container query units)
   const u  = emu => `${(emu / p.slideW) * 100}cqw`
   const pt = points => `${((points * 12700) / p.slideW) * 100}cqw`
   return (
     <div style={{
-      position: 'relative', overflow: 'hidden', aspectRatio: '16 / 9',
+      position: 'relative', overflow: clip ? 'hidden' : 'visible', aspectRatio: '16 / 9',
       background: 'url(/branding/content-bg.jpg) center/cover no-repeat #fff',
       ...(fill ? { width: '100%', height: '100%' } : { width: '100%', borderRadius: 4 }),
     }}>
@@ -228,7 +229,8 @@ function TemplateSlide({ p, fill }) {
         width: `${fit.w * 100}%`, height: `${fit.h * 100}%`, containerType: 'inline-size',
         fontFamily: 'Arial, sans-serif',
       }}>
-        {items.map((it, i) => <Item key={i} item={it} u={u} pt={pt} />)}
+        {items.map((it, i) => <Item key={i} item={it} u={u} pt={pt} aspect={p.slideW / p.slideH} />)}
+        {children}
       </div>
     </div>
   )
@@ -251,10 +253,10 @@ function LegacyItem({ item }) {
 export default function OriginalSlidePreview({ original, fill = false }) {
   const p = original?.preview ?? {}
   if (p.version >= 2) {
-    if (!fill) return <TemplateSlide p={p} />
+    if (!fill) return <TemplateSlide p={p} edits={original.edits} />
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <TemplateSlide p={p} fill />
+        <TemplateSlide p={p} fill edits={original.edits} />
       </div>
     )
   }

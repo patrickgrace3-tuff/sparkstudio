@@ -459,6 +459,146 @@ function place(tree, { s, dx, dy }) {
   }
 }
 
+// ── Edits made in the app ─────────────────────────────────────────────────────
+// edits: { [shape id]: { deleted, from, box, paras, cells, crop, radius } }
+// from/box are the element's area before/after (fractions of the slide);
+// paras are its paragraphs' text; cells a table's cell text; crop [l,t,r,b].
+
+export const shapeKey = shape => {
+  const nv = elKids(shape).find(n => n.namespaceURI === NS_P && n.localName.startsWith('nv'))
+  return kid(nv, NS_P, 'cNvPr')?.getAttribute('id') ?? null
+}
+
+// A paragraph's text as the app shows it (line breaks inside a paragraph as spaces)
+export function paragraphText(p) {
+  return elKids(p).map(n => (n.localName === 'br' ? ' ' : n.localName === 'r' || n.localName === 'fld' ? kid(n, NS_A, 't')?.textContent ?? '' : '')).join('')
+}
+
+// Replaces paragraph text, keeping each paragraph's formatting (its settings
+// and the look of its first run). Unchanged paragraphs are left exactly as they were.
+function setParagraphs(txBody, texts) {
+  if (!txBody || !Array.isArray(texts)) return
+  const doc = txBody.ownerDocument
+  const ps = elKids(txBody).filter(n => n.namespaceURI === NS_A && n.localName === 'p')
+  if (!ps.length) return
+  const out = texts.map((text, i) => {
+    const orig = ps[i]
+    if (orig && paragraphText(orig) === text) return orig.cloneNode(true)
+    const tpl = orig ?? ps[ps.length - 1]
+    const p = doc.createElementNS(NS_A, 'a:p')
+    const pPr = kid(tpl, NS_A, 'pPr')
+    if (pPr) p.appendChild(pPr.cloneNode(true))
+    const firstRun = elKids(tpl).find(n => n.localName === 'r')
+    const rPr = kid(firstRun, NS_A, 'rPr') ?? kid(tpl, NS_A, 'endParaRPr')
+    if (text) {
+      const r = doc.createElementNS(NS_A, 'a:r')
+      if (rPr) {
+        const rp = doc.createElementNS(NS_A, 'a:rPr')
+        for (const a of Array.from(rPr.attributes)) if (!a.name.startsWith('xmlns')) rp.setAttribute(a.name, a.value)
+        for (const c of elKids(rPr)) rp.appendChild(c.cloneNode(true))
+        r.appendChild(rp)
+      }
+      const t = doc.createElementNS(NS_A, 'a:t')
+      t.textContent = text
+      r.appendChild(t)
+      p.appendChild(r)
+    }
+    const end = kid(tpl, NS_A, 'endParaRPr') ?? (rPr ? (() => {
+      const e = doc.createElementNS(NS_A, 'a:endParaRPr')
+      for (const a of Array.from(rPr.attributes)) if (!a.name.startsWith('xmlns')) e.setAttribute(a.name, a.value)
+      return e
+    })() : null)
+    if (end) p.appendChild(end.cloneNode(true))
+    return p
+  })
+  for (const p of ps) txBody.removeChild(p)
+  const before = elKids(txBody).find(n => n.localName === 'extLst') ?? null
+  for (const p of out) txBody.insertBefore(p, before)
+}
+
+function applyEdits(tree, edits, W, H) {
+  const entries = []
+  for (const c of elKids(tree)) {
+    if (c.localName === 'AlternateContent') {
+      for (const b of elKids(c)) for (const sh of elKids(b)) entries.push({ shape: sh, holder: c })
+    } else entries.push({ shape: c, holder: c })
+  }
+  for (const { shape, holder } of entries) {
+    const e = edits[shapeKey(shape)]
+    if (!e) continue
+    if (e.deleted) { holder.parentNode?.removeChild(holder); continue }
+
+    if (e.box && e.from && e.from.w > 0 && e.from.h > 0) {
+      const sx = e.box.w / e.from.w, sy = e.box.h / e.from.h
+      const x = xfrmOf(shape)
+      const off = kid(x, NS_A, 'off'), ext = kid(x, NS_A, 'ext')
+      if (off) {
+        off.setAttribute('x', String(Math.round((e.box.x + (+off.getAttribute('x') / W - e.from.x) * sx) * W)))
+        off.setAttribute('y', String(Math.round((e.box.y + (+off.getAttribute('y') / H - e.from.y) * sy) * H)))
+      }
+      if (ext) {
+        ext.setAttribute('cx', String(Math.max(1, Math.round(+ext.getAttribute('cx') * sx))))
+        ext.setAttribute('cy', String(Math.max(1, Math.round(+ext.getAttribute('cy') * sy))))
+      }
+      // A table's own columns and rows decide its size
+      const tbl = desc(shape, NS_A, 'tbl')
+      if (tbl) {
+        for (const g of Array.from(tbl.getElementsByTagNameNS(NS_A, 'gridCol'))) g.setAttribute('w', String(Math.round(+g.getAttribute('w') * sx)))
+        for (const tr of Array.from(tbl.getElementsByTagNameNS(NS_A, 'tr'))) tr.setAttribute('h', String(Math.round(+tr.getAttribute('h') * sy)))
+      }
+    }
+
+    if (e.paras) setParagraphs(kid(shape, NS_P, 'txBody'), e.paras)
+
+    if (e.cells) {
+      const tbl = desc(shape, NS_A, 'tbl')
+      kids(tbl, 'tr').forEach((tr, r) => kids(tr, 'tc').forEach((tc, c) => {
+        const text = e.cells[r]?.[c]
+        if (text == null) return
+        const body = kid(tc, NS_A, 'txBody')
+        const current = kids(body, 'p').map(paragraphText).join('\n')
+        if (current !== text) setParagraphs(body, String(text).split('\n'))
+      }))
+    }
+
+    const spPr = kid(shape, NS_P, 'spPr')
+    const blipFill = kid(shape, NS_P, 'blipFill') ?? kid(spPr, NS_A, 'blipFill')
+    if (e.crop && blipFill) {
+      const doc = shape.ownerDocument
+      const old = kid(blipFill, NS_A, 'srcRect')
+      if (old) blipFill.removeChild(old)
+      const [l, t, r, b] = e.crop.map(v => Math.round((+v || 0) * 100000))
+      if (l || t || r || b) {
+        const rect = doc.createElementNS(NS_A, 'a:srcRect')
+        rect.setAttribute('l', String(l)); rect.setAttribute('t', String(t)); rect.setAttribute('r', String(r)); rect.setAttribute('b', String(b))
+        const blip = kid(blipFill, NS_A, 'blip')
+        blipFill.insertBefore(rect, blip ? blip.nextSibling : blipFill.firstChild)
+      }
+    }
+    if (e.radius != null && spPr) {
+      const geom = kid(spPr, NS_A, 'prstGeom')
+      const prst = geom?.getAttribute('prst') ?? 'rect'
+      if (['rect', 'roundRect', 'ellipse'].includes(prst) || !kid(spPr, NS_A, 'custGeom')) {
+        const doc = shape.ownerDocument
+        const r = Math.max(0, Math.min(0.5, +e.radius || 0))
+        const next = doc.createElementNS(NS_A, 'a:prstGeom')
+        next.setAttribute('prst', r > 0 ? 'roundRect' : 'rect')
+        const av = doc.createElementNS(NS_A, 'a:avLst')
+        if (r > 0) {
+          const gd = doc.createElementNS(NS_A, 'a:gd')
+          gd.setAttribute('name', 'adj')
+          gd.setAttribute('fmla', `val ${Math.round(r * 100000)}`)
+          av.appendChild(gd)
+        }
+        next.appendChild(av)
+        if (geom) spPr.replaceChild(next, geom)
+        else spPr.insertBefore(next, elKids(spPr).find(n => n.localName !== 'xfrm') ?? null)
+      }
+    }
+  }
+}
+const kids = (el, name) => elKids(el).filter(n => n.namespaceURI === NS_A && n.localName === name)
+
 // ── Public ────────────────────────────────────────────────────────────────────
 
 /**
@@ -469,7 +609,7 @@ function place(tree, { s, dx, dy }) {
  *   rIdMap:      old relationship id → new id (ids missing from it are kept)
  *   firstId:     first shape id to use
  */
-export function resolveSlideShapes(ctx, { placement = null, rIdMap = null, firstId = 1000, defaultTableStyleId = null } = {}) {
+export function resolveSlideShapes(ctx, { placement = null, rIdMap = null, firstId = 1000, defaultTableStyleId = null, keepIds = false, edits = null, slideW = null, slideH = null } = {}) {
   const doc  = ctx.slideDoc
   const tree = desc(doc, NS_P, 'spTree')
   if (!tree) return ''
@@ -479,8 +619,16 @@ export function resolveSlideShapes(ctx, { placement = null, rIdMap = null, first
     const r = resolveShape(ctx, c, { defaultTableStyleId })
     if (!r) work.removeChild(c)
   }
+  // Where the content sits before any edits (placement keeps it there)
+  const bounds = contentBounds(work)
+  if (edits && slideW && slideH) applyEdits(work, edits, slideW, slideH)
   // placement can depend on where the content sits: (bounds) => { s, dx, dy }
-  if (placement) place(work, typeof placement === 'function' ? placement(contentBounds(work)) : placement)
+  if (placement) place(work, typeof placement === 'function' ? placement(bounds) : placement)
+
+  if (keepIds) {
+    const ser = new XMLSerializer()
+    return resolveThemeRefs(ctx, elKids(work).map(c => ser.serializeToString(c)).join(''))
+  }
 
   // Fresh shape ids (connectors refer to shapes by id)
   const ids = new Map()
