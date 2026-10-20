@@ -44,10 +44,49 @@ export function fitOnTemplate(slideW, slideH, bounds = null) {
   }
 }
 
-// Where the slide's content sits (EMU), from its preview — before any edits,
-// so moving or deleting something never shifts the rest
-export function contentBoundsOf(preview) {
-  const items = preview?.items ?? []
+// ── Header left over from the original design ────────────────────────────────
+// A slide's header text often sits on a banner from its own layout (e.g. white
+// "CREATIVE & DESIGN" on a red bar). The banner isn't carried over — the
+// template has its own header — so that text would be invisible and only take
+// up space. Light-coloured text with no background of its own in the top band
+// of the slide is left out automatically (it can be restored in the editor).
+const HEADER_BAND = 0.22
+
+function isLightColor(c) {
+  if (!c || c === 'transparent') return true
+  let r, g, b
+  const hex = /^#([0-9a-f]{6})$/i.exec(c)
+  const rgba = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/i.exec(c)
+  if (hex) { const n = parseInt(hex[1], 16); r = n >> 16; g = (n >> 8) & 255; b = n & 255 }
+  else if (rgba) { r = +rgba[1]; g = +rgba[2]; b = +rgba[3] }
+  else return false
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.85
+}
+
+export function autoHiddenEdits(preview) {
+  const els = elementsOf(preview)
+  const hidden = {}
+  for (const el of els) {
+    if (el.from.y + el.from.h > HEADER_BAND) continue
+    const invisible = el.items.every(i => i.type === 'shape' && !i.fill && !i.line && i.text
+      && i.text.paras.every(p => (p.runs ?? []).every(r => r.br || !r.t?.trim() || isLightColor(r.color))))
+    if (invisible) hidden[el.key] = { deleted: true, auto: true }
+  }
+  // Never leave a slide empty
+  return Object.keys(hidden).length === els.length ? {} : hidden
+}
+
+// The edits to show/export: automatic header removal, then the user's own
+// edits (a restored header element is saved as { deleted: false })
+export function effectiveEdits(preview, edits) {
+  return { ...autoHiddenEdits(preview), ...(edits ?? {}) }
+}
+
+// Where the slide's content sits (EMU), from its preview — before the user's
+// edits, so moving or deleting something never shifts the rest. Header text
+// left out automatically doesn't count.
+export function contentBoundsOf(preview, edits = null) {
+  const items = (preview?.items ?? []).filter(i => !(edits?.[i.key]?.deleted && edits[i.key].auto))
   if (!items.length || !preview.slideW) return null
   const x1 = Math.min(...items.map(i => i.x)), y1 = Math.min(...items.map(i => i.y))
   const x2 = Math.max(...items.map(i => i.x + i.w)), y2 = Math.max(...items.map(i => i.y + i.h))

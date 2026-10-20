@@ -8,7 +8,7 @@
  * use are copied from the stored original under new names.
  */
 
-import { loadOriginalPackage, fitOnTemplate, contentBoundsOf } from './originalSlides.js'
+import { loadOriginalPackage, fitOnTemplate, contentBoundsOf, effectiveEdits } from './originalSlides.js'
 import { themeContext, readRels, relsPathOf, resolveSlideShapes, resolveChartXml, resolveThemeRefs, resolvedTableStyle, defaultTableStyleId } from './pptxResolve.js'
 
 const REL_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
@@ -108,11 +108,12 @@ export function createOriginalSplicer(zip, clientId) {
       }
 
       const W = pkg.slideW ?? original.slideW, H = pkg.slideH ?? original.slideH
-      const previewBounds = contentBoundsOf(original.preview)
+      const edits = original.preview?.items?.length ? effectiveEdits(original.preview, original.edits) : (original.edits ?? null)
+      const previewBounds = contentBoundsOf(original.preview, edits)
       let content = resolveSlideShapes(ctx, {
         // Same placement as the previews (from the unedited content)
         placement: bounds => fitOnTemplate(W, H, previewBounds ?? bounds),
-        edits: original.edits ?? null, slideW: W, slideH: H,
+        edits, slideW: W, slideH: H,
         rIdMap,
         defaultTableStyleId: defaultTableStyleId(pkg.tableStyles),
       })

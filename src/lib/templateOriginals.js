@@ -1,7 +1,7 @@
 import { api } from './apiClient.js'
 import { callClaude } from './api.js'
 import { ANTHROPIC_MODEL_DECK } from './constants.js'
-import { loadOriginalPackage, canEditOriginal, elementsOf, applyEditsToItems, paraText } from './originalSlides.js'
+import { loadOriginalPackage, canEditOriginal, elementsOf, applyEditsToItems, paraText, effectiveEdits } from './originalSlides.js'
 import { rebuildOriginalPreview } from './importPptx.js'
 
 // Imported slides ("Keep original styling") saved to templates. A template
@@ -59,10 +59,11 @@ export function loadShellOriginal(shell) {
 // The slide's text, element by element, as the AI sees it
 export function textElements(original) {
   const preview = original.preview
-  const items = applyEditsToItems(preview?.items ?? [], original.edits)
+  const edits = effectiveEdits(preview, original.edits)
+  const items = applyEditsToItems(preview?.items ?? [], edits)
   const out = []
   for (const el of elementsOf(preview)) {
-    if (original.edits?.[el.key]?.deleted) continue
+    if (edits[el.key]?.deleted) continue
     const its = items.filter(i => i.key === el.key)
     if (its.length !== 1) continue // groups keep their text
     const it = its[0]
