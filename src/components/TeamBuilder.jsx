@@ -66,11 +66,16 @@ function defaultPositions(wheelMembers) {
   return pos
 }
 
-function PhotoCircle({ member, x, y, r, ring = '#8f8f8f', ringW = 2, onPointerDown, draggable }) {
+// Managers have a thick grey ring around their photo (as on the original slide)
+const MANAGER_RING = { color: '#8c8c8c', width: 4.5 }
+
+function PhotoCircle({ member, x, y, r, ring = null, ringW = 0, onPointerDown, draggable }) {
   const id = `ph-${member.id}`
+  const stroke = ring ?? (member.isManager ? MANAGER_RING.color : null)
+  const width = ring ? ringW : member.isManager ? MANAGER_RING.width : 0
   return (
     <g style={{ cursor: draggable ? 'grab' : 'default' }} onPointerDown={onPointerDown}>
-      <circle cx={x} cy={y} r={r + ringW / 2} fill="#fff" stroke={ring} strokeWidth={ringW} />
+      {stroke && width > 0 && <circle cx={x} cy={y} r={r + width / 2} fill="#fff" stroke={stroke} strokeWidth={width} />}
       {member.imageDataUrl ? (
         <>
           <defs><clipPath id={id}><circle cx={x} cy={y} r={r} /></clipPath></defs>
@@ -250,6 +255,7 @@ function MemberForm({ initial, groups, onSave, onCancel }) {
   const [deptId,       setDeptId]       = useState(initial?.deptId       || WHEEL_DEPTS[0].id)
   const [groupId,      setGroupId]      = useState(initial?.groupId      || groups[0]?.id || '')
   const [isCenter,     setIsCenter]     = useState(initial?.isCenter     || false)
+  const [isManager,    setIsManager]    = useState(initial?.isManager    || false)
   const [imageDataUrl, setImageDataUrl] = useState(initial?.imageDataUrl || null)
   const imgRef = useRef(null)
 
@@ -268,6 +274,7 @@ function MemberForm({ initial, groups, onSave, onCancel }) {
       title:        title.trim(),
       company:      company.trim(),
       isCenter:     placement === 'wheel' && isCenter,
+      isManager:    placement === 'wheel' && isManager,
       deptId:       placement === 'wheel' ? deptId : null,
       groupId:      placement === 'group' ? groupId : null,
       imageDataUrl,
@@ -316,7 +323,11 @@ function MemberForm({ initial, groups, onSave, onCancel }) {
           <select style={F.select} value={deptId} onChange={e => setDeptId(e.target.value)}>
             {WHEEL_DEPTS.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
           </select>
-          <label style={{ ...F.checkRow, marginTop: 10 }}>
+          <label style={{ ...F.checkRow, marginTop: 10 }} title="Managers have a grey ring around their photo on the slide">
+            <input type="checkbox" checked={isManager} onChange={e => setIsManager(e.target.checked)} />
+            <span style={F.checkLabel}>Manager <span style={{ color: 'var(--color-text-muted)' }}>(grey ring around photo)</span></span>
+          </label>
+          <label style={{ ...F.checkRow, marginTop: 6 }}>
             <input type="checkbox" checked={isCenter} onChange={e => setIsCenter(e.target.checked)} />
             <span style={F.checkLabel}>Set as center person (primary contact)</span>
           </label>
@@ -577,6 +588,7 @@ function MemberRow({ member, onEdit, onDelete, badge }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           <span style={{ ...S.memberName, ...(member.name ? {} : { color: '#b45309', fontStyle: 'italic' }) }}>{member.name || 'Needs name'}</span>
           {badge && <span style={S.memberBadge}>{badge}</span>}
+          {member.isManager && <span style={{ ...S.memberBadge, color: '#6b7280', border: '0.5px solid #9ca3af', background: '#f3f4f6' }}>MANAGER</span>}
         </div>
         {member.title   && <div style={S.memberMeta}>{member.title}</div>}
         {member.company && <div style={S.memberMeta}>{member.company}</div>}
