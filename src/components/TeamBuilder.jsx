@@ -1,296 +1,241 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { WHEEL_DEPTS, DEFAULT_GROUPS, loadTeamConfig, loadTeamConfigRemote, saveTeamConfig, uid } from '../lib/team.js'
 
-// ── SVG helpers ───────────────────────────────────────────────────────────────
-const CX = 200, CY = 200
-const R_LABEL   = 176   // center of outer label ring
-const R_BLACK_O = 188   // outer edge of black ring
-const R_BLACK_I = 152   // inner edge of black ring / outer edge of segment ring
-const R_SEG_I   = 96    // inner edge of segment ring / outer edge of CS ring
-const R_CS_I    = 70    // inner edge of CS ring
-const R_CENTER  = 58    // center circle radius
+// ── My Team slide ─────────────────────────────────────────────────────────────
+// Layout measured from the Spark Studio "My Team" slide: white left side with
+// the team wheel, dark red panel on the right (template background
+// /branding/team-bg.png) listing the side groups.
+//
+// The wheel (SVG units, 600×600, centre 300,300):
+//   red outer ring  (268–300) — the four main departments
+//   black ring      (240–268) — sub-departments
+//   white area      (110–240) — split into four quadrants by thin lines; photos
+//   red Client Services ring (93–110), white centre with the lead + their team
+const CX = 300, CY = 300
+const R_RED_O = 300, R_RED_I = 268, R_BLACK_I = 240, R_CS_O = 110, R_CS_I = 93
+const RED = '#CD2F37'
+const PHOTO_R = 23
 
-const wheelDepts = WHEEL_DEPTS.filter(d => d.id !== 'client_services')
-const SEG_ANGLE  = 360 / wheelDepts.length   // 45°
+// Angles in degrees, clockwise from 12 o'clock
+const QUADS = [
+  { id: 'technology',         label: 'TECHNOLOGY',           start: 260, end: 350, labelAngle: 307,
+    subs: [{ id: 'data', label: 'DATA', angle: 283 }, { id: 'development', label: 'DEVELOPMENT', angle: 322 }] },
+  { id: 'digital_strategy',   label: 'DIGITAL STRATEGY',     start: 350, end: 440, labelAngle: 38,  subs: [] },
+  { id: 'brand_design',       label: 'BRAND & DESIGN',       start: 80,  end: 170, labelAngle: 131,
+    subs: [{ id: 'social_marketing', label: 'SOCIAL MARKETING', angle: 113 }, { id: 'creative', label: 'CREATIVE', angle: 153 }] },
+  { id: 'innovation_product', label: 'INNOVATION & PRODUCT', start: 170, end: 260, labelAngle: 222, subs: [] },
+]
+const quadOf = deptId => QUADS.find(q => q.id === deptId || q.subs.some(s => s.id === deptId))
 
-function toRad(deg) { return (deg - 90) * Math.PI / 180 }
+const rad = deg => (deg - 90) * Math.PI / 180
+const polar = (r, deg) => ({ x: CX + r * Math.cos(rad(deg)), y: CY + r * Math.sin(rad(deg)) })
+const norm = deg => ((deg % 360) + 360) % 360
 
-function polar(r, angleDeg) {
-  return { x: CX + r * Math.cos(toRad(angleDeg)), y: CY + r * Math.sin(toRad(angleDeg)) }
+// Arc for curved text, centred on midDeg; bottom-half labels run the other
+// way so they read upright
+function textArc(midDeg, r, half = 50) {
+  const bottom = norm(midDeg) > 90 && norm(midDeg) < 270
+  const a = polar(r, bottom ? midDeg + half : midDeg - half)
+  const b = polar(r, bottom ? midDeg - half : midDeg + half)
+  return `M${a.x} ${a.y} A${r} ${r} 0 0 ${bottom ? 0 : 1} ${b.x} ${b.y}`
 }
 
-function arcPath(startDeg, endDeg, rOuter, rInner) {
-  const s1 = polar(rOuter, startDeg), e1 = polar(rOuter, endDeg)
-  const s2 = polar(rInner, endDeg),   e2 = polar(rInner, startDeg)
-  const lg = endDeg - startDeg > 180 ? 1 : 0
-  return `M${s1.x} ${s1.y} A${rOuter} ${rOuter} 0 ${lg} 1 ${e1.x} ${e1.y} L${s2.x} ${s2.y} A${rInner} ${rInner} 0 ${lg} 0 ${e2.x} ${e2.y}Z`
+// Default spots for a quadrant's members: along arcs, in the order of the
+// angle each member belongs near (sub-department label or quadrant middle)
+function quadrantSpots(q, n) {
+  if (!n) return []
+  const rows = n <= 4 ? 1 : n <= 10 ? 2 : 3
+  const radii = rows === 1 ? [178] : rows === 2 ? [200, 150] : [212, 175, 138]
+  const pad = 13
+  const span = (q.end - q.start) - pad * 2
+  return Array.from({ length: n }, (_, i) => {
+    const t = n === 1 ? 0.5 : i / (n - 1)
+    return polar(radii[i % rows], q.start + pad + t * span)
+  })
 }
 
-// Arc for textPath — clockwise for top half, counter-clockwise for bottom
-// so text is always right-side-up.
-function labelArcPath(midDeg, r) {
-  const halfArc = 22   // degrees each side of midpoint
-  const isBottom = ((midDeg % 360) + 360) % 360 > 180
-  if (!isBottom) {
-    const s = polar(r, midDeg - halfArc), e = polar(r, midDeg + halfArc)
-    return `M${s.x} ${s.y} A${r} ${r} 0 0 1 ${e.x} ${e.y}`
-  } else {
-    // Reverse arc so text reads normally
-    const s = polar(r, midDeg + halfArc), e = polar(r, midDeg - halfArc)
-    return `M${s.x} ${s.y} A${r} ${r} 0 0 0 ${e.x} ${e.y}`
+function defaultPositions(wheelMembers) {
+  const pos = {}
+  for (const q of QUADS) {
+    const mid = (q.start + q.end) / 2
+    const angleFor = m => {
+      const sub = q.subs.find(s => s.id === m.deptId)
+      if (!sub) return mid
+      let a = sub.angle
+      while (a < q.start) a += 360
+      return a
+    }
+    const ms = wheelMembers.filter(m => quadOf(m.deptId) === q)
+      .map((m, i) => ({ m, a: angleFor(m), i }))
+      .sort((x, y) => x.a - y.a || x.i - y.i)
+    quadrantSpots(q, ms.length).forEach((p, i) => { pos[ms[i].m.id] = p })
   }
+  return pos
 }
 
-// Default position for a wheel member (dept + slot index)
-function defaultPos(deptId, slotIndex, total) {
-  const di = wheelDepts.findIndex(d => d.id === deptId)
-  if (di < 0) return { x: CX, y: CY }
-  const startDeg = di * SEG_ANGLE
-  const midDeg   = startDeg + SEG_ANGLE / 2
-  // Stagger slots: alternating radius and slight angle offset
-  const r     = slotIndex % 2 === 0 ? 136 : 116
-  const angle = midDeg + (slotIndex > 1 ? SEG_ANGLE * 0.2 * (slotIndex % 2 === 0 ? 1 : -1) : 0)
-  return polar(r, angle)
+function PhotoCircle({ member, x, y, r, ring = '#8f8f8f', ringW = 2, onPointerDown, draggable }) {
+  const id = `ph-${member.id}`
+  return (
+    <g style={{ cursor: draggable ? 'grab' : 'default' }} onPointerDown={onPointerDown}>
+      <circle cx={x} cy={y} r={r + ringW / 2} fill="#fff" stroke={ring} strokeWidth={ringW} />
+      {member.imageDataUrl ? (
+        <>
+          <defs><clipPath id={id}><circle cx={x} cy={y} r={r} /></clipPath></defs>
+          <image href={member.imageDataUrl} x={x - r} y={y - r} width={r * 2} height={r * 2} clipPath={`url(#${id})`} preserveAspectRatio="xMidYMid slice" />
+        </>
+      ) : (
+        <circle cx={x} cy={y} r={r} fill="#c9c9c9" />
+      )}
+    </g>
+  )
 }
 
-function csDefaultPos(slotIndex, total) {
-  const angle = (slotIndex / Math.max(total, 1)) * 360
-  return polar(80, angle)
-}
-
-// ── Wheel slide preview ───────────────────────────────────────────────────────
 export function TeamSlidePreview({ config, onMemberMove }) {
   const { members = [], groups = DEFAULT_GROUPS } = config || {}
   const svgRef  = useRef(null)
-  const dragRef = useRef(null)   // { memberId, startSVGx, startSVGy }
+  const dragRef = useRef(null)
 
   const centerMember = members.find(m => m.isCenter)
-  const wheelMembers = members.filter(m => !m.isCenter && !m.groupId)
+  const wheelMembers = members.filter(m => !m.isCenter && !m.groupId && m.deptId !== 'client_services' && quadOf(m.deptId))
+  const csMembers    = members.filter(m => !m.isCenter && !m.groupId && m.deptId === 'client_services')
   const groupMembers = members.filter(m => m.groupId)
+  const defaults     = defaultPositions(wheelMembers)
 
-  // Compute photo positions — use saved svgX/svgY if set, else compute default
-  const byDept = {}
-  for (const d of wheelDepts) byDept[d.id] = []
-  const csMems = []
-  for (const m of wheelMembers) {
-    if (m.deptId === 'client_services') csMems.push(m)
-    else if (byDept[m.deptId])          byDept[m.deptId].push(m)
-  }
+  // Saved positions (wx/wy) are in this wheel's units; older ones (svgX/svgY)
+  // belonged to the previous layout and are ignored
+  const photos = wheelMembers.map(m => ({ m, x: m.wx ?? defaults[m.id].x, y: m.wy ?? defaults[m.id].y }))
+  const csSpacing = PHOTO_R * 2 + 12
+  const csPhotos = csMembers.map((m, i) => ({
+    m,
+    x: m.wx ?? CX + (i - (csMembers.length - 1) / 2) * csSpacing,
+    y: m.wy ?? CY + 47,
+  }))
 
-  const photoEntries = []
-  wheelDepts.forEach(dept => {
-    byDept[dept.id].forEach((m, i) => {
-      const def = defaultPos(dept.id, i)
-      photoEntries.push({ member: m, x: m.svgX ?? def.x, y: m.svgY ?? def.y, r: 15 })
-    })
-  })
-  csMems.forEach((m, i) => {
-    const def = csDefaultPos(i, csMems.length)
-    photoEntries.push({ member: m, x: m.svgX ?? def.x, y: m.svgY ?? def.y, r: 12 })
-  })
-
-  // ── Drag handling ──────────────────────────────────────────────────────────
   function svgPoint(e) {
     const svg = svgRef.current
-    if (!svg) return { x: 0, y: 0 }
     const pt = svg.createSVGPoint()
     pt.x = e.clientX; pt.y = e.clientY
     return pt.matrixTransform(svg.getScreenCTM().inverse())
   }
-
-  function onPhotoPointerDown(e, member, currentX, currentY) {
+  function startDrag(e, member, x, y) {
     if (!onMemberMove) return
-    e.preventDefault()
-    e.stopPropagation()
+    e.preventDefault(); e.stopPropagation()
     const p = svgPoint(e)
-    // Use the actual rendered position so there's no jump on first move
-    dragRef.current = { memberId: member.id, ox: p.x - currentX, oy: p.y - currentY }
-    window.addEventListener('pointermove', onWindowMove)
-    window.addEventListener('pointerup',   onWindowUp)
+    dragRef.current = { id: member.id, ox: p.x - x, oy: p.y - y }
+    const move = ev => {
+      if (!dragRef.current) return
+      const q = svgPoint(ev)
+      onMemberMove(dragRef.current.id, q.x - dragRef.current.ox, q.y - dragRef.current.oy)
+    }
+    const up = () => {
+      dragRef.current = null
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
   }
 
-  function onWindowMove(e) {
-    if (!dragRef.current) return
-    const p = svgPoint(e)
-    onMemberMove(dragRef.current.memberId, p.x - dragRef.current.ox, p.y - dragRef.current.oy)
-  }
-
-  function onWindowUp() {
-    dragRef.current = null
-    window.removeEventListener('pointermove', onWindowMove)
-    window.removeEventListener('pointerup',   onWindowUp)
-  }
+  // Headings use Arial Black, as on the original slide (sizes measured for it)
+  const heavy = '"Arial Black", "Arial Bold", Arial, sans-serif'
 
   return (
     <div style={{
-      width: '100%', aspectRatio: '16/9',
-      display: 'flex', fontFamily: 'Arial, sans-serif',
-      background: '#fff', overflow: 'hidden', containerType: 'inline-size',
+      width: '100%', aspectRatio: '16/9', position: 'relative', overflow: 'hidden',
+      background: '#fff', fontFamily: 'Arial, sans-serif', containerType: 'inline-size',
     }}>
+      {/* Template background: white left, dark red panel + corner graphic right */}
+      <img src="/branding/team-bg.png" alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
 
-      {/* ── Left half — wheel ─────────────────────────────────────── */}
-      <div style={{ flex: '0 0 58%', display: 'flex', flexDirection: 'column', padding: '3% 4% 2%' }}>
-        {/* MY TEAM title — above the wheel, never overlapping */}
-        <div style={{ marginBottom: '2%', flexShrink: 0 }}>
-          <div style={{ fontSize: '3.5cqw', fontWeight: 900, color: '#1a1a1a', letterSpacing: '-0.02em', lineHeight: 1 }}>MY TEAM</div>
-          <div style={{ width: '4.5cqw', height: '0.4cqw', background: '#CD2F37', marginTop: '0.5cqw' }} />
-        </div>
-
-        <svg ref={svgRef} viewBox="0 0 400 400" style={{ width: '100%', flex: 1, minHeight: 0, overflow: 'visible' }}>
-          <defs>
-            {/* Label arcs for each dept */}
-            {wheelDepts.map((dept, i) => {
-              const midDeg = i * SEG_ANGLE + SEG_ANGLE / 2
-              return <path key={`larc-${dept.id}`} id={`larc-${dept.id}`} d={labelArcPath(midDeg, R_LABEL)} fill="none" />
-            })}
-            {/* Clip paths for center + each photo */}
-            <clipPath id="cc"><circle cx={CX} cy={CY} r={R_CENTER - 2} /></clipPath>
-            {photoEntries.map(({ member: m }) => (
-              <clipPath key={`pc-${m.id}`} id={`pc-${m.id}`}>
-                <circle cx={0} cy={0} r={1} />
-              </clipPath>
-            ))}
-            {centerMember && <clipPath id="cimg"><circle cx={CX} cy={CY} r={R_CENTER - 3} /></clipPath>}
-          </defs>
-
-          {/* ── Outer black ring ── */}
-          <circle cx={CX} cy={CY} r={R_BLACK_O} fill="#111" />
-
-          {/* ── Segment ring (alternating light/dark) ── */}
-          {wheelDepts.map((dept, i) => {
-            const s = i * SEG_ANGLE, e = s + SEG_ANGLE
-            return (
-              <path
-                key={dept.id}
-                d={arcPath(s, e, R_BLACK_I, R_SEG_I)}
-                fill={i % 2 === 0 ? '#f0f0f0' : '#e0e0e0'}
-                stroke="#ccc"
-                strokeWidth="0.5"
-              />
-            )
-          })}
-
-          {/* ── Segment divider lines ── */}
-          {wheelDepts.map((_, i) => {
-            const p1 = polar(R_BLACK_I, i * SEG_ANGLE)
-            const p2 = polar(R_SEG_I,   i * SEG_ANGLE)
-            return <line key={i} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="#CD2F37" strokeWidth="1.2" />
-          })}
-
-          {/* ── Inner CS ring ── */}
-          <circle cx={CX} cy={CY} r={R_SEG_I}  fill="#fff" />
-          <circle cx={CX} cy={CY} r={R_SEG_I}  fill="none" stroke="#CD2F37" strokeWidth="3" />
-          <circle cx={CX} cy={CY} r={R_CS_I}   fill="#fff" />
-          <circle cx={CX} cy={CY} r={R_CS_I}   fill="none" stroke="#CD2F37" strokeWidth="1.5" />
-
-          {/* CLIENT SERVICES curved label */}
-          <defs>
-            <path id="cs-arc" d={`M${polar(R_SEG_I - 10, -40).x} ${polar(R_SEG_I - 10, -40).y} A${R_SEG_I - 10} ${R_SEG_I - 10} 0 0 1 ${polar(R_SEG_I - 10, 40).x} ${polar(R_SEG_I - 10, 40).y}`} />
-          </defs>
-          <text fontSize="7.5" fontWeight="800" fill="#CD2F37" letterSpacing="0.8">
-            <textPath href="#cs-arc" startOffset="50%" textAnchor="middle">CLIENT SERVICES</textPath>
-          </text>
-
-          {/* ── Dept labels on outer ring ── */}
-          {wheelDepts.map((dept, i) => {
-            const midDeg = i * SEG_ANGLE + SEG_ANGLE / 2
-            const isBottom = ((midDeg % 360) + 360) % 360 > 180
-            return (
-              <text key={dept.id} fontSize="8.5" fontWeight="800" fill="#fff" letterSpacing="0.7">
-                <textPath
-                  href={`#larc-${dept.id}`}
-                  startOffset="50%"
-                  textAnchor="middle"
-                  dominantBaseline={isBottom ? 'auto' : 'middle'}
-                >
-                  {dept.label}
-                </textPath>
-              </text>
-            )
-          })}
-
-          {/* ── Wheel member photos ── */}
-          {photoEntries.map(({ member: m, x, y, r: pr }) => {
-            const isDraggable = !!onMemberMove
-            return (
-              <g
-                key={m.id}
-                style={{ cursor: isDraggable ? 'grab' : 'default' }}
-                onPointerDown={e => onPhotoPointerDown(e, m, x, y)}
-              >
-                <circle cx={x} cy={y} r={pr + 2} fill="#CD2F37" />
-                {m.imageDataUrl ? (
-                  <>
-                    <defs>
-                      <clipPath id={`wc-${m.id}`}><circle cx={x} cy={y} r={pr} /></clipPath>
-                    </defs>
-                    <image
-                      href={m.imageDataUrl}
-                      x={x - pr} y={y - pr} width={pr * 2} height={pr * 2}
-                      clipPath={`url(#wc-${m.id})`}
-                      preserveAspectRatio="xMidYMid slice"
-                    />
-                  </>
-                ) : (
-                  <circle cx={x} cy={y} r={pr} fill="#bbb" />
-                )}
-                {isDraggable && (
-                  <circle cx={x} cy={y} r={pr + 2} fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="1" />
-                )}
-              </g>
-            )
-          })}
-
-          {/* ── Center circle ── */}
-          <circle cx={CX} cy={CY} r={R_CENTER}     fill="#fff" stroke="#CD2F37" strokeWidth="5" />
-          <circle cx={CX} cy={CY} r={R_CENTER - 3} fill="#eee" />
-          {centerMember?.imageDataUrl && (
-            <image
-              href={centerMember.imageDataUrl}
-              x={CX - (R_CENTER - 3)} y={CY - (R_CENTER - 3)}
-              width={(R_CENTER - 3) * 2} height={(R_CENTER - 3) * 2}
-              clipPath="url(#cimg)"
-              preserveAspectRatio="xMidYMid slice"
-            />
-          )}
-
-          {/* Center name + title below circle */}
-          {centerMember && (
-            <>
-              <text x={CX} y={CY + R_CENTER + 12} textAnchor="middle" fontSize="8" fontWeight="700" fill="#1a1a1a">{centerMember.name}</text>
-              <text x={CX} y={CY + R_CENTER + 22} textAnchor="middle" fontSize="7"  fill="#555">{centerMember.title}</text>
-            </>
-          )}
-        </svg>
+      {/* MY TEAM */}
+      <div style={{ position: 'absolute', left: '3.75%', top: '6.6%', display: 'inline-block' }}>
+        <div style={{ fontFamily: heavy, fontSize: '3.27cqw', fontWeight: 900, color: '#111', lineHeight: 1 }}>MY TEAM</div>
+        <div style={{ height: '0.55cqw', background: RED, marginTop: '0.9cqw' }} />
       </div>
 
-      {/* ── Right half — sidebar groups ───────────────────────────── */}
-      <div style={{
-        flex: '0 0 42%',
-        background: 'linear-gradient(160deg, #5a0a14 0%, #2a0508 50%, #0a0205 100%)',
-        padding: '3cqw 2.8cqw',
-        display: 'flex', flexDirection: 'column', gap: '2.2cqw',
-        overflowY: 'auto',
-      }}>
+      {/* The wheel — positioned by a wrapper; the SVG itself only fills it, so
+          the PowerPoint export (html2canvas) draws it in the same place */}
+      <div style={{ position: 'absolute', left: '16.12%', top: '4.91%', width: '50.13%', height: '89.29%' }}>
+      <svg
+        ref={svgRef}
+        viewBox="0 0 600 600"
+        width="100%" height="100%"
+        style={{ display: 'block', overflow: 'visible' }}
+      >
+        <defs>
+          {QUADS.map(q => <path key={`a-${q.id}`} id={`team-main-${q.id}`} d={textArc(q.labelAngle, (R_RED_O + R_RED_I) / 2)} fill="none" />)}
+          {QUADS.flatMap(q => q.subs).map(sub => <path key={`s-${sub.id}`} id={`team-sub-${sub.id}`} d={textArc(sub.angle, (R_RED_I + R_BLACK_I) / 2, 30)} fill="none" />)}
+          <path id="team-cs" d={textArc(0, (R_CS_O + R_CS_I) / 2, 60)} fill="none" />
+        </defs>
+
+        {/* Rings */}
+        <circle cx={CX} cy={CY} r={R_RED_O} fill={RED} />
+        <circle cx={CX} cy={CY} r={R_RED_I} fill="#000" />
+        <circle cx={CX} cy={CY} r={R_BLACK_I} fill="#fff" />
+
+        {/* Quadrant dividers */}
+        {QUADS.map(q => {
+          const a = polar(R_CS_O, q.start), b = polar(R_BLACK_I, q.start)
+          return <line key={`d-${q.id}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#c4c4c4" strokeWidth="1.2" />
+        })}
+
+        {/* Department labels */}
+        {QUADS.map(q => (
+          <text key={`t-${q.id}`} fontFamily={heavy} fontSize="21.5" fontWeight="900" fill="#fff" letterSpacing="0.5">
+            <textPath href={`#team-main-${q.id}`} startOffset="50%" textAnchor="middle" dominantBaseline="central">{q.label}</textPath>
+          </text>
+        ))}
+        {QUADS.flatMap(q => q.subs).map(sub => (
+          <text key={`ts-${sub.id}`} fontSize="12.5" fontWeight="700" fill="#fff" letterSpacing="0.4">
+            <textPath href={`#team-sub-${sub.id}`} startOffset="50%" textAnchor="middle" dominantBaseline="central">{sub.label}</textPath>
+          </text>
+        ))}
+
+        {/* Team photos */}
+        {photos.map(({ m, x, y }) => (
+          <PhotoCircle key={m.id} member={m} x={x} y={y} r={PHOTO_R} draggable={!!onMemberMove} onPointerDown={e => startDrag(e, m, x, y)} />
+        ))}
+
+        {/* Client Services */}
+        <circle cx={CX} cy={CY} r={(R_CS_O + R_CS_I) / 2} fill="#fff" stroke={RED} strokeWidth={R_CS_O - R_CS_I} />
+        <text fontSize="12" fontWeight="800" fill="#fff" letterSpacing="0.3">
+          <textPath href="#team-cs" startOffset="50%" textAnchor="middle" dominantBaseline="central">CLIENT SERVICES</textPath>
+        </text>
+        {centerMember && (
+          <>
+            <PhotoCircle member={centerMember} x={CX} y={CY - 48} r={29} ring={RED} ringW={1.5} />
+            <text x={CX} y={CY - 4} textAnchor="middle" fontSize="9.5" fontWeight="700" fill="#1a1a1a">{centerMember.name}</text>
+            {centerMember.title && <text x={CX} y={CY + 9} textAnchor="middle" fontSize="8.5" fill="#333">{centerMember.title}</text>}
+          </>
+        )}
+        {csPhotos.map(({ m, x, y }) => (
+          <PhotoCircle key={m.id} member={m} x={x} y={y} r={PHOTO_R} draggable={!!onMemberMove} onPointerDown={e => startDrag(e, m, x, y)} />
+        ))}
+      </svg>
+      </div>
+
+      {/* Right panel — side groups */}
+      <div style={{ position: 'absolute', left: '72.9%', top: '5.6%', width: '19.6%', display: 'flex', flexDirection: 'column', gap: '3.4cqw' }}>
         {(groups || []).map(group => {
           const gMembers = groupMembers.filter(m => m.groupId === group.id)
+          if (!gMembers.length && !onMemberMove) return null
           return (
             <div key={group.id}>
-              <div style={{ fontSize: '1.6cqw', fontWeight: 900, color: '#fff', letterSpacing: '0.04em', lineHeight: 1.2, marginBottom: '0.5cqw' }}>{group.label}</div>
-              <div style={{ width: '4cqw', height: '0.22cqw', background: '#CD2F37', marginBottom: '1.2cqw' }} />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1cqw' }}>
+              <div style={{ fontFamily: heavy, fontSize: '1.63cqw', fontWeight: 900, color: '#fff', lineHeight: 1.2, textTransform: 'uppercase' }}>{group.label}</div>
+              <div style={{ height: '0.22cqw', background: RED, marginTop: '0.7cqw' }} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25cqw', marginTop: '1.6cqw' }}>
                 {gMembers.length === 0 && (
-                  <div style={{ fontSize: '1cqw', color: 'rgba(255,255,255,0.35)', fontStyle: 'italic' }}>No members yet</div>
+                  <div style={{ fontSize: '1cqw', color: 'rgba(255,255,255,0.4)', fontStyle: 'italic' }}>No members yet</div>
                 )}
                 {gMembers.map(m => (
-                  <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '1.1cqw' }}>
-                    <div style={{ width: '3.8cqw', height: '3.8cqw', borderRadius: '50%', flexShrink: 0, overflow: 'hidden', border: '0.2cqw solid rgba(255,255,255,0.25)', background: '#444' }}>
-                      {m.imageDataUrl && <img src={m.imageDataUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt={m.name} />}
+                  <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '1.15cqw' }}>
+                    <div style={{ width: '4.6cqw', height: '4.6cqw', borderRadius: '50%', flexShrink: 0, overflow: 'hidden', border: `0.25cqw solid ${RED}`, background: '#555', boxSizing: 'border-box' }}>
+                      {m.imageDataUrl && <img src={m.imageDataUrl} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} alt={m.name} />}
                     </div>
-                    <div>
-                      <div style={{ fontSize: '1.15cqw', fontWeight: 700, color: '#fff', lineHeight: 1.2 }}>{m.name}</div>
-                      {m.title   && <div style={{ fontSize: '0.95cqw', color: 'rgba(255,255,255,0.7)' }}>{m.title}</div>}
-                      {m.company && <div style={{ fontSize: '0.88cqw', color: 'rgba(255,255,255,0.5)' }}>{m.company}</div>}
+                    <div style={{ color: '#fff', minWidth: 0 }}>
+                      <div style={{ fontSize: '1.1cqw', fontWeight: 700, lineHeight: 1.25 }}>{m.name}</div>
+                      {m.title   && <div style={{ fontSize: '0.82cqw', lineHeight: 1.3 }}>{m.title}</div>}
+                      {m.company && <div style={{ fontSize: '0.82cqw', lineHeight: 1.3 }}>{m.company}</div>}
                     </div>
                   </div>
                 ))}
@@ -333,8 +278,8 @@ function MemberForm({ initial, groups, onSave, onCancel }) {
       deptId:       placement === 'wheel' ? deptId : null,
       groupId:      placement === 'group' ? groupId : null,
       imageDataUrl,
-      svgX:         initial?.svgX ?? null,
-      svgY:         initial?.svgY ?? null,
+      wx:           initial?.wx ?? null,
+      wy:           initial?.wy ?? null,
     })
   }
 
@@ -445,7 +390,7 @@ export default function TeamBuilder({ onClose, clientId }) {
   function handleMemberMove(memberId, x, y) {
     setConfig(prev => ({
       ...prev,
-      members: prev.members.map(m => m.id === memberId ? { ...m, svgX: x, svgY: y } : m),
+      members: prev.members.map(m => m.id === memberId ? { ...m, wx: x, wy: y } : m),
     }))
     setSaved(false)
   }
