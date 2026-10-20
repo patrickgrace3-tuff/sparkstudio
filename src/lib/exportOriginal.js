@@ -24,6 +24,7 @@ function relative(fromDir, toPath) {
   return [...from.slice(i).map(() => '..'), ...to.slice(i)].join('/')
 }
 
+const escapeText = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 const escapeAttr = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
 
 // Stable GUID-like id from a string
@@ -130,7 +131,14 @@ export function createOriginalSplicer(zip, clientId) {
       })
 
       // Template content slide with its text boxes replaced by the original's shapes
-      let xml = base.xml.replace(/(<\/p:grpSpPr>)[\s\S]*(<\/p:spTree>)/, (_, a, b) => `${a}${content}${b}`)
+      // The slide title set in the app goes in the template's own title box
+      // (next to the logo, Spark red) — the same as slides made in the platform
+      const headerTitle = original.headerTitle?.trim()
+      const titleShape = headerTitle
+        ? (base.xml.match(/<p:sp>(?:(?!<\/p:sp>)[\s\S])*?<p:ph type="title"\/>[\s\S]*?<\/p:sp>/)?.[0] ?? '')
+          .replace(/(<a:t[^>]*>)Slide Title(<\/a:t>)/, (_, a, b) => `${a}${escapeText(headerTitle)}${b}`)
+        : ''
+      let xml = base.xml.replace(/(<\/p:grpSpPr>)[\s\S]*(<\/p:spTree>)/, (_, a, b) => `${a}${titleShape}${content}${b}`)
       // Namespaces the original declared (e.g. ones named in mc:Ignorable/Requires)
       const origRoot = get(original.slidePath).match(/<p:sld\b[^>]*>/)?.[0] ?? ''
       const extra = [...origRoot.matchAll(/\sxmlns:([\w]+)="([^"]*)"/g)].filter(([, p]) => !new RegExp(`\\sxmlns:${p}=`).test(xml.match(/<p:sld\b[^>]*>/)?.[0] ?? ''))

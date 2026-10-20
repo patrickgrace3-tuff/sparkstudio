@@ -24,6 +24,7 @@ export default function OriginalSlideEditor({ slide, clientId, onSave, onClose }
   const [edits,   setEdits]   = useState(() => JSON.parse(JSON.stringify(original.edits ?? {})))
   const [sel,     setSel]     = useState(null)   // element key
   const [crop,    setCrop]    = useState(false)
+  const [headerTitle, setHeaderTitle] = useState(original.headerTitle ?? '') // title in the template's title area
   const areaRef = useRef(null)
 
   // Slides imported by an older version get their preview rebuilt from the stored original
@@ -78,7 +79,12 @@ export default function OriginalSlideEditor({ slide, clientId, onSave, onClose }
     // Keep only edits that change something
     const clean = {}
     for (const [k, v] of Object.entries(edits)) if (v && Object.keys(v).some(f => f !== 'from')) clean[k] = v
-    onSave({ ...slide, style: { ...slide.style, original: { ...original, preview, edits: clean } } })
+    const title = headerTitle.trim()
+    onSave({
+      ...slide,
+      ...(title ? { title } : {}),
+      style: { ...slide.style, original: { ...original, preview, edits: clean, headerTitle: title } },
+    })
   }
 
   const selItems = selected ? current(selected.key) : []
@@ -104,7 +110,7 @@ export default function OriginalSlideEditor({ slide, clientId, onSave, onClose }
         <div style={S.stage} onPointerDown={() => { setSel(null); setCrop(false) }}>
           {error ? <div style={S.msg}>{error}</div> : !preview ? <div style={S.msg}>Loading slide…</div> : (
             <div style={S.canvas}>
-              <TemplateSlide p={preview} edits={edits} clip={false}>
+              <TemplateSlide p={preview} edits={edits} clip={false} title={headerTitle}>
                 <div ref={areaRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
                   {elements.filter(el => !eff[el.key]?.deleted).map(el => {
                     const isSel = sel === el.key
@@ -149,6 +155,24 @@ export default function OriginalSlideEditor({ slide, clientId, onSave, onClose }
         </div>
 
         <aside style={S.panel}>
+          <div style={S.titleBox}>
+            <label style={S.label} htmlFor="orig-slide-title">Slide title</label>
+            <input
+              id="orig-slide-title"
+              style={S.titleInput}
+              value={headerTitle}
+              onChange={e => setHeaderTitle(e.target.value)}
+              placeholder={slide.title ? `e.g. ${slide.title}` : 'Add a slide title'}
+              maxLength={120}
+            />
+            <div style={S.titleHint}>
+              <span style={S.swatch} /> Shown next to the Spark Studio logo in the brand red, like slides made in the platform. Leave empty for no title.
+            </div>
+            {!headerTitle && slide.title && (
+              <button style={{ ...S.ghostSm, marginTop: 6 }} onClick={() => setHeaderTitle(slide.title)}>Use “{slide.title.length > 40 ? `${slide.title.slice(0, 40)}…` : slide.title}”</button>
+            )}
+          </div>
+
           {!selected ? (
             <>
               <div style={S.panelTitle}>Editing</div>
@@ -264,6 +288,10 @@ const S = {
   canvas:    { width: 'min(100%, calc((100vh - 140px) * 16 / 9))', boxShadow: '0 6px 30px rgba(0,0,0,0.25)', position: 'relative' },
   msg:       { fontSize: 14, color: 'var(--color-text-muted)' },
   panel:     { width: 320, flexShrink: 0, borderLeft: '0.5px solid var(--color-border)', padding: 16, overflowY: 'auto', background: 'var(--color-bg)' },
+  titleBox:  { paddingBottom: 14, marginBottom: 14, borderBottom: '0.5px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 6 },
+  titleInput:{ width: '100%', boxSizing: 'border-box', fontSize: 14, fontWeight: 700, padding: '8px 10px', border: '0.5px solid var(--color-border)', borderRadius: 6, color: '#CD2F37', fontFamily: 'Arial, sans-serif', background: 'var(--color-bg)' },
+  titleHint: { fontSize: 11, lineHeight: 1.5, color: 'var(--color-text-muted)' },
+  swatch:    { display: 'inline-block', width: 9, height: 9, borderRadius: 2, background: '#CD2F37', verticalAlign: 'middle', marginRight: 2 },
   panelTitle:{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.04em' },
   help:      { fontSize: 12, lineHeight: 1.7, color: 'var(--color-text-secondary)', margin: 0 },
   field:     { display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 },
