@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { WHEEL_DEPTS, DEFAULT_GROUPS, loadTeamConfig, loadTeamConfigRemote, saveTeamConfig, uid } from '../lib/team.js'
+import { WHEEL_DEPTS, WHEEL_QUADS, wheelQuadOf, DEFAULT_GROUPS, loadTeamConfig, loadTeamConfigRemote, saveTeamConfig, uid } from '../lib/team.js'
+import { importTeamFromPptx } from '../lib/teamImport.js'
 
 // ── My Team slide ─────────────────────────────────────────────────────────────
 // Layout measured from the Spark Studio "My Team" slide: white left side with
@@ -16,16 +17,8 @@ const R_RED_O = 300, R_RED_I = 268, R_BLACK_I = 240, R_CS_O = 110, R_CS_I = 93
 const RED = '#CD2F37'
 const PHOTO_R = 23
 
-// Angles in degrees, clockwise from 12 o'clock
-const QUADS = [
-  { id: 'technology',         label: 'TECHNOLOGY',           start: 260, end: 350, labelAngle: 307,
-    subs: [{ id: 'data', label: 'DATA', angle: 283 }, { id: 'development', label: 'DEVELOPMENT', angle: 322 }] },
-  { id: 'digital_strategy',   label: 'DIGITAL STRATEGY',     start: 350, end: 440, labelAngle: 38,  subs: [] },
-  { id: 'brand_design',       label: 'BRAND & DESIGN',       start: 80,  end: 170, labelAngle: 131,
-    subs: [{ id: 'social_marketing', label: 'SOCIAL MARKETING', angle: 113 }, { id: 'creative', label: 'CREATIVE', angle: 153 }] },
-  { id: 'innovation_product', label: 'INNOVATION & PRODUCT', start: 170, end: 260, labelAngle: 222, subs: [] },
-]
-const quadOf = deptId => QUADS.find(q => q.id === deptId || q.subs.some(s => s.id === deptId))
+const QUADS = WHEEL_QUADS
+const quadOf = wheelQuadOf
 
 const rad = deg => (deg - 90) * Math.PI / 180
 const polar = (r, deg) => ({ x: CX + r * Math.cos(rad(deg)), y: CY + r * Math.sin(rad(deg)) })
@@ -367,6 +360,35 @@ export default function TeamBuilder({ onClose, clientId }) {
   const [saved,   setSaved]   = useState(false)
   const [editing, setEditing] = useState(null)
   const [tab,     setTab]     = useState('members')
+  const [importing, setImporting] = useState(false)
+  const [imported,  setImported]  = useState(null) // { members, groups, summary, fileName } awaiting confirmation
+  const importRef = useRef(null)
+
+  async function handleImportFile(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setImporting(true)
+    try {
+      const result = await importTeamFromPptx(file, config.groups ?? DEFAULT_GROUPS)
+      setImported({ ...result, fileName: file.name })
+      setTab('members')
+      setEditing(null)
+    } catch (err) {
+      alert('Import failed: ' + err.message)
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  function applyImport(mode) {
+    const keep = mode === 'add' ? config.members : []
+    // Only one lead in the centre: an imported lead replaces the current one
+    const hasNewLead = imported.members.some(m => m.isCenter)
+    const kept = hasNewLead ? keep.map(m => ({ ...m, isCenter: false })) : keep
+    persist({ ...config, groups: imported.groups, members: [...kept, ...imported.members] })
+    setImported(null)
+  }
 
   useEffect(() => {
     if (clientId) loadTeamConfigRemote(clientId).then(setConfig)
@@ -451,7 +473,33 @@ export default function TeamBuilder({ onClose, clientId }) {
                     />
                   ) : (
                     <>
-                      <button style={S.addBtn} onClick={() => setEditing('new')}>+ Add team member</button>
+                      {imported ? (
+                        <div style={S.importBox}>
+                          <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--color-text-primary)' }}>Found {imported.summary.total} people in {imported.fileName}</div>
+                          <ul style={{ margin: '6px 0 8px', paddingLeft: 18, fontSize: 12, lineHeight: 1.6, color: 'var(--color-text-secondary)' }}>
+                            {imported.summary.lead > 0 && <li>Client Services lead (centre)</li>}
+                            {imported.summary.clientServices > 0 && <li>{imported.summary.clientServices} in Client Services</li>}
+                            {imported.summary.wheel > 0 && <li>{imported.summary.wheel} on the wheel, placed by department</li>}
+                            {imported.summary.grouped > 0 && <li>{imported.summary.grouped} in sidebar groups{imported.summary.newGroups.length ? ` (new: ${imported.summary.newGroups.join(', ')})` : ''}</li>}
+                          </ul>
+                          <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 10 }}>
+                            Photos keep the crop and position from the slide.{imported.summary.unnamed ? ` ${imported.summary.unnamed} ${imported.summary.unnamed === 1 ? 'person needs a name' : 'people need names'} — use Edit on each to add name, title and company.` : ''}
+                          </div>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            {members.length > 0 && <button style={S.addBtn} onClick={() => applyImport('replace')}>Replace current team</button>}
+                            <button style={members.length > 0 ? S.secondaryBtn : S.addBtn} onClick={() => applyImport('add')}>{members.length > 0 ? 'Add to current team' : 'Add these people'}</button>
+                            <button style={S.secondaryBtn} onClick={() => setImported(null)}>Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button style={{ ...S.addBtn, flex: 1 }} onClick={() => setEditing('new')}>+ Add team member</button>
+                          <button style={S.secondaryBtn} onClick={() => importRef.current?.click()} disabled={importing} title="Create the team from an existing My Team slide — photos, positions, and names where the slide has them">
+                            {importing ? 'Reading…' : '↑ Import slide'}
+                          </button>
+                          <input ref={importRef} type="file" accept=".pptx" style={{ display: 'none' }} onChange={handleImportFile} />
+                        </div>
+                      )}
                       {members.length === 0 && <p style={S.empty}>No members yet.</p>}
 
                       {members.filter(m => m.isCenter).length > 0 && <div style={S.sectionHd}>Center</div>}
@@ -527,7 +575,7 @@ function MemberRow({ member, onEdit, onDelete, badge }) {
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <span style={S.memberName}>{member.name}</span>
+          <span style={{ ...S.memberName, ...(member.name ? {} : { color: '#b45309', fontStyle: 'italic' }) }}>{member.name || 'Needs name'}</span>
           {badge && <span style={S.memberBadge}>{badge}</span>}
         </div>
         {member.title   && <div style={S.memberMeta}>{member.title}</div>}
@@ -540,6 +588,8 @@ function MemberRow({ member, onEdit, onDelete, badge }) {
 }
 
 const S = {
+  importBox:    { border: '0.5px solid var(--color-border)', borderRadius: 8, padding: 12, background: 'var(--color-bg-secondary)', marginBottom: 12 },
+  secondaryBtn: { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '7px 12px', fontSize: 12, cursor: 'pointer', color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' },
   overlay:      { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'stretch', justifyContent: 'stretch' },
   modal:        { background: 'var(--color-bg)', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
   header:       { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '0.5px solid var(--color-border)', flexShrink: 0 },
