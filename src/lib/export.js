@@ -514,6 +514,17 @@ async function renderComponentToDataUrl(reactElement, width = 1280, height = 720
   await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
   await new Promise(r => setTimeout(r, 300))
 
+  // html2canvas draws inline SVGs at the size in their width/height
+  // attributes, so SVGs sized with CSS (percentages) come out shifted and
+  // cropped. Pin each one to its laid-out pixel size first.
+  for (const svg of container.querySelectorAll('svg')) {
+    const r = svg.getBoundingClientRect()
+    if (r.width && r.height) {
+      svg.setAttribute('width', String(r.width))
+      svg.setAttribute('height', String(r.height))
+    }
+  }
+
   let dataUrl
   try {
     const canvas = await html2canvas(container, {
