@@ -209,7 +209,15 @@ function Item({ item, u, pt, aspect }) {
   )
 }
 
-export function TemplateSlide({ p, fill, edits = null, children = null, clip = true }) {
+export const TITLE_COLOR = '#CD2F37'
+const TITLE_STYLE = {
+  position: 'absolute', left: '15.25%', top: '5.1%', width: '77.9%', height: '8.33%',
+  display: 'flex', alignItems: 'center', fontFamily: 'Arial, sans-serif',
+  fontSize: '2.8cqw', fontWeight: 700, color: TITLE_COLOR, lineHeight: 1.1, // the template's title style is bold
+  overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+}
+
+export function TemplateSlide({ p, fill, edits = null, children = null, clip = true, title = '' }) {
   // Same placement as the export: the area the (unedited) content covers,
   // scaled and centred — then any edits made in the app
   const eff = effectiveEdits(p, edits)
@@ -223,8 +231,11 @@ export function TemplateSlide({ p, fill, edits = null, children = null, clip = t
     <div style={{
       position: 'relative', overflow: clip ? 'hidden' : 'visible', aspectRatio: '16 / 9',
       background: 'url(/branding/content-bg.jpg) center/cover no-repeat #fff',
+      containerType: 'inline-size',
       ...(fill ? { width: '100%', height: '100%' } : { width: '100%', borderRadius: 4 }),
     }}>
+      {/* Slide title in the template's title area — same place and Spark red as slides made in the platform */}
+      {title?.trim() && <div style={TITLE_STYLE}>{title}</div>}
       <div style={{
         position: 'absolute', left: `${fit.x * 100}%`, top: `${fit.y * 100}%`,
         width: `${fit.w * 100}%`, height: `${fit.h * 100}%`, containerType: 'inline-size',
@@ -254,10 +265,10 @@ function LegacyItem({ item }) {
 export default function OriginalSlidePreview({ original, fill = false }) {
   const p = original?.preview ?? {}
   if (p.version >= 2) {
-    if (!fill) return <TemplateSlide p={p} edits={original.edits} />
+    if (!fill) return <TemplateSlide p={p} edits={original.edits} title={original.headerTitle} />
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <TemplateSlide p={p} fill edits={original.edits} />
+        <TemplateSlide p={p} fill edits={original.edits} title={original.headerTitle} />
       </div>
     )
   }
