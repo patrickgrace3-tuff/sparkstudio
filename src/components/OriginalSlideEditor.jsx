@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { TemplateSlide } from './OriginalSlidePreview.jsx'
 import FrameEditor from './FrameEditor.jsx'
 import { ImageToolbar } from './SlideEditor.jsx'
-import { loadOriginalPackage, elementsOf, applyEditsToItems, canEditOriginal, paraText } from '../lib/originalSlides.js'
+import { loadOriginalPackage, elementsOf, applyEditsToItems, canEditOriginal, paraText, effectiveEdits } from '../lib/originalSlides.js'
 import { rebuildOriginalPreview } from '../lib/importPptx.js'
 import { fullRect } from '../lib/imageFrame.js'
 
@@ -41,10 +41,12 @@ export default function OriginalSlideEditor({ slide, clientId, onSave, onClose }
   }, [preview, clientId, original.ref, original.slidePath])
 
   const elements = useMemo(() => (preview ? elementsOf(preview) : []), [preview])
-  const items    = useMemo(() => (preview ? applyEditsToItems(preview.items, edits) : []), [preview, edits])
+  // What's shown: automatic header removal plus the user's edits
+  const eff      = useMemo(() => (preview ? effectiveEdits(preview, edits) : edits), [preview, edits])
+  const items    = useMemo(() => (preview ? applyEditsToItems(preview.items, eff) : []), [preview, eff])
   const current  = key => items.filter(i => i.key === key)
   const selected = elements.find(e => e.key === sel) ?? null
-  const deleted  = elements.filter(e => edits[e.key]?.deleted)
+  const deleted  = elements.filter(e => eff[e.key]?.deleted)
 
   const patch = (key, p) => setEdits(prev => ({ ...prev, [key]: { ...prev[key], ...p } }))
   const boxOf = el => edits[el.key]?.box ?? el.from
@@ -104,7 +106,7 @@ export default function OriginalSlideEditor({ slide, clientId, onSave, onClose }
             <div style={S.canvas}>
               <TemplateSlide p={preview} edits={edits} clip={false}>
                 <div ref={areaRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-                  {elements.filter(el => !edits[el.key]?.deleted).map(el => {
+                  {elements.filter(el => !eff[el.key]?.deleted).map(el => {
                     const isSel = sel === el.key
                     const img = el.type === 'image' ? current(el.key)[0] : null
                     return (
@@ -233,9 +235,15 @@ export default function OriginalSlideEditor({ slide, clientId, onSave, onClose }
           {deleted.length > 0 && (
             <div style={{ marginTop: 18, paddingTop: 12, borderTop: '0.5px solid var(--color-border)' }}>
               <span style={S.label}>{deleted.length} deleted element{deleted.length === 1 ? '' : 's'}</span>
+              {deleted.some(e => eff[e.key]?.auto) && (
+                <p style={{ ...S.help, fontSize: 11, marginTop: 4 }}>Includes header text that sat on the original slide's own banner — it's left out because the template has its own header.</p>
+              )}
               <button style={{ ...S.ghostSm, marginTop: 6 }} onClick={() => setEdits(prev => {
-                const n = {}
-                for (const [k, v] of Object.entries(prev)) { const { deleted: _d, ...rest } = v; n[k] = rest }
+                const n = { ...prev }
+                for (const el of deleted) {
+                  const { deleted: _d, auto: _a, ...rest } = prev[el.key] ?? {}
+                  n[el.key] = { ...rest, deleted: false }
+                }
                 return n
               })}>Restore all</button>
             </div>
