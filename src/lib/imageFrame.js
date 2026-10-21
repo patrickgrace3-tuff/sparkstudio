@@ -91,3 +91,41 @@ export function loadImageSize(src) {
     el.src = src
   })
 }
+
+// Crop that makes a picture fill a frame of the given shape (width/height in
+// pixels) without stretching, cut evenly from both sides — like PowerPoint's
+// Change Picture
+export function coverCrop(natW, natH, frameAspect) {
+  if (!natW || !natH || !frameAspect) return { ...NO_CROP }
+  const picAspect = natW / natH
+  if (picAspect > frameAspect) {
+    const cut = (1 - frameAspect / picAspect) / 2
+    return { l: cut, t: 0, r: cut, b: 0 }
+  }
+  const cut = (1 - picAspect / frameAspect) / 2
+  return { l: 0, t: cut, r: 0, b: cut }
+}
+
+// A picture file → { src (data URL), w, h }. Very large pictures are scaled
+// down (to 2560px) so slides stay quick to save and load.
+export async function readPictureFile(file, maxDim = 2560) {
+  const dataUrl = await new Promise((res, rej) => {
+    const fr = new FileReader()
+    fr.onload = () => res(fr.result)
+    fr.onerror = () => rej(fr.error)
+    fr.readAsDataURL(file)
+  })
+  const size = await loadImageSize(dataUrl)
+  if (!size) throw new Error('This file could not be read as a picture.')
+  const keepAsIs = Math.max(size.w, size.h) <= maxDim && /^data:image\/(png|jpeg|gif)/.test(dataUrl)
+  if (keepAsIs) return { src: dataUrl, w: size.w, h: size.h }
+  const scale = Math.min(1, maxDim / Math.max(size.w, size.h))
+  const img = new window.Image()
+  await new Promise(r => { img.onload = r; img.src = dataUrl })
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.round(size.w * scale)
+  canvas.height = Math.round(size.h * scale)
+  canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+  const png = /^data:image\/png/.test(dataUrl)
+  return { src: canvas.toDataURL(png ? 'image/png' : 'image/jpeg', 0.92), w: canvas.width, h: canvas.height }
+}

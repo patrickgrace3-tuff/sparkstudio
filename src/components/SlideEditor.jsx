@@ -4,7 +4,7 @@ import { parseRichText } from '../lib/richtext.js'
 import { previewTable, TABLE_LINE_HEIGHT } from '../lib/tableFit.js'
 import FramedImage from './FramedImage.jsx'
 import FrameEditor from './FrameEditor.jsx'
-import { upgradeImage, loadImageSize } from '../lib/imageFrame.js'
+import { upgradeImage, loadImageSize, readPictureFile, coverCrop } from '../lib/imageFrame.js'
 
 function RichText({ text }) {
   return parseRichText(text).map((seg, i) => {
@@ -63,6 +63,15 @@ function ImageLayer({ images, onChange, sel, onSel }) {
             const ratio = selected.aspect ? selected.aspect / (16 / 9) : null
             set(sel.index, { crop: { l: 0, t: 0, r: 0, b: 0 }, ...(ratio ? { h: selected.w / ratio } : {}) })
           }}
+          onReplace={async file => {
+            try {
+              const pic = await readPictureFile(file)
+              // Same frame, new picture filling it (frame shape in pixels on the 16:9 slide)
+              const frameAspect = (selected.w * 16) / (selected.h * 9)
+              set(sel.index, { src: pic.src, aspect: pic.w / pic.h, crop: coverCrop(pic.w, pic.h, frameAspect), mode: undefined, bgX: undefined, bgY: undefined })
+              onSel({ index: sel.index, crop: false })
+            } catch (err) { alert(err.message) }
+          }}
           onDelete={() => { onChange(images.filter((_, k) => k !== sel.index)); onSel(null) }}
         />
       )}
@@ -70,8 +79,9 @@ function ImageLayer({ images, onChange, sel, onSel }) {
   )
 }
 
-export function ImageToolbar({ img, cropping, onCrop, onRadius, onReset, onDelete, extra = null }) {
+export function ImageToolbar({ img, cropping, onCrop, onRadius, onReset, onDelete, onReplace, extra = null }) {
   const top = img.y > 0.12
+  const fileRef = useRef(null)
   return (
     <div
       onPointerDown={e => e.stopPropagation()}
@@ -95,6 +105,12 @@ export function ImageToolbar({ img, cropping, onCrop, onRadius, onReset, onDelet
           <input type="range" min={0} max={50} step={1} value={Math.round((img.radius ?? 0) * 100)}
             onChange={e => onRadius(+e.target.value / 100)} style={{ width: 70, accentColor: '#60a5fa' }} />
         </label>
+      )}
+      {onReplace && (
+        <>
+          <button onClick={() => fileRef.current?.click()} style={TB.btn(false)} title="Choose another picture — it keeps this size, position and corners">⇄ Replace</button>
+          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onReplace(f) }} />
+        </>
       )}
       {onReset && <button onClick={onReset} style={TB.btn(false)} title="Remove cropping">Reset</button>}
       {extra}

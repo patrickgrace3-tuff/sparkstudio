@@ -165,6 +165,7 @@ export function applyEditsToItems(items, edits) {
         },
       }
     }
+    if (e.src && next.type === 'image') next = { ...next, src: e.src }
     if (e.crop) next = { ...next, crop: e.crop }
     if (e.radius != null) next = { ...next, radius: e.radius }
     out.push(next)

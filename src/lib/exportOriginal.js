@@ -109,7 +109,24 @@ export function createOriginalSplicer(zip, clientId) {
       }
 
       const W = pkg.slideW ?? original.slideW, H = pkg.slideH ?? original.slideH
-      const edits = original.preview?.items?.length ? effectiveEdits(original.preview, original.edits) : (original.edits ?? null)
+      let edits = original.preview?.items?.length ? effectiveEdits(original.preview, original.edits) : (original.edits ?? null)
+
+      // Pictures swapped in the app become new media files
+      if (edits) {
+        let r = 0
+        edits = Object.fromEntries(Object.entries(edits).map(([k, e]) => {
+          const m = /^data:image\/(png|jpe?g|gif);base64,(.*)$/.exec(e?.src ?? '')
+          if (!m || e.deleted) return [k, e]
+          const ext = m[1] === 'jpg' ? 'jpeg' : m[1]
+          counter++
+          const path = `ppt/media/replaced_k${counter}.${ext === 'jpeg' ? 'jpg' : ext}`
+          zip.file(path, m[2], { base64: true })
+          types.push([path, `image/${ext}`])
+          const id = `rIdRep${++r}`
+          tags.push(`<Relationship Id="${id}" Type="${REL_NS}/image" Target="${relative(dirOf(slideFilename), path)}"/>`)
+          return [k, { ...e, replaceRId: id }]
+        }))
+      }
       const previewBounds = contentBoundsOf(original.preview, edits)
       let content = resolveSlideShapes(ctx, {
         // Same placement as the previews (from the unedited content)
