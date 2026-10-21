@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { parseRichText } from '../lib/richtext.js'
 import { previewTable, TABLE_LINE_HEIGHT } from '../lib/tableFit.js'
 import OriginalSlidePreview from './OriginalSlidePreview.jsx'
@@ -23,7 +23,9 @@ export function SlideThumbnail({ slide }) {
   const accent  = style.accent  ?? '#CD2F37'
   const textCol = style.textCol ?? '#1a1a1a'
   const bgImage = style.bgImage ?? null
-  const bullets = slide.bullets ?? []
+  // Slides not yet opened in the editor only have body text — show its lines
+  // as bullets, as the editor and the generated deck do
+  const bullets = slide.bullets?.length ? slide.bullets : String(slide.body ?? '').split('\n').filter(l => l.trim() && !isEmptyBody(l))
   const table   = slide.table   ?? null
   const images  = style.images  ?? []
   const extraBulletBoxes = slide.extraBulletBoxes ?? []
@@ -169,8 +171,26 @@ export function SlideThumbnail({ slide }) {
   )
 }
 
-export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, onView, onUseAsTemplate, divisionName }) {
+export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, onView, onMove, moveTargets = [], onUseAsTemplate, divisionName }) {
   const [confirming, setConfirming] = useState(false)
+  const [moving, setMoving] = useState(null) // menu position while open
+  const moveRef = useRef(null)
+
+  // Close the Move menu on an outside click or Esc
+  useEffect(() => {
+    if (!moving) return
+    const onDown = e => { if (moveRef.current && !moveRef.current.contains(e.target)) setMoving(null) }
+    const onKey  = e => { if (e.key === 'Escape') setMoving(null) }
+    const close = () => setMoving(null)
+    document.addEventListener('pointerdown', onDown)
+    document.addEventListener('keydown', onKey)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => {
+      document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', close, true); window.removeEventListener('resize', close)
+    }
+  }, [moving])
   const locked = !!slide.style?.original?.ref
 
   return (
@@ -216,9 +236,9 @@ export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, o
 
       {/* Right — live slide thumbnail */}
       <div
-        style={{ ...styles.previewWrap, ...(locked && onView ? { cursor: 'zoom-in' } : {}) }}
-        onClick={locked && onView ? () => onView(index) : undefined}
-        title={locked && onView ? 'View full size' : undefined}
+        style={{ ...styles.previewWrap, ...(onView ? { cursor: 'zoom-in' } : {}) }}
+        onClick={onView ? () => onView(index) : undefined}
+        title={onView ? 'View full size' : undefined}
       >
         <SlideThumbnail slide={slide} />
       </div>
@@ -226,7 +246,30 @@ export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, o
       {/* Actions */}
       <div style={styles.actions}>
         <button style={styles.editBtn} onClick={() => onEdit(index)} title={locked ? 'Move, resize, crop or delete elements and change text — the original styling is kept' : undefined}>Edit</button>
-        {locked && onView && <button style={styles.editBtn} onClick={() => onView(index)} title="Open a full-size view">View</button>}
+        {onView && <button style={styles.editBtn} onClick={() => onView(index)} title="Open a full-size view">View</button>}
+        {onMove && moveTargets.length > 0 && (
+          <div ref={moveRef} style={{ position: 'relative' }}>
+            <button style={{ ...styles.editBtn, width: '100%', ...(moving ? { borderColor: 'var(--color-accent)' } : {}) }} onClick={e => {
+                if (moving) { setMoving(null); return }
+                const r = e.currentTarget.getBoundingClientRect()
+                setMoving({ top: r.bottom + 4, right: window.innerWidth - r.right })
+              }}
+              title="Move this slide to another department" aria-haspopup="menu" aria-expanded={!!moving}>Move</button>
+            {moving && (
+              <div style={{ ...styles.moveMenu, top: moving.top, right: moving.right }} role="menu">
+                <div style={styles.moveHead}>Move to…</div>
+                {moveTargets.map(d => (
+                  <button key={d.id} role="menuitem" style={styles.moveItem}
+                    onClick={() => { setMoving(null); onMove(index, d.id) }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-bg-secondary)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'none' }}>
+                    <span style={{ ...styles.moveDot, background: d.color }} />{d.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         {onUseAsTemplate && (
           <button style={styles.templateBtn} onClick={() => onUseAsTemplate(slide)} title="Save this slide as a reusable template">
             + Template
@@ -276,6 +319,10 @@ const styles = {
   editBtn: { background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '4px 10px', fontSize: 11, fontWeight: 500, color: 'var(--color-text-primary)', cursor: 'pointer' },
   templateBtn: { background: 'none', border: '0.5px solid var(--color-accent)', borderRadius: 'var(--radius-pill)', padding: '4px 8px', fontSize: 10, fontWeight: 600, color: 'var(--color-accent)', cursor: 'pointer' },
   deleteBtn: { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '4px 8px', fontSize: 10, color: 'var(--color-text-muted)', cursor: 'pointer' },
+  moveMenu: { position: 'fixed', zIndex: 1000, minWidth: 190, background: 'var(--color-bg, #fff)', border: '0.5px solid var(--color-border)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.14)', padding: 4, display: 'flex', flexDirection: 'column' },
+  moveHead: { fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-muted)', padding: '6px 8px 4px' },
+  moveItem: { display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', borderRadius: 6, padding: '6px 8px', fontSize: 12, color: 'var(--color-text-primary)', cursor: 'pointer', textAlign: 'left', whiteSpace: 'nowrap' },
+  moveDot: { width: 8, height: 8, borderRadius: '50%', flexShrink: 0 },
   confirmRow:  { display: 'flex', alignItems: 'center', gap: 4 },
   confirmText: { fontSize: 10, color: '#dc2626', fontWeight: 600, whiteSpace: 'nowrap' },
   confirmYes:  { background: '#dc2626', border: 'none', borderRadius: 'var(--radius-pill)', padding: '3px 8px', fontSize: 10, fontWeight: 600, color: '#fff', cursor: 'pointer' },

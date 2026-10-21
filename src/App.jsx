@@ -224,6 +224,20 @@ export default function App() {
     setSlides({ ...allSlides, [activeDeptId]: deptSlides.filter((_, i) => i !== index) })
   }
 
+  // Moves a slide to the end of another department's list
+  function moveSlide(index, toDeptId) {
+    const sl = deptSlides[index]
+    if (!sl || toDeptId === activeDeptId) return
+    // A division only means something in departments that use divisions
+    const { divisionId, ...rest } = sl
+    const moved = divisionId && deptUsesDivisions(activeClient, toDeptId) ? sl : rest
+    setSlides({
+      ...allSlides,
+      [activeDeptId]: deptSlides.filter((_, i) => i !== index),
+      [toDeptId]: [...(allSlides[toDeptId] || []), moved],
+    })
+  }
+
   function saveEditedSlide(index, updated) {
     const updatedList = deptSlides.map((s, i) => i === index ? updated : s)
     setSlides({ ...allSlides, [activeDeptId]: updatedList })
@@ -826,10 +840,9 @@ export default function App() {
                             if (isLockedOriginal(sl)) setEditingOriginal({ slide: sl })
                             else setEditingSlide({ index: idx, slide: sl })
                           }}
-                          onView={idx => {
-                            const locked = deptSlides.filter(isLockedOriginal)
-                            setViewingOriginal({ slides: locked, index: Math.max(0, locked.indexOf(deptSlides[idx])) })
-                          }}
+                          onView={idx => setViewingOriginal({ slides: deptSlides, index: idx })}
+                          onMove={moveSlide}
+                          moveTargets={DEPARTMENTS.filter(d => d.id !== activeDeptId)}
                           onUseAsTemplate={currentUser?.role === 'admin' ? slide => setTemplateSlide({ slide, deptName: activeDept?.name }) : undefined}
                           divisionName={slide.divisionId && deptUsesDivisions(activeClient, activeDeptId) ? clientDivisions(activeClient).find(dv => dv.id === slide.divisionId)?.name : undefined}
                         />
@@ -953,7 +966,12 @@ export default function App() {
           slides={viewingOriginal.slides}
           startIndex={viewingOriginal.index}
           onClose={() => setViewingOriginal(null)}
-          onEdit={sl => { setViewingOriginal(null); setEditingOriginal({ slide: sl }) }}
+          subtitle={activeDept?.name ?? ''}
+          onEdit={sl => {
+            setViewingOriginal(null)
+            if (isLockedOriginal(sl)) setEditingOriginal({ slide: sl })
+            else { const idx = deptSlides.indexOf(sl); if (idx >= 0) setEditingSlide({ index: idx, slide: sl }) }
+          }}
         />
       )}
 
