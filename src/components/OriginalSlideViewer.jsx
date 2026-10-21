@@ -1,10 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react'
-import OriginalSlidePreview from './OriginalSlidePreview.jsx'
+import { SlideThumbnail } from './SlideCard.jsx'
 
-// Full-size viewer for slides imported with "Keep original styling" (they're
-// locked, so this is how to look at them closely). Arrow keys move between
-// slides; Esc closes.
-export default function OriginalSlideViewer({ slides, startIndex = 0, onClose, onEdit }) {
+// Full-size viewer for any slide (built in the platform or imported). Arrow
+// keys move between slides; Esc closes.
+export default function OriginalSlideViewer({ slides, startIndex = 0, onClose, onEdit, subtitle = '' }) {
   const [index, setIndex] = useState(Math.min(startIndex, Math.max(0, slides.length - 1)))
   const prev = useCallback(() => setIndex(i => Math.max(0, i - 1)), [])
   const next = useCallback(() => setIndex(i => Math.min(slides.length - 1, i + 1)), [slides.length])
@@ -29,7 +28,7 @@ export default function OriginalSlideViewer({ slides, startIndex = 0, onClose, o
         <div style={{ minWidth: 0 }}>
           <div style={S.title}>{slide.title || 'Untitled slide'}</div>
           <div style={S.sub}>
-            {original?.fileName ? `From ${original.fileName} · ` : ''}Original styling
+            {original?.ref ? `${original.fileName ? `From ${original.fileName} · ` : ''}Original styling` : subtitle}
           </div>
         </div>
         <span style={S.count}>{index + 1} / {slides.length}</span>
@@ -40,7 +39,7 @@ export default function OriginalSlideViewer({ slides, startIndex = 0, onClose, o
       <div style={S.stage} onClick={e => e.stopPropagation()}>
         <button style={{ ...S.nav, visibility: index > 0 ? 'visible' : 'hidden' }} onClick={prev} aria-label="Previous slide">‹</button>
         <div style={S.frame}>
-          <OriginalSlidePreview original={original} />
+          <SlideThumbnail slide={slide} />
         </div>
         <button style={{ ...S.nav, visibility: index < slides.length - 1 ? 'visible' : 'hidden' }} onClick={next} aria-label="Next slide">›</button>
       </div>
