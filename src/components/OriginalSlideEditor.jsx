@@ -4,7 +4,7 @@ import FrameEditor from './FrameEditor.jsx'
 import { ImageToolbar } from './SlideEditor.jsx'
 import { loadOriginalPackage, elementsOf, applyEditsToItems, canEditOriginal, paraText, effectiveEdits } from '../lib/originalSlides.js'
 import { rebuildOriginalPreview } from '../lib/importPptx.js'
-import { fullRect } from '../lib/imageFrame.js'
+import { fullRect, readPictureFile, coverCrop } from '../lib/imageFrame.js'
 
 // Editor for slides imported with "Keep original styling". Every element on
 // the slide can be moved, resized or deleted; text and table cells can be
@@ -26,6 +26,7 @@ export default function OriginalSlideEditor({ slide, clientId, onSave, onClose }
   const [crop,    setCrop]    = useState(false)
   const [headerTitle, setHeaderTitle] = useState(original.headerTitle ?? '') // title in the template's title area
   const areaRef = useRef(null)
+  const replaceRef = useRef(null)
 
   // Slides imported by an older version get their preview rebuilt from the stored original
   useEffect(() => {
@@ -87,6 +88,18 @@ export default function OriginalSlideEditor({ slide, clientId, onSave, onClose }
     })
   }
 
+  // Swaps the selected picture for another file, keeping its place and size
+  async function replacePicture(file) {
+    if (!file || !selected) return
+    try {
+      const pic = await readPictureFile(file)
+      const b = boxOf(selected)
+      const frameAspect = (b.w * preview.slideW) / (b.h * preview.slideH)
+      patch(selected.key, { from: selected.from, box: b, src: pic.src, crop: cropArr(coverCrop(pic.w, pic.h, frameAspect)) })
+      setCrop(false)
+    } catch (err) { alert(err.message) }
+  }
+
   const selItems = selected ? current(selected.key) : []
   const selItem  = selItems[0] ?? null
   const isImage  = selected?.type === 'image'
@@ -146,6 +159,7 @@ export default function OriginalSlideEditor({ slide, clientId, onSave, onClose }
                         patch(selected.key, { from: selected.from, box: full, crop: [0, 0, 0, 0] })
                       }}
                       onDelete={() => remove(selected.key)}
+                      onReplace={replacePicture}
                     />
                   )}
                 </div>
@@ -239,6 +253,9 @@ export default function OriginalSlideEditor({ slide, clientId, onSave, onClose }
                       const full = fullRect(imgFrame)
                       patch(selected.key, { from: selected.from, box: full, crop: [0, 0, 0, 0] })
                     }}>Reset crop</button>
+                    <button style={S.ghostSm} onClick={() => replaceRef.current?.click()} title="Use a different picture file in the same place and size">⇄ Replace picture</button>
+                    <input ref={replaceRef} type="file" accept="image/*" style={{ display: 'none' }}
+                      onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; replacePicture(f) }} />
                   </div>
                   <label style={{ ...S.label, marginTop: 10 }}>Rounded corners · {Math.round((imgFrame?.radius ?? 0) * 100)}%</label>
                   <input type="range" min={0} max={50} value={Math.round((imgFrame?.radius ?? 0) * 100)}

@@ -563,6 +563,17 @@ function applyEdits(tree, edits, W, H) {
 
     const spPr = kid(shape, NS_P, 'spPr')
     const blipFill = kid(shape, NS_P, 'blipFill') ?? kid(spPr, NS_A, 'blipFill')
+    // A replaced picture points at its new file (and drops any SVG copy of the old one)
+    if (e.replaceRId && blipFill) {
+      const blip = kid(blipFill, NS_A, 'blip')
+      if (blip) {
+        blip.removeAttributeNS(NS_R, 'link')
+        blip.setAttributeNS(NS_R, 'r:embed', e.replaceRId)
+        for (const ext of Array.from(blip.getElementsByTagNameNS(NS_A, 'ext'))) {
+          if (Array.from(ext.getElementsByTagName('*')).some(n => n.localName === 'svgBlip')) ext.parentNode.removeChild(ext)
+        }
+      }
+    }
     if (e.crop && blipFill) {
       const doc = shape.ownerDocument
       const old = kid(blipFill, NS_A, 'srcRect')
