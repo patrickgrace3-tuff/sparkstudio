@@ -6,7 +6,7 @@ export default function AddSlideForm({ onAdd, onAiAssist, isEnhancing }) {
 
   function handleAdd() {
     if (!title.trim()) return
-    onAdd({ title: title.trim(), body: body.trim() || '(No content added yet)' })
+    onAdd({ title: title.trim(), body: body.trim() })
     setTitle('')
     setBody('')
   }
