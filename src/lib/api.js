@@ -84,7 +84,7 @@ function oneSlidePerInput(output, inputs, dept, division) {
   }
   return inputs.map(inp => first.get(inp._id) ?? {
     title: inp.title, dept, sourceId: inp._id,
-    bullets: inp.bullets?.length ? inp.bullets : String(inp.body ?? '').split('\n').filter(Boolean),
+    bullets: inp.bullets?.length ? inp.bullets : String(inp.body ?? '').split('\n').filter(l => l && l !== '(No content added yet)'),
     ...(inp.table ? { table: inp.table } : {}),
     ...(division ? { division } : {}),
   })

@@ -555,7 +555,8 @@ function SlideCanvas({
         onContextMenu={e => onElementContextMenu?.(e, { type: 'title' })}
         style={{ position: 'absolute', left: '15.25%', top: '5.1%', width: '77.9%', fontSize: '2.8cqw', fontWeight: 400, color: bgImage ? '#fff' : accent, lineHeight: 1.3, outline: 'none', cursor: onTitleChange ? 'text' : 'default' }}
       >{title}</div>
-      <DraggableBox box={style.bodyBox || { x: 0.045, y: 0.19, w: 0.829, h: table ? 0.4 : 0.63 }} onChange={onBodyBoxChange}>
+      {/* The bullet area only shows while it has bullets — "+ Add bullet" brings it back */}
+      {bullets?.length > 0 && <DraggableBox box={style.bodyBox || { x: 0.045, y: 0.19, w: 0.829, h: table ? 0.4 : 0.63 }} onChange={onBodyBoxChange}>
         <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {(bullets || []).map((b, i) => (
             <li key={i} style={{ color: bgImage ? '#fff' : textCol, fontSize: '1.7cqw', lineHeight: 1.6, display: 'flex', gap: 8, marginBottom: '0.5em', textShadow: bgImage ? '0 1px 3px rgba(0,0,0,0.6)' : 'none', justifyContent: textAlign === 'right' ? 'flex-end' : textAlign === 'center' ? 'center' : 'flex-start' }}>
@@ -571,7 +572,7 @@ function SlideCanvas({
             </li>
           ))}
         </ul>
-      </DraggableBox>
+      </DraggableBox>}
       {table && (
         <DraggableBox box={style.tableBox || { x: 0.045, y: 0.55, w: 0.829, h: 0.32 }} onChange={onTableBoxChange}>
           <TablePreview tbl={table} />
@@ -641,7 +642,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
     notes:   slide.notes   ?? '',
     bullets: slide.bullets?.length
       ? [...slide.bullets]
-      : (slide.body ?? '').split('\n').filter(Boolean),
+      : (slide.body ?? '').split('\n').filter(l => l && l !== '(No content added yet)'),
     // extraBulletBoxes: array of { bullets: string[], box: {x,y,w,h} }
     extraBulletBoxes: slide.extraBulletBoxes ? slide.extraBulletBoxes.map(eb => ({ ...eb, bullets: [...eb.bullets] })) : [],
     // freeTextBoxes: array of { text: string, box: {x,y,w,h}, fontSize: number }

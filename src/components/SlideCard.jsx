@@ -4,6 +4,9 @@ import { previewTable, TABLE_LINE_HEIGHT } from '../lib/tableFit.js'
 import OriginalSlidePreview from './OriginalSlidePreview.jsx'
 import FramedImage from './FramedImage.jsx'
 
+// Title-only slides have no body (older ones saved a placeholder line instead)
+const isEmptyBody = body => !String(body ?? '').trim() || String(body).trim() === '(No content added yet)'
+
 function RichText({ text }) {
   return parseRichText(text).map((seg, i) => {
     if (seg.bold && seg.italic) return <strong key={i}><em>{seg.text}</em></strong>
@@ -195,7 +198,7 @@ export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, o
               )}
             </ul>
           ) : (
-            <p style={styles.body}>{slide.body}</p>
+            <p style={{ ...styles.body, ...(isEmptyBody(slide.body) ? { color: 'var(--color-text-muted)', fontStyle: 'italic' } : {}) }}>{isEmptyBody(slide.body) ? '(No content added yet)' : slide.body}</p>
           )}
           {slide.table && (
             <div style={styles.tablePill}>
