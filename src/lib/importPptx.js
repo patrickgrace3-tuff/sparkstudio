@@ -845,6 +845,8 @@ async function describeShapes(zip, ctx, rels, container, transform, out, tableSt
         radius: look.radius,
         shadow: shadowOf(spPr),
         text: textOf(kid(el, NS_P, 'txBody')),
+        // Part of the frame the picture actually shows (transparent edges left out)
+        ...(src && !base.rot ? { vis: await visibleArea(src, look.crop) } : {}),
       })
       continue
     }
@@ -899,11 +901,97 @@ export async function importOriginalSlidesFromPptx(file) {
   const { pkg, slidePaths } = await packageFromZip(zip)
   const get = p => (typeof pkg.parts[p] === 'string' ? pkg.parts[p] : null)
   const slides = []
+  const seenBg = new Map()
   for (const slidePath of slidePaths) {
     const ctx = themeContext(get, slidePath, pkg.defaultTextStyle)
-    slides.push({ slidePath, preview: await originalPreview(zip, ctx, slidePath, pkg.slideW, pkg.slideH, pkg.tableStyles) })
+    const preview = await originalPreview(zip, ctx, slidePath, pkg.slideW, pkg.slideH, pkg.tableStyles)
+    if (await onSparkTemplate(zip, slidePath, pkg.slideW, pkg.slideH, seenBg)) preview.onTemplate = true
+    slides.push({ slidePath, preview })
   }
   return { pkg, slides }
+}
+
+// The part of a picture's frame that isn't transparent, as fractions of the
+// frame { l, t, r, b } (insets), or undefined when the whole frame shows
+async function visibleArea(src, crop) {
+  if (typeof document === 'undefined' || !/^data:image\/(png|gif|webp)/.test(src)) return undefined
+  try {
+    const img = new window.Image()
+    await new Promise((ok, fail) => { img.onload = ok; img.onerror = fail; img.src = src })
+    const sc = Math.min(1, 256 / Math.max(img.naturalWidth, img.naturalHeight))
+    const W = Math.max(1, Math.round(img.naturalWidth * sc)), H = Math.max(1, Math.round(img.naturalHeight * sc))
+    const c = document.createElement('canvas')
+    c.width = W; c.height = H
+    const g = c.getContext('2d')
+    g.drawImage(img, 0, 0, W, H)
+    const d = g.getImageData(0, 0, W, H).data
+    let x1 = W, y1 = H, x2 = -1, y2 = -1
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (d[(y * W + x) * 4 + 3] > 8) { if (x < x1) x1 = x; if (x > x2) x2 = x; if (y < y1) y1 = y; if (y > y2) y2 = y }
+    }
+    if (x2 < 0) return undefined
+    // Picture fractions → frame fractions (the frame shows the picture minus its crop)
+    const c0 = crop ?? { l: 0, t: 0, r: 0, b: 0 }
+    const vw = 1 - c0.l - c0.r, vh = 1 - c0.t - c0.b
+    if (vw <= 0 || vh <= 0) return undefined
+    const fx = v => Math.min(1, Math.max(0, (v - c0.l) / vw)), fy = v => Math.min(1, Math.max(0, (v - c0.t) / vh))
+    const vis = { l: fx(x1 / W), t: fy(y1 / H), r: 1 - fx((x2 + 1) / W), b: 1 - fy((y2 + 1) / H) }
+    return vis.l + vis.t + vis.r + vis.b > 0.02 ? vis : undefined
+  } catch {
+    return undefined
+  }
+}
+
+// Is the slide already built on the Spark Studio content template (its layout
+// or master shows the same background — logo, header line, corner art)? Then
+// its content is already placed for that design and is kept exactly in place.
+const SPARK_BG = '/branding/content-bg.jpg'
+let sparkBgThumb = null
+async function onSparkTemplate(zip, slidePath, slideW, slideH, seen) {
+  if (typeof document === 'undefined' || Math.abs(slideW / slideH - 16 / 9) > 0.01) return false
+  const slideRels = await loadRels(zip, slidePath)
+  const layout = Object.values(slideRels).find(r => r.type?.endsWith('/slideLayout'))?.path
+  if (!layout) return false
+  const layoutRels = await loadRels(zip, layout)
+  const master = Object.values(layoutRels).find(r => r.type?.endsWith('/slideMaster'))?.path
+  const masterRels = master ? await loadRels(zip, master) : {}
+  const pictures = [...Object.values(layoutRels), ...Object.values(masterRels)]
+    .filter(r => r.type?.endsWith('/image') && IMG_MIME[r.path.split('.').pop().toLowerCase()])
+  for (const r of pictures) {
+    if (!seen.has(r.path)) seen.set(r.path, (async () => {
+      const file = zip.file(r.path)
+      if (!file) return false
+      sparkBgThumb ??= thumbOf(SPARK_BG)
+      const [a, b] = await Promise.all([sparkBgThumb, thumbOf(URL.createObjectURL(new Blob([await file.async('uint8array')])))])
+      if (!a || !b) return false
+      let diff = 0
+      for (let i = 0; i < a.length; i++) diff += Math.abs(a[i] - b[i])
+      return diff / a.length < 6 // same picture (re-saved copies differ by a few levels)
+    })())
+    if (await seen.get(r.path)) return true
+  }
+  return false
+}
+
+// Small greyscale copy of a picture, for comparing
+async function thumbOf(src) {
+  try {
+    const img = new window.Image()
+    await new Promise((ok, fail) => { img.onload = ok; img.onerror = fail; img.src = src })
+    if (Math.abs(img.naturalWidth / img.naturalHeight - 16 / 9) > 0.02) return null
+    const c = document.createElement('canvas')
+    c.width = 64; c.height = 36
+    const g = c.getContext('2d')
+    g.drawImage(img, 0, 0, 64, 36)
+    const d = g.getImageData(0, 0, 64, 36).data
+    const out = new Float32Array(64 * 36)
+    for (let i = 0; i < out.length; i++) out[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2]
+    return out
+  } catch {
+    return null
+  } finally {
+    if (src.startsWith('blob:')) URL.revokeObjectURL(src)
+  }
 }
 
 // The parts of a PowerPoint the visible slides need → { pkg, slidePaths }

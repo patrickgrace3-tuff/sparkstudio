@@ -35,7 +35,7 @@ export default function OriginalSlideEditor({ slide, clientId, onSave, onClose }
     loadOriginalPackage(clientId, original.ref)
       .then(pkg => {
         if (!pkg) throw new Error('The original PowerPoint for this slide could not be found.')
-        return rebuildOriginalPreview(pkg, original.slidePath)
+        return rebuildOriginalPreview(pkg, original.slidePath).then(p => (original.preview?.onTemplate ? { ...p, onTemplate: true } : p))
       })
       .then(p => { if (!cancelled) setPreview(p) })
       .catch(e => { if (!cancelled) setError(e.message) })

@@ -75,6 +75,7 @@ function isLightColor(c) {
 }
 
 export function autoHiddenEdits(preview) {
+  if (preview?.onTemplate) return {} // its header is the template's own — nothing to remove
   const els = elementsOf(preview)
   const hidden = {}
   for (const el of els) {
@@ -93,14 +94,32 @@ export function effectiveEdits(preview, edits) {
   return { ...autoHiddenEdits(preview), ...(edits ?? {}) }
 }
 
+// Where the original content goes, from its preview → { s, dx, dy } (template
+// EMU = d + original EMU × s). Slides already built on the Spark Studio
+// template keep their exact positions and sizes; others are fitted into the
+// content area (see fitOnTemplate).
+export function placementOf(preview, slideW, slideH, edits = null, fallbackBounds = null) {
+  if (preview?.onTemplate) {
+    const s = TEMPLATE_W / slideW
+    return { s, dx: 0, dy: (TEMPLATE_H - slideH * s) / 2 }
+  }
+  return fitOnTemplate(slideW, slideH, contentBoundsOf(preview, edits) ?? fallbackBounds)
+}
+
 // Where the slide's content sits (EMU), from its preview — before the user's
 // edits, so moving or deleting something never shifts the rest. Header text
 // left out automatically doesn't count.
 export function contentBoundsOf(preview, edits = null) {
-  const items = (preview?.items ?? []).filter(i => !(edits?.[i.key]?.deleted && edits[i.key].auto))
-  if (!items.length || !preview.slideW) return null
-  const x1 = Math.min(...items.map(i => i.x)), y1 = Math.min(...items.map(i => i.y))
-  const x2 = Math.max(...items.map(i => i.x + i.w)), y2 = Math.max(...items.map(i => i.y + i.h))
+  // What shows: transparent picture edges and anything off the slide don't count
+  const rects = (preview?.items ?? []).filter(i => !(edits?.[i.key]?.deleted && edits[i.key].auto)).map(i => {
+    const v = i.vis ?? { l: 0, t: 0, r: 0, b: 0 }
+    const x = i.x + v.l * i.w, y = i.y + v.t * i.h
+    const r = { x1: Math.max(0, x), y1: Math.max(0, y), x2: Math.min(1, x + i.w * (1 - v.l - v.r)), y2: Math.min(1, y + i.h * (1 - v.t - v.b)) }
+    return r.x2 > r.x1 && r.y2 > r.y1 ? r : null
+  }).filter(Boolean)
+  if (!rects.length || !preview.slideW) return null
+  const x1 = Math.min(...rects.map(r => r.x1)), y1 = Math.min(...rects.map(r => r.y1))
+  const x2 = Math.max(...rects.map(r => r.x2)), y2 = Math.max(...rects.map(r => r.y2))
   return { x: x1 * preview.slideW, y: y1 * preview.slideH, w: (x2 - x1) * preview.slideW, h: (y2 - y1) * preview.slideH }
 }
 

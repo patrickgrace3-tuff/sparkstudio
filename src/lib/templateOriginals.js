@@ -36,7 +36,7 @@ export async function originalSlideToShell(slide, clientId, guidance = {}) {
   let preview = original.preview
   if (!canEditOriginal(slide)) {
     pkg ??= await loadOriginalPackage(clientId, ref)
-    preview = await rebuildOriginalPreview(pkg, original.slidePath)
+    preview = { ...(await rebuildOriginalPreview(pkg, original.slidePath)), ...(original.preview?.onTemplate ? { onTemplate: true } : {}) }
   }
 
   const asset = `tplslide:${newId()}`

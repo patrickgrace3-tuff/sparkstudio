@@ -1,5 +1,5 @@
 import React from 'react'
-import { fitOnTemplate, contentBoundsOf, applyEditsToItems, effectiveEdits, TEMPLATE_W, TEMPLATE_H } from '../lib/originalSlides.js'
+import { placementOf, applyEditsToItems, effectiveEdits, TEMPLATE_W, TEMPLATE_H } from '../lib/originalSlides.js'
 import FramedImage from './FramedImage.jsx'
 
 // Preview of a slide imported with "Keep original styling": the original
@@ -221,7 +221,7 @@ export function TemplateSlide({ p, fill, edits = null, children = null, clip = t
   // Same placement as the export: the area the (unedited) content covers,
   // scaled and centred — then any edits made in the app
   const eff = effectiveEdits(p, edits)
-  const { s, dx, dy } = fitOnTemplate(p.slideW, p.slideH, contentBoundsOf(p, eff))
+  const { s, dx, dy } = placementOf(p, p.slideW, p.slideH, eff)
   const items = applyEditsToItems(p.items ?? [], eff)
   const fit = { x: dx / TEMPLATE_W, y: dy / TEMPLATE_H, w: (s * p.slideW) / TEMPLATE_W, h: (s * p.slideH) / TEMPLATE_H }
   // Lengths inside the block, relative to its width (container query units)
