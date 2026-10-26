@@ -32,6 +32,21 @@ const RADIUS = { ellipse: '50%', roundRect: '8%', round2SameRect: '8% 8% 0 0', s
 
 const shadowCss = (sh, u) => (sh ? `${u(sh.dx)} ${u(sh.dy)} ${u(sh.blur)} ${sh.color}` : undefined)
 
+// Bullet characters from symbol fonts → the symbol PowerPoint shows
+const WINGDINGS = {
+  'Ø': '➢', '§': '▪', 'ü': '✔', 'û': '✘', 'n': '■', 'l': '●', 'q': '❑', 'v': '❖', 'u': '◆', 't': '⧫',
+  'Ü': '➔', 'à': '➔', 'è': '➔', 'ð': '⇨', 'Þ': '➢', 'w': '⬥', 'o': '□', 'p': '▫', 'r': '❒',
+}
+const SYMBOL = { '·': '•', '§': '♣', '¨': '♦', '©': '♥', 'ª': '♠', 'Þ': '⇒', '®': '→', 'o': '○' }
+function bulletMark(char, font) {
+  if (!char) return '•'
+  // Symbol-font characters are often saved in the private-use range (U+F0xx)
+  const c = char.charCodeAt(0) >= 0xf000 && char.charCodeAt(0) <= 0xf0ff ? String.fromCharCode(char.charCodeAt(0) - 0xf000) : char
+  if (/Wingdings/i.test(font ?? '')) return WINGDINGS[c] ?? '▪'
+  if (/^Symbol$/i.test(font ?? '')) return SYMBOL[c] ?? '•'
+  return c
+}
+
 const fontStack = f => `${f ? `"${f}", ` : ''}${f === 'Calibri' ? 'Carlito, ' : ''}Arial, sans-serif`
 
 function autoNumber(type, n) {
@@ -50,6 +65,14 @@ function autoNumber(type, n) {
   return `${base}.`
 }
 
+// Height of an empty line (its paragraph mark's size and the line spacing)
+function emptyLine(p, scale, lnRed, pt) {
+  const size = (p.endSz ?? 18) * scale
+  if (p.lnSpc?.pt != null) return pt(p.lnSpc.pt * scale)
+  const factor = (p.lnSpc?.pct != null ? Math.max(0.6, p.lnSpc.pct * 1.2) : 1.2) * (1 - (lnRed ?? 0))
+  return pt(size * factor)
+}
+
 // Renders a text body. u(emu) and pt(points) give CSS lengths for the block.
 function TextBody({ text, u, pt, fallbackColor = '#000000' }) {
   const counters = {}
@@ -61,7 +84,7 @@ function TextBody({ text, u, pt, fallbackColor = '#000000' }) {
     const space = sp => (sp?.pt != null ? pt(sp.pt * scale) : sp?.pct != null ? pt(sp.pct * size * 1.2) : 0)
     let bullet = null
     if (p.bullet && p.runs.some(r => r.t?.trim())) {
-      let mark = p.bullet.char
+      let mark = bulletMark(p.bullet.char, p.buFont)
       if (p.bullet.auto) {
         const key = `${p.lvl}|${p.bullet.auto}`
         counters[key] = (counters[key] ?? p.bullet.start - 1) + 1
@@ -70,7 +93,7 @@ function TextBody({ text, u, pt, fallbackColor = '#000000' }) {
       const hang = p.indent < 0 ? u(-p.indent) : '1em'
       bullet = (
         <span style={{ display: 'inline-block', minWidth: hang, textIndent: 0, color: p.buColor ?? firstRun.color ?? fallbackColor, fontSize: pt(size * (p.buSize ?? 1)), fontFamily: p.buFont && !/Wingdings|Symbol/.test(p.buFont) ? fontStack(p.buFont) : undefined }}>
-          {/Wingdings/.test(p.buFont ?? '') ? '▪' : mark}
+          {mark}
         </span>
       )
     } else {
@@ -83,7 +106,8 @@ function TextBody({ text, u, pt, fallbackColor = '#000000' }) {
         paddingLeft: u(Math.max(0, p.marL)),
         textIndent: p.indent ? u(p.indent) : 0,
         lineHeight: lh, marginTop: space(p.spcBef), marginBottom: space(p.spcAft),
-        minHeight: pt((p.endSz ?? 18) * scale * 1.2),
+        // An empty paragraph still takes one line, sized from its paragraph mark
+        ...(p.runs.some(r => r.t) ? {} : { minHeight: emptyLine(p, scale, text.lnRed, pt) }),
         whiteSpace: text.wrap ? 'pre-wrap' : 'pre', wordBreak: 'break-word',
       }}>
         {bullet}
