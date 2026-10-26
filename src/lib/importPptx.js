@@ -1,4 +1,5 @@
 import JSZip from 'jszip'
+import { emfToDataUrl } from './emf.js'
 import { themeContext, resolveSlideShapes, resolveChartXml, resolvedTableStyle, defaultTableStyleId, tableStyleLook, colorOf, schemeHex } from './pptxResolve.js'
 
 // Reads a .pptx and extracts each slide's content — title, bullets, free text
@@ -197,7 +198,9 @@ async function loadImage(zip, rels, rId) {
   const ext  = rel.path.split('.').pop().toLowerCase()
   const mime = IMG_MIME[ext]
   const file = zip.file(rel.path)
-  if (!mime || !file) return null // EMF/WMF/SVG/TIFF can't be rendered in the browser
+  // EMF (Office's format for pasted pictures): the bitmap inside, as a PNG
+  if (ext === 'emf' && file && typeof document !== 'undefined') return emfToDataUrl(await file.async('uint8array'))
+  if (!mime || !file) return null // WMF/SVG/TIFF can't be rendered in the browser
   return bytesToDataUrl(await file.async('uint8array'), mime)
 }
 
@@ -714,7 +717,11 @@ function textOf(txBody, fallbackColor = null, fallbackFont = null) {
       if (n.localName === 'br') runs.push({ br: true })
       else if (n.localName === 'r' || n.localName === 'fld') runs.push({ t: kid(n, NS_A, 't')?.textContent ?? '', ...runProps(kid(n, NS_A, 'rPr')) })
     }
-    const end = runProps(kid(p, NS_A, 'endParaRPr'))
+    // The paragraph mark: its own properties, else those of the last text
+    // before it (as PowerPoint does) — not the text box's defaults
+    const endPr = kid(p, NS_A, 'endParaRPr')
+    const lastRun = [...runs].reverse().find(r => !r.br)
+    const end = endPr || !lastRun ? runProps(endPr) : lastRun
     return {
       algn: pick('algn') ?? 'l', lvl,
       marL: +(pick('marL') ?? 0), indent: +(pick('indent') ?? 0),
