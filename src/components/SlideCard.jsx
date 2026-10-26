@@ -277,13 +277,12 @@ export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, o
         )}
         {confirming ? (
           <div style={styles.confirmRow}>
-            <span style={styles.confirmText}>Delete?</span>
-            <button style={styles.confirmYes} onClick={() => onDelete(index)}>Yes</button>
-            <button style={styles.confirmNo}  onClick={() => setConfirming(false)}>No</button>
+            <button style={styles.confirmYes} onClick={() => onDelete(index)} title="Delete this slide">Delete</button>
+            <button style={styles.confirmNo}  onClick={() => setConfirming(false)}>Keep</button>
           </div>
         ) : (
-          <button style={styles.deleteBtn} onClick={() => setConfirming(true)} title="Remove slide">
-            ✕
+          <button style={styles.deleteBtn} onClick={() => setConfirming(true)} title="Delete this slide">
+            Delete
           </button>
         )}
       </div>
@@ -299,6 +298,7 @@ const styles = {
     background: 'var(--color-bg)', border: '0.5px solid var(--color-border)',
     borderRadius: 'var(--radius-md)', padding: '14px 14px 14px 16px',
     position: 'relative', overflow: 'hidden', minHeight: 120,
+    flexShrink: 0, // the list scrolls — never squash a card (that clipped its buttons)
   },
   accent: {
     position: 'absolute', left: 0, top: 0, bottom: 0, width: 3,
@@ -315,16 +315,16 @@ const styles = {
   stylePills: { display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 2 },
   pill:    { fontSize: 10, color: 'var(--color-text-muted)', background: 'var(--color-bg-tertiary)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '1px 7px' },
   previewWrap: { width: 240, flexShrink: 0, display: 'flex', alignItems: 'center' },
-  actions: { display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0, justifyContent: 'flex-start' },
+  actions: { display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0, justifyContent: 'flex-start', width: 84 },
   editBtn: { background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '4px 10px', fontSize: 11, fontWeight: 500, color: 'var(--color-text-primary)', cursor: 'pointer' },
-  templateBtn: { background: 'none', border: '0.5px solid var(--color-accent)', borderRadius: 'var(--radius-pill)', padding: '4px 8px', fontSize: 10, fontWeight: 600, color: 'var(--color-accent)', cursor: 'pointer' },
-  deleteBtn: { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '4px 8px', fontSize: 10, color: 'var(--color-text-muted)', cursor: 'pointer' },
+  templateBtn: { background: 'none', border: '0.5px solid var(--color-accent)', borderRadius: 'var(--radius-pill)', padding: '4px 8px', fontSize: 11, whiteSpace: 'nowrap', fontWeight: 600, color: 'var(--color-accent)', cursor: 'pointer' },
+  deleteBtn: { background: 'none', border: '0.5px solid #dc262655', borderRadius: 'var(--radius-pill)', padding: '4px 10px', fontSize: 11, fontWeight: 500, color: '#dc2626', cursor: 'pointer' },
   moveMenu: { position: 'fixed', zIndex: 1000, minWidth: 190, background: 'var(--color-bg, #fff)', border: '0.5px solid var(--color-border)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.14)', padding: 4, display: 'flex', flexDirection: 'column' },
   moveHead: { fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-muted)', padding: '6px 8px 4px' },
   moveItem: { display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', borderRadius: 6, padding: '6px 8px', fontSize: 12, color: 'var(--color-text-primary)', cursor: 'pointer', textAlign: 'left', whiteSpace: 'nowrap' },
   moveDot: { width: 8, height: 8, borderRadius: '50%', flexShrink: 0 },
   confirmRow:  { display: 'flex', alignItems: 'center', gap: 4 },
   confirmText: { fontSize: 10, color: '#dc2626', fontWeight: 600, whiteSpace: 'nowrap' },
-  confirmYes:  { background: '#dc2626', border: 'none', borderRadius: 'var(--radius-pill)', padding: '3px 8px', fontSize: 10, fontWeight: 600, color: '#fff', cursor: 'pointer' },
-  confirmNo:   { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '3px 8px', fontSize: 10, color: 'var(--color-text-muted)', cursor: 'pointer' },
+  confirmYes:  { flex: 1, background: '#dc2626', border: 'none', borderRadius: 'var(--radius-pill)', padding: '4px 6px', fontSize: 10, fontWeight: 600, color: '#fff', cursor: 'pointer' },
+  confirmNo:   { flex: 1, background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '4px 6px', fontSize: 10, color: 'var(--color-text-muted)', cursor: 'pointer' },
 }
