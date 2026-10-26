@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { parseRichText } from '../lib/richtext.js'
 import { previewTable, TABLE_LINE_HEIGHT } from '../lib/tableFit.js'
 import OriginalSlidePreview from './OriginalSlidePreview.jsx'
+import { hasAdditions } from '../lib/originalSlides.js'
 import FramedImage from './FramedImage.jsx'
 
 // Title-only slides have no body (older ones saved a placeholder line instead)
@@ -17,15 +18,26 @@ function RichText({ text }) {
 }
 
 // Lightweight read-only slide thumbnail — mirrors the exact positions the editor uses
-export function SlideThumbnail({ slide }) {
-  if (slide.style?.original?.ref) return <OriginalSlidePreview original={slide.style.original} rounded />
+// overlayOnly: just the added content (pictures, text and bullet areas, table)
+// on a clear background — drawn over an imported slide
+export function SlideThumbnail({ slide, overlayOnly = false }) {
+  if (!overlayOnly && slide.style?.original?.ref) {
+    const base = <OriginalSlidePreview original={slide.style.original} rounded />
+    if (!hasAdditions(slide)) return base
+    return (
+      <div style={{ position: 'relative', width: '100%' }}>
+        {base}
+        <div style={{ position: 'absolute', inset: 0 }}><SlideThumbnail slide={slide} overlayOnly /></div>
+      </div>
+    )
+  }
   const style   = slide.style ?? {}
   const accent  = style.accent  ?? '#CD2F37'
   const textCol = style.textCol ?? '#1a1a1a'
   const bgImage = style.bgImage ?? null
   // Slides not yet opened in the editor only have body text — show its lines
   // as bullets, as the editor and the generated deck do
-  const bullets = slide.bullets?.length ? slide.bullets : String(slide.body ?? '').split('\n').filter(l => l.trim() && !isEmptyBody(l))
+  const bullets = overlayOnly ? [] : slide.bullets?.length ? slide.bullets : String(slide.body ?? '').split('\n').filter(l => l.trim() && !isEmptyBody(l))
   const table   = slide.table   ?? null
   const images  = style.images  ?? []
   const extraBulletBoxes = slide.extraBulletBoxes ?? []
@@ -38,7 +50,7 @@ export function SlideThumbnail({ slide }) {
   const bodyBox  = style.bodyBox  ?? { x: 0.045, y: 0.19,  w: 0.829, h: hasTable ? 0.4 : 0.63 }
   const tableBox = style.tableBox ?? { x: 0.045, y: 0.55,  w: 0.829, h: 0.32 }
 
-  const bg = bgImage
+  const bg = overlayOnly ? 'transparent' : bgImage
     ? `url(${bgImage}) center/cover no-repeat`
     : `url(/branding/content-bg.jpg) center/cover no-repeat`
 
@@ -48,16 +60,16 @@ export function SlideThumbnail({ slide }) {
       background: bg, position: 'relative', overflow: 'hidden',
       containerType: 'inline-size', fontFamily: 'Arial, sans-serif', borderRadius: 4,
     }}>
-      {bgImage && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }} />}
+      {bgImage && !overlayOnly && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }} />}
 
       {/* Title — same position as editor */}
-      <div style={{
+      {!overlayOnly && <div style={{
         position: 'absolute', left: '15.25%', top: '5.1%', width: '77.9%',
         fontSize: '2.8cqw', fontWeight: 400,
         color: bgImage ? '#fff' : accent,
         lineHeight: 1.3, overflow: 'hidden',
         display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-      }}>{slide.title}</div>
+      }}>{slide.title}</div>}
 
       {/* Bullets — positioned using bodyBox, same as editor */}
       {bullets.length > 0 && (

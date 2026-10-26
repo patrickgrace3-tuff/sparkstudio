@@ -15,6 +15,7 @@ import JSZip from 'jszip'
 import { parseRichText } from './richtext.js'
 import { exportTableMetrics, DEFAULT_TABLE_BOX } from './tableFit.js'
 import { createOriginalSplicer } from './exportOriginal.js'
+import { hasAdditions } from './originalSlides.js'
 import { cropOf, legacyCrop, imageSizeFromDataUrl } from './imageFrame.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -335,6 +336,42 @@ ${bulletXml}
     }
   )
 
+  out = addTextAndTable(out, slide, table, accentHex)
+
+  let outRels = relsXml
+
+  // 4. Background image (any layout) — full-bleed picture placed first in
+  // z-order (right after <p:spTree>) so text/tables render on top of it.
+  if (style.bgImage) {
+    const embedded = embedImage(zip, outRels, style.bgImage)
+    if (embedded) {
+      outRels = embedded.relsXml
+      const picXml = buildPictureXml(embedded.rId, 0, 0, SLIDE_W, SLIDE_H, 'SlideBackgroundImage')
+      out = out.replace('<p:spTree>', `<p:spTree>${picXml}`)
+    }
+  }
+
+  // 5. Content image (image-right layout) — placed in the right-hand column.
+  if (layout === 'image-right' && style.contentImage) {
+    const embedded = embedImage(zip, outRels, style.contentImage)
+    if (embedded) {
+      outRels = embedded.relsXml
+      const colW   = Math.round(SLIDE_W * 0.38)
+      const colX   = SLIDE_W - colW
+      const picXml = buildPictureXml(embedded.rId, colX, 0, colW, SLIDE_H, 'SlideContentImage')
+      out = out.replace('</p:spTree>', `${picXml}\n</p:spTree>`)
+    }
+  }
+
+  ;({ xml: out, relsXml: outRels } = addImages(zip, out, outRels, style))
+
+  return { xml: out, relsXml: outRels }
+}
+
+// Content added in the editor that sits on top of a slide: extra bullet
+// areas, free text areas and a table (also used on imported slides)
+function addTextAndTable(out, slide, table, accentHex) {
+  const style = slide.style || {}
   // 3a. Inject extra bullet box shapes (additional column areas from SlideEditor)
   const extraBulletBoxes = slide.extraBulletBoxes ?? []
   for (const eb of extraBulletBoxes) {
@@ -413,31 +450,11 @@ ${paraXml}
     out = out.replace('</p:spTree>', `${tableXml}\n</p:spTree>`)
   }
 
-  let outRels = relsXml
+  return out
+}
 
-  // 4. Background image (any layout) — full-bleed picture placed first in
-  // z-order (right after <p:spTree>) so text/tables render on top of it.
-  if (style.bgImage) {
-    const embedded = embedImage(zip, outRels, style.bgImage)
-    if (embedded) {
-      outRels = embedded.relsXml
-      const picXml = buildPictureXml(embedded.rId, 0, 0, SLIDE_W, SLIDE_H, 'SlideBackgroundImage')
-      out = out.replace('<p:spTree>', `<p:spTree>${picXml}`)
-    }
-  }
-
-  // 5. Content image (image-right layout) — placed in the right-hand column.
-  if (layout === 'image-right' && style.contentImage) {
-    const embedded = embedImage(zip, outRels, style.contentImage)
-    if (embedded) {
-      outRels = embedded.relsXml
-      const colW   = Math.round(SLIDE_W * 0.38)
-      const colX   = SLIDE_W - colW
-      const picXml = buildPictureXml(embedded.rId, colX, 0, colW, SLIDE_H, 'SlideContentImage')
-      out = out.replace('</p:spTree>', `${picXml}\n</p:spTree>`)
-    }
-  }
-
+// Freely positioned pictures (on top of everything else)
+function addImages(zip, out, outRels, style) {
   // 6. Freely positioned/resized images (PowerPoint-style overlay) — placed
   // last so they sit on top of background/content images and text.
   if (Array.isArray(style.images)) {
@@ -464,6 +481,19 @@ ${paraXml}
   }
 
   return { xml: out, relsXml: outRels }
+}
+
+// Content added on top of a slide imported with its original styling. Shape
+// ids continue after the slide's own (they're referenced by connectors there).
+function addOverlaysToOriginal(zip, xml, relsXml, slide) {
+  const maxId = Math.max(0, ...[...xml.matchAll(/<p:cNvPr\b[^>]*\bid="(\d+)"/g)].map(m => +m[1]))
+  const saved = _nextShapeId
+  _nextShapeId = maxId + 1
+  const accentHex = (slide.style?.accent ?? 'CD2F37').replace('#', '').toUpperCase()
+  let out = addTextAndTable(xml, slide, slide.table ?? null, accentHex)
+  const res = addImages(zip, out, relsXml, slide.style || {})
+  _nextShapeId = Math.max(saved, _nextShapeId)
+  return res
 }
 
 // ── ID management ─────────────────────────────────────────────────────────────
@@ -729,6 +759,10 @@ export async function exportToPptx(orderedSlides, deck, { clientId = null } = {}
         : null
       let { xml: patchedXml, relsXml: patchedRels } = original
         ?? patchContentSlide(zip, slide3Xml, slide3Rels, item.slide, item.slide.table ?? null)
+      // Pictures, text and a table added on top of an imported slide
+      if (original && hasAdditions(item.slide)) {
+        ({ xml: patchedXml, relsXml: patchedRels } = addOverlaysToOriginal(zip, patchedXml, patchedRels, item.slide))
+      }
 
       // If this slide has notes, create a notesSlide and link it from the slide rels
       if (notes) {

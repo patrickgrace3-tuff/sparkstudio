@@ -957,8 +957,15 @@ export default function App() {
         <SlideEditor
           slide={editingSlide.slide}
           onSave={updated => {
-            if (editingSlide.deckSlide) saveDeckSlide(updated)
+            // stored: the slide as it's saved now (it changes when switching modes on an imported slide)
+            if (editingSlide.deckSlide) saveDeckSlide(updated, editingSlide.stored ?? editingSlide.slide)
             else saveEditedSlide(editingSlide.index, updated)
+            setEditingSlide(e => (e ? { ...e, stored: updated } : e))
+          }}
+          onSwitchMode={updated => {
+            const { stored, slide: sl, deckSlide } = editingSlide
+            setEditingSlide(null)
+            setEditingOriginal({ slide: updated, stored: stored ?? sl, deckSlide })
           }}
           onClose={() => setEditingSlide(null)}
         />
@@ -984,12 +991,19 @@ export default function App() {
           clientId={activeClientId}
           onClose={() => setEditingOriginal(null)}
           onSave={updated => {
-            if (editingOriginal.deckSlide) saveDeckSlide(updated, editingOriginal.slide)
+            const stored = editingOriginal.stored ?? editingOriginal.slide
+            if (editingOriginal.deckSlide) saveDeckSlide(updated, stored)
             else {
-              const idx = deptSlides.findIndex(sl => sl._id === editingOriginal.slide._id)
+              const idx = deptSlides.findIndex(sl => sl._id === stored._id)
               if (idx !== -1) saveEditedSlide(idx, updated)
             }
             setEditingOriginal(null)
+          }}
+          onSwitchMode={updated => {
+            const stored = editingOriginal.stored ?? editingOriginal.slide
+            const index = deptSlides.findIndex(sl => sl._id === stored._id)
+            setEditingOriginal(null)
+            setEditingSlide({ slide: updated, stored, deckSlide: editingOriginal.deckSlide, index })
           }}
         />
       )}

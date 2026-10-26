@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import OriginalSlidePreview from './OriginalSlidePreview.jsx'
+import { hasAdditions } from '../lib/originalSlides.js'
 import FramedImage from './FramedImage.jsx'
 import { buildOrderedSlideList } from '../lib/presentationOrder.js'
 import { previewTable, TABLE_LINE_HEIGHT } from '../lib/tableFit.js'
@@ -43,8 +44,18 @@ function SectionSlidePreview({ dept }) {
   )
 }
 
-function ContentSlidePreview({ slide }) {
-  if (slide.style?.original?.ref) return <OriginalSlidePreview original={slide.style.original} fill />
+function ContentSlidePreview({ slide, overlayOnly = false }) {
+  if (!overlayOnly && slide.style?.original?.ref) {
+    const base = <OriginalSlidePreview original={slide.style.original} fill />
+    if (!hasAdditions(slide)) return base
+    // Content added on top of the imported slide
+    return (
+      <div style={{ ...S.slide, position: 'relative' }}>
+        {base}
+        <div style={{ position: 'absolute', inset: 0 }}><ContentSlidePreview slide={slide} overlayOnly /></div>
+      </div>
+    )
+  }
   const rawStyle  = slide.style  ?? {}
   const bullets   = slide.bullets ?? []
   const extraBulletBoxes = slide.extraBulletBoxes ?? []
@@ -59,7 +70,7 @@ function ContentSlidePreview({ slide }) {
 
   const wrap = {
     ...S.slide,
-    background: bgImg ? `url(${bgImg}) center/cover no-repeat` : `url(/branding/content-bg.jpg) center/cover no-repeat`,
+    background: overlayOnly ? 'transparent' : bgImg ? `url(${bgImg}) center/cover no-repeat` : `url(/branding/content-bg.jpg) center/cover no-repeat`,
     fontFamily: font,
     position: 'relative',
     overflow: 'hidden',
@@ -87,13 +98,13 @@ function ContentSlidePreview({ slide }) {
 
   return (
     <div style={wrap}>
-      {bgImg && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }} />}
-      {titleEl}
+      {bgImg && !overlayOnly && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }} />}
+      {!overlayOnly && titleEl}
 
       {/* Bullet body — at bodyBox position, same as editor */}
-      <div style={{ position: 'absolute', left: `${bodyBox.x * 100}%`, top: `${bodyBox.y * 100}%`, width: showContentImage ? '52%' : `${bodyBox.w * 100}%`, height: `${bodyBox.h * 100}%`, overflow: 'hidden' }}>
+      {!overlayOnly && <div style={{ position: 'absolute', left: `${bodyBox.x * 100}%`, top: `${bodyBox.y * 100}%`, width: showContentImage ? '52%' : `${bodyBox.w * 100}%`, height: `${bodyBox.h * 100}%`, overflow: 'hidden' }}>
         {bulletEls}
-      </div>
+      </div>}
 
       {showContentImage && (
         <div style={{ position: 'absolute', right: '3%', top: '19%', width: '38%', height: '63%', background: `url(${style.contentImage}) center/cover`, borderRadius: 4 }} />
@@ -145,7 +156,7 @@ function ContentSlidePreview({ slide }) {
       })}
 
       {/* Source */}
-      <div style={{ position: 'absolute', left: '1.8%', top: '90.4%', width: '48.4%', fontSize: '1.2cqw', fontStyle: 'italic', color: bgImg ? 'rgba(255,255,255,0.7)' : '#7F7F7F' }}>Source: {source}</div>
+      {!overlayOnly && <div style={{ position: 'absolute', left: '1.8%', top: '90.4%', width: '48.4%', fontSize: '1.2cqw', fontStyle: 'italic', color: bgImg ? 'rgba(255,255,255,0.7)' : '#7F7F7F' }}>Source: {source}</div>}
 
       {/* Overlay images — cropped and rounded as in the editor and export */}
       {(style.images || []).map((img, i) => <FramedImage key={i} img={img} />)}
