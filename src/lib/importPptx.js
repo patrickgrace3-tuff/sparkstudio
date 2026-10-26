@@ -607,6 +607,29 @@ export async function importSlidesFromPptx(file) {
 
 const TEXT_PART = /\.(xml|rels|vml)$/i
 
+// Pictures in previews only need to look sharp on screen (the export uses the
+// original files), so big ones are scaled down — this keeps saved slides small
+const PREVIEW_MAX_PX = 1600
+const PREVIEW_MIN_BYTES = 150000
+async function previewPicture(dataUrl) {
+  if (!dataUrl || dataUrl.length < PREVIEW_MIN_BYTES || typeof document === 'undefined') return dataUrl
+  try {
+    const img = new window.Image()
+    await new Promise((ok, fail) => { img.onload = ok; img.onerror = fail; img.src = dataUrl })
+    const scale = Math.min(1, PREVIEW_MAX_PX / Math.max(img.naturalWidth, img.naturalHeight))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale))
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale))
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+    // WebP keeps transparency and is small; where it's unsupported, PNGs stay PNG
+    let out = canvas.toDataURL('image/webp', 0.85)
+    if (!out.startsWith('data:image/webp')) out = canvas.toDataURL(/^data:image\/(png|gif)/.test(dataUrl) ? 'image/png' : 'image/jpeg', 0.85)
+    return out.length < dataUrl.length ? out : dataUrl
+  } catch {
+    return dataUrl
+  }
+}
+
 async function collectParts(zip, path, parts, seen) {
   if (seen.has(path) || !zip.file(path)) return
   seen.add(path)
@@ -810,7 +833,7 @@ async function describeShapes(zip, ctx, rels, container, transform, out, tableSt
         continue
       }
       const blip = desc(kid(el, el.localName === 'pic' ? NS_P : NS_A, 'blipFill') ?? kid(spPr, NS_A, 'blipFill'), NS_A, 'blip')
-      const src  = blip ? await loadImage(zip, rels, blip.getAttributeNS(NS_R, 'embed')) : null
+      const src  = blip ? await previewPicture(await loadImage(zip, rels, blip.getAttributeNS(NS_R, 'embed'))) : null
       const crop = desc(kid(el, NS_P, 'blipFill'), NS_A, 'srcRect')
       const look = pictureLook(spPr, kid(el, NS_P, 'blipFill') ?? kid(spPr, NS_A, 'blipFill'))
       out.push({
@@ -869,8 +892,23 @@ async function originalPreview(zip, ctx, slidePath, slideW, slideH, tableStyles)
   return { version: 3, slideW, slideH, aspect: slideW / slideH, items, title, text, notes: await readNotes(zip, rels) }
 }
 
+// file → { pkg, slides }. pkg holds the parts the slides need (kept with the
+// original file); slides are [{ slidePath, preview }] in presentation order.
 export async function importOriginalSlidesFromPptx(file) {
   const zip = await JSZip.loadAsync(file)
+  const { pkg, slidePaths } = await packageFromZip(zip)
+  const get = p => (typeof pkg.parts[p] === 'string' ? pkg.parts[p] : null)
+  const slides = []
+  for (const slidePath of slidePaths) {
+    const ctx = themeContext(get, slidePath, pkg.defaultTextStyle)
+    slides.push({ slidePath, preview: await originalPreview(zip, ctx, slidePath, pkg.slideW, pkg.slideH, pkg.tableStyles) })
+  }
+  return { pkg, slides }
+}
+
+// The parts of a PowerPoint the visible slides need → { pkg, slidePaths }
+// (also used to read an uploaded original file back)
+export async function packageFromZip(zip) {
   const presXml = await zip.file('ppt/presentation.xml').async('string')
   const presDoc = parseXml(presXml)
   const sz = desc(presDoc, NS_P, 'sldSz')
@@ -906,14 +944,7 @@ export async function importOriginalSlidesFromPptx(file) {
     parts[path] = TEXT_PART.test(path) ? await f.async('string') : { b64: await f.async('base64') }
     if (!path.endsWith('.rels')) types[path] = overrides[path] ?? defaults[path.split('.').pop().toLowerCase()] ?? 'application/octet-stream'
   }
-  const get = p => (typeof parts[p] === 'string' ? parts[p] : null)
-
-  const slides = []
-  for (const slidePath of slidePaths) {
-    const ctx = themeContext(get, slidePath, defaultTextStyle)
-    slides.push({ slidePath, preview: await originalPreview(zip, ctx, slidePath, slideW, slideH, tableStyles) })
-  }
-  return { pkg: { version: 2, slideW, slideH, parts, types, tableStyles, defaultTextStyle }, slides }
+  return { pkg: { version: 2, slideW, slideH, parts, types, tableStyles, defaultTextStyle }, slidePaths }
 }
 
 // Rebuilds the preview description of an imported slide from its stored

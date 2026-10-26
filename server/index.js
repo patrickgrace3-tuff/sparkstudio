@@ -56,7 +56,7 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }))
 // Run migrations on every startup (all statements use IF NOT EXISTS — safe to repeat)
 async function start() {
   try {
-    for (const file of ['001_initial.sql', '002_slide_requests.sql', '003_slides_table_field.sql', '004_user_metrics.sql', '005_slides_free_text_boxes.sql', '006_market_research.sql', '007_client_divisions.sql', '008_slides_division.sql', '009_shared_assets.sql']) {
+    for (const file of ['001_initial.sql', '002_slide_requests.sql', '003_slides_table_field.sql', '004_user_metrics.sql', '005_slides_free_text_boxes.sql', '006_market_research.sql', '007_client_divisions.sql', '008_slides_division.sql', '009_shared_assets.sql', '010_pptx_files.sql']) {
       const sql = readFileSync(`./migrations/${file}`, 'utf8')
       await pool.query(sql)
     }
