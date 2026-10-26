@@ -23,7 +23,9 @@ export async function originalSlideToShell(slide, clientId, guidance = {}) {
   // The original PowerPoint parts, shared once per imported file
   let ref = original.ref
   let pkg = null
-  if (!ref.startsWith('asset:')) {
+  // (an uploaded original file is already shared; older imports kept their
+  // parts per client and are copied to a shared asset once)
+  if (!ref.startsWith('asset:') && !ref.startsWith('file:')) {
     pkg = await loadOriginalPackage(clientId, ref)
     if (!pkg) throw new Error('The original PowerPoint for this slide could not be found.')
     const key = `pptxoriginal:${original.importId ?? newId()}`

@@ -23,7 +23,7 @@ import { loadFiles, loadFilesRemote, buildAIContext, loadGlobalFiles, loadGlobal
 import { enhanceSlideBody, generateDeck } from './lib/api.js'
 import { exportToPptx } from './lib/export.js'
 import { importSlidesFromPptx, importOriginalSlidesFromPptx } from './lib/importPptx.js'
-import { isLockedOriginal, originalPptxKey } from './lib/originalSlides.js'
+import { isLockedOriginal, originalFileKey } from './lib/originalSlides.js'
 import { clientDivisions, deptUsesDivisions, splitFilesByDivision, syncedDeptFiles, syncedGlobalFiles } from './lib/divisions.js'
 import { fetchMarketResearchForClient, fetchClientMarketResearchCopy, marketResearchDeckSlides, insertMarketResearch, withoutMarketResearch, MARKET_RESEARCH_DEPT_ID } from './lib/marketResearch.js'
 import ClientMarketResearchEditor from './components/ClientMarketResearchEditor.jsx'
@@ -263,8 +263,11 @@ export default function App() {
         const { pkg, slides } = await importOriginalSlidesFromPptx(file)
         if (!slides.length) { alert('No slides found in this file.'); return }
         const importId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
-        const ref = originalPptxKey(importId)
-        await api.setClientData(activeClientId, ref, { ...pkg, fileName: file.name, importedAt: new Date().toISOString() })
+        // The original file is kept as-is (uploaded in pieces) — the export
+        // takes the slides' parts from it
+        const fileKey = originalFileKey(importId)
+        await api.uploadFile(fileKey, file)
+        const ref = `file:${fileKey}`
         withIds = slides.map(({ slidePath, preview }) => ({
           _id:     newId(),
           title:   preview.title || file.name.replace(/\.pptx$/i, ''),

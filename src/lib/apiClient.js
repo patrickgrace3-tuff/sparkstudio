@@ -125,4 +125,44 @@ export const api = {
   // Shared assets (data used across clients, e.g. imported slides in templates)
   getAsset:       (key)        => apiFetch(`/api/assets/${encodeURIComponent(key)}`),
   setAsset:       (key, value) => apiFetch(`/api/assets/${encodeURIComponent(key)}`, { method: 'PUT', body: { value } }),
+  uploadFile,
+  downloadFile,
+}
+
+// ── Large files (original PowerPoints), sent in pieces ──────────────────────
+const CHUNK = 8 * 1024 * 1024
+
+async function rawFetch(path, options = {}) {
+  const token = getToken()
+  const res = await fetch(`${BASE}${path}`, { ...options, headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options.headers } })
+  if (res.status === 401) { setToken(null); throw new Error('Unauthorized') }
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error || (res.status === 413 ? 'The file is too large to upload' : `API error ${res.status}`))
+  }
+  return res
+}
+
+// Uploads a file (Blob) under key, a few pieces at a time
+async function uploadFile(key, blob, onProgress) {
+  const count = Math.max(1, Math.ceil(blob.size / CHUNK))
+  let next = 0, done = 0
+  const worker = async () => {
+    while (next < count) {
+      const i = next++
+      await rawFetch(`/api/assets/file/${encodeURIComponent(key)}/${i}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: blob.slice(i * CHUNK, (i + 1) * CHUNK),
+      })
+      onProgress?.(++done / count)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(3, count) }, worker))
+}
+
+// → ArrayBuffer of a file uploaded with uploadFile
+async function downloadFile(key) {
+  const res = await rawFetch(`/api/assets/file/${encodeURIComponent(key)}`)
+  return res.arrayBuffer()
 }

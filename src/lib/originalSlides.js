@@ -8,6 +8,14 @@ import { api } from './apiClient.js'
 // and placed on the Spark Studio template's content background.
 
 export const originalPptxKey = importId => `pptxoriginal:${importId}`
+// Where the original file of an import is kept (ref = `file:${key}`)
+export const originalFileKey = importId => `pptxfile:${importId}`
+
+async function packageFromFile(key) {
+  const [{ default: JSZip }, { packageFromZip }] = await Promise.all([import('jszip'), import('./importPptx.js')])
+  const zip = await JSZip.loadAsync(await api.downloadFile(key))
+  return (await packageFromZip(zip)).pkg
+}
 
 export const isLockedOriginal = slide => !!slide?.style?.original?.ref
 
@@ -15,8 +23,11 @@ export const isLockedOriginal = slide => !!slide?.style?.original?.ref
 // point at a shared copy ('asset:…') usable by every client.
 export function loadOriginalPackage(clientId, ref, cache = new Map()) {
   if (!cache.has(ref)) {
-    const req = ref.startsWith('asset:') ? api.getAsset(ref.slice('asset:'.length)) : api.getClientData(clientId, ref)
-    cache.set(ref, req.then(r => r?.value ?? null))
+    // file:<key> — the original PowerPoint file itself; otherwise its parts saved as data
+    const req = ref.startsWith('file:') ? packageFromFile(ref.slice('file:'.length))
+      : (ref.startsWith('asset:') ? api.getAsset(ref.slice('asset:'.length)) : api.getClientData(clientId, ref)).then(r => r?.value ?? null)
+    cache.set(ref, req)
+    req.catch(() => cache.delete(ref)) // let a failed load be retried
   }
   return cache.get(ref)
 }
