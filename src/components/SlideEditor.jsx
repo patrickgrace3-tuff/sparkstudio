@@ -3,6 +3,7 @@ import { DEPARTMENTS } from '../lib/constants.js'
 import { parseRichText } from '../lib/richtext.js'
 import { previewTable, TABLE_LINE_HEIGHT } from '../lib/tableFit.js'
 import FramedImage from './FramedImage.jsx'
+import OriginalSlidePreview from './OriginalSlidePreview.jsx'
 import FrameEditor from './FrameEditor.jsx'
 import { upgradeImage, loadImageSize, readPictureFile, coverCrop } from '../lib/imageFrame.js'
 
@@ -347,6 +348,7 @@ function SlideCanvas({
   const accent     = style.accent    ?? '#CD2F37'
   const textAlign  = style.textAlign ?? 'left'
   const contentImage = style.contentImage ?? null
+  const original = style.original?.ref ? style.original : null
 
   // containerType: 'inline-size' + cqw (container-query width) units below tie
   // every font size to this canvas's own rendered pixel width, instead of the
@@ -538,7 +540,7 @@ function SlideCanvas({
     <div style={{
       width: '100%',
       aspectRatio: '16/9',
-      background: bgImage ? `url(${bgImage}) center/cover no-repeat` : `url(/branding/content-bg.jpg) center/cover no-repeat`,
+      background: original ? '#fff' : bgImage ? `url(${bgImage}) center/cover no-repeat` : `url(/branding/content-bg.jpg) center/cover no-repeat`,
       fontFamily: font,
       position: 'relative',
       overflow: 'hidden',
@@ -546,17 +548,19 @@ function SlideCanvas({
       boxShadow: '0 4px 24px rgba(0,0,0,0.18)',
       containerType: 'inline-size',
     }}>
-      {bgImage && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }} />}
-      <div
+      {bgImage && !original && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }} />}
+      {/* An imported slide: shown as it is, with the added content on top */}
+      {original && <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}><OriginalSlidePreview original={original} /></div>}
+      {!original && <div
         contentEditable={!!onTitleChange}
         suppressContentEditableWarning
         onPointerDown={stopForEdit}
         onBlur={e => onTitleChange?.(e.currentTarget.textContent)}
         onContextMenu={e => onElementContextMenu?.(e, { type: 'title' })}
         style={{ position: 'absolute', left: '15.25%', top: '5.1%', width: '77.9%', fontSize: '2.8cqw', fontWeight: 400, color: bgImage ? '#fff' : accent, lineHeight: 1.3, outline: 'none', cursor: onTitleChange ? 'text' : 'default' }}
-      >{title}</div>
+      >{title}</div>}
       {/* The bullet area only shows while it has bullets — "+ Add bullet" brings it back */}
-      {bullets?.length > 0 && <DraggableBox box={style.bodyBox || { x: 0.045, y: 0.19, w: 0.829, h: table ? 0.4 : 0.63 }} onChange={onBodyBoxChange}>
+      {!original && bullets?.length > 0 && <DraggableBox box={style.bodyBox || { x: 0.045, y: 0.19, w: 0.829, h: table ? 0.4 : 0.63 }} onChange={onBodyBoxChange}>
         <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {(bullets || []).map((b, i) => (
             <li key={i} style={{ color: bgImage ? '#fff' : textCol, fontSize: '1.7cqw', lineHeight: 1.6, display: 'flex', gap: 8, marginBottom: '0.5em', textShadow: bgImage ? '0 1px 3px rgba(0,0,0,0.6)' : 'none', justifyContent: textAlign === 'right' ? 'flex-end' : textAlign === 'center' ? 'center' : 'flex-start' }}>
@@ -615,7 +619,7 @@ function SlideCanvas({
           ><RichText text={ft.text ?? ''} /></div>
         </DraggableBox>
       ))}
-      <div style={{ position: 'absolute', left: '1.8%', top: '90.4%', width: '48.4%', fontSize: '1.2cqw', fontStyle: 'italic', color: bgImage ? 'rgba(255,255,255,0.7)' : '#7F7F7F', display: 'flex', gap: '0.3em' }}>
+      {!original && <div style={{ position: 'absolute', left: '1.8%', top: '90.4%', width: '48.4%', fontSize: '1.2cqw', fontStyle: 'italic', color: bgImage ? 'rgba(255,255,255,0.7)' : '#7F7F7F', display: 'flex', gap: '0.3em' }}>
         <span style={{ flexShrink: 0 }}>Source:</span>
         <span
           contentEditable={!!onSourceChange}
@@ -624,14 +628,41 @@ function SlideCanvas({
           onBlur={e => onSourceChange?.(e.currentTarget.textContent)}
           style={{ outline: 'none', cursor: onSourceChange ? 'text' : 'default' }}
         >{source}</span>
-      </div>
+      </div>}
       <ImageLayer images={style.images || []} onChange={onImagesChange} sel={imageSel} onSel={onImageSel} />
     </div>
   )
 }
 
+// ── Imported slides: switch between editing the original's own elements and
+// adding content on top of it (shared by both editors) ───────────────────────
+export function EditModeToggle({ mode, onChange }) {
+  const opt = (id, label, title) => (
+    <button
+      key={id}
+      onClick={() => mode !== id && onChange(id)}
+      title={title}
+      aria-pressed={mode === id}
+      style={{
+        border: 'none', borderRadius: 99, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: mode === id ? 'default' : 'pointer',
+        background: mode === id ? 'var(--color-accent, #CD2F37)' : 'transparent',
+        color: mode === id ? '#fff' : 'var(--color-text-secondary, #555)',
+      }}
+    >{label}</button>
+  )
+  return (
+    <div role="group" aria-label="Edit mode" style={{ display: 'inline-flex', gap: 2, padding: 2, borderRadius: 99, background: 'var(--color-bg-secondary, #f2f2f2)', border: '0.5px solid var(--color-border, #ddd)' }}>
+      {opt('original', 'Original elements', "Move, resize, crop or delete the imported slide's own elements and change its text")}
+      {opt('add', 'Add content', 'Add pictures, text areas, bullet areas and a table on top of the imported slide')}
+    </div>
+  )
+}
+
 // ── Main editor modal ─────────────────────────────────────────────────────────
-export default function SlideEditor({ slide, onSave, onClose }) {
+// onSwitchMode(slide): imported slides only — switch to the "Original
+// elements" editor, carrying the unsaved changes
+export default function SlideEditor({ slide, onSave, onClose, onSwitchMode = null }) {
+  const locked = !!slide.style?.original?.ref
   const [savedFlash, setSavedFlash] = useState(false)
   const savedTimerRef  = useRef(null)
   const freeTextRefs   = useRef([])
@@ -1013,13 +1044,16 @@ export default function SlideEditor({ slide, onSave, onClose }) {
     }
   }
 
-  function handleSave() {
-    const saved = {
+  function buildSaved() {
+    return {
       ...slide,
-      title:   draft.title,
-      bullets: draft.bullets.filter(Boolean),
-      body:    draft.bullets.filter(Boolean).join('\n'),
-      source:  draft.source,
+      // An imported slide's title and text are its own (edited in "Original elements")
+      ...(locked ? {} : {
+        title:   draft.title,
+        bullets: draft.bullets.filter(Boolean),
+        body:    draft.bullets.filter(Boolean).join('\n'),
+        source:  draft.source,
+      }),
       notes:   draft.notes,
       style:   draft.style,
       table:   table && table.headers.length > 0 ? table : null,
@@ -1028,6 +1062,10 @@ export default function SlideEditor({ slide, onSave, onClose }) {
         .map(eb => ({ ...eb, bullets: eb.bullets.filter(Boolean) })),
       freeTextBoxes: draft.freeTextBoxes.filter(ft => ft.text?.trim()),
     }
+  }
+
+  function handleSave() {
+    const saved = buildSaved()
     onSave(saved)
     clearTimeout(savedTimerRef.current)
     setSavedFlash(true)
@@ -1041,6 +1079,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
         {/* Header */}
         <div style={styles.header}>
           <span style={styles.headerTitle}>Edit Slide</span>
+          {locked && onSwitchMode && <EditModeToggle mode="add" onChange={() => onSwitchMode(buildSaved())} />}
           <div style={styles.headerBtns}>
             <button style={styles.btnFullscreen} onClick={() => setFullscreen(f => !f)}>
               {fullscreen ? '⤡ Exit fullscreen' : '⤢ Fullscreen'}
@@ -1078,6 +1117,12 @@ export default function SlideEditor({ slide, onSave, onClose }) {
             {/* Content panel */}
             {activePanel === 'content' && (
               <div style={styles.panel}>
+                {locked && (
+                  <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: '0 0 4px', lineHeight: 1.5 }}>
+                    This slide was imported with its original styling. Add text areas, bullet areas, a table or pictures (Images tab) on top of it here. Its own title and elements are changed in <strong>Original elements</strong>.
+                  </p>
+                )}
+                {!locked && <>
                 <label style={styles.label}>Slide title</label>
                 <input
                   style={styles.input}
@@ -1108,6 +1153,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
                   ))}
                   <button style={styles.addBulletBtn} onClick={addBullet}>+ Add bullet</button>
                 </div>
+                </>}
 
                 {/* ── Extra bullet boxes ── */}
                 <div style={styles.tableSectionHeader}>
@@ -1265,6 +1311,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
                   </div>
                 )}
 
+                {!locked && <>
                 <label style={styles.label}>Source</label>
                 <input
                   style={styles.input}
@@ -1272,6 +1319,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
                   onChange={e => update('source', e.target.value)}
                   placeholder="e.g. Internal CRM data, Q2 2026"
                 />
+                </>}
               </div>
             )}
 
@@ -1373,7 +1421,7 @@ export default function SlideEditor({ slide, onSave, onClose }) {
               />
               </div>
               <div style={styles.previewHint}>
-                {draft.bullets.length} bullet{draft.bullets.length !== 1 ? 's' : ''}
+                {locked ? 'Imported slide' : `${draft.bullets.length} bullet${draft.bullets.length !== 1 ? 's' : ''}`}
                 {draft.style.images?.length ? ` · ${draft.style.images.length} overlay image${draft.style.images.length !== 1 ? 's' : ''}` : ''}
               </div>
               {/* Notes strip below canvas */}

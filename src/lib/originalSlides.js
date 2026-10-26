@@ -127,6 +127,15 @@ export function contentBoundsOf(preview, edits = null) {
 // style.original.edits = { [element key]: { deleted, from, box, paras, cells, crop, radius } }
 // Elements are the slide's top-level shapes (a group is one element).
 
+// Content added on top of an imported slide in the editor's "Add content" mode
+// (the same pictures, text areas, bullet areas and table as platform slides)
+export const hasAdditions = slide => !!(
+  slide?.style?.images?.length
+  || slide?.freeTextBoxes?.some(ft => ft.text?.trim())
+  || slide?.extraBulletBoxes?.some(eb => eb.bullets?.some(b => b?.trim()))
+  || slide?.table?.headers?.length
+)
+
 export const canEditOriginal = slide => (slide?.style?.original?.preview?.version ?? 0) >= 3
 
 const unionOf = items => {

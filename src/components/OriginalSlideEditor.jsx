@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { TemplateSlide } from './OriginalSlidePreview.jsx'
 import FrameEditor from './FrameEditor.jsx'
-import { ImageToolbar } from './SlideEditor.jsx'
-import { loadOriginalPackage, elementsOf, applyEditsToItems, canEditOriginal, paraText, effectiveEdits } from '../lib/originalSlides.js'
+import { ImageToolbar, EditModeToggle } from './SlideEditor.jsx'
+import { SlideThumbnail } from './SlideCard.jsx'
+import { hasAdditions, loadOriginalPackage, elementsOf, applyEditsToItems, canEditOriginal, paraText, effectiveEdits } from '../lib/originalSlides.js'
 import { rebuildOriginalPreview } from '../lib/importPptx.js'
 import { fullRect, readPictureFile, coverCrop } from '../lib/imageFrame.js'
 
@@ -17,7 +18,9 @@ const TYPE_LABEL = { shape: 'Text / shape', image: 'Picture', table: 'Table', ch
 const cropObj = c => (Array.isArray(c) ? { l: c[0], t: c[1], r: c[2], b: c[3] } : c ?? { l: 0, t: 0, r: 0, b: 0 })
 const cropArr = c => [c.l, c.t, c.r, c.b]
 
-export default function OriginalSlideEditor({ slide, clientId, onSave, onClose }) {
+// onSwitchMode(slide): switch to "Add content" (the platform editor), carrying
+// the unsaved changes
+export default function OriginalSlideEditor({ slide, clientId, onSave, onClose, onSwitchMode = null }) {
   const original = slide.style.original
   const [preview, setPreview] = useState(canEditOriginal(slide) ? original.preview : null)
   const [error,   setError]   = useState('')
@@ -76,17 +79,18 @@ export default function OriginalSlideEditor({ slide, clientId, onSave, onClose }
     return () => window.removeEventListener('keydown', onKey)
   })
 
-  function save() {
+  function build() {
     // Keep only edits that change something
     const clean = {}
     for (const [k, v] of Object.entries(edits)) if (v && Object.keys(v).some(f => f !== 'from')) clean[k] = v
     const title = headerTitle.trim()
-    onSave({
+    return {
       ...slide,
       ...(title ? { title } : {}),
       style: { ...slide.style, original: { ...original, preview, edits: clean, headerTitle: title } },
-    })
+    }
   }
+  const save = () => onSave(build())
 
   // Swaps the selected picture for another file, keeping its place and size
   async function replacePicture(file) {
@@ -112,6 +116,7 @@ export default function OriginalSlideEditor({ slide, clientId, onSave, onClose }
           <div style={S.title}>Edit slide · {slide.title || 'Untitled'}</div>
           <div style={S.sub}>Original styling is kept — click an element to move, resize, edit or delete it.</div>
         </div>
+        {onSwitchMode && preview && <EditModeToggle mode="original" onChange={() => onSwitchMode(build())} />}
         <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
           {Object.keys(edits).length > 0 && <button style={S.ghost} onClick={() => { setEdits({}); setSel(null) }} title="Undo every change to this slide">Reset slide</button>}
           <button style={S.ghost} onClick={onClose}>Cancel</button>
@@ -164,6 +169,8 @@ export default function OriginalSlideEditor({ slide, clientId, onSave, onClose }
                   )}
                 </div>
               </TemplateSlide>
+              {/* Content added in "Add content" mode, shown on top (edited there) */}
+              {hasAdditions(slide) && <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}><SlideThumbnail slide={slide} overlayOnly /></div>}
             </div>
           )}
         </div>
