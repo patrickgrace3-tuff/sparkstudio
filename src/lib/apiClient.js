@@ -127,6 +127,11 @@ export const api = {
   setAsset:       (key, value) => apiFetch(`/api/assets/${encodeURIComponent(key)}`, { method: 'PUT', body: { value } }),
   uploadFile,
   downloadFile,
+  // Deleted slides (kept 5 days; admins restore them)
+  recordDeletedSlide:  (clientId, deptId, slide) => apiFetch(`/api/deleted-slides/${clientId}`, { method: 'POST', body: { deptId, slide } }),
+  getDeletedSlides:    ()   => apiFetch('/api/deleted-slides'),
+  restoreDeletedSlide: (id) => apiFetch(`/api/deleted-slides/${encodeURIComponent(id)}/restore`, { method: 'POST' }),
+  purgeDeletedSlide:   (id) => apiFetch(`/api/deleted-slides/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 }
 
 // ── Large files (original PowerPoints), sent in pieces ──────────────────────
