@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { DEPARTMENTS } from '../lib/constants.js'
-import { createTemplate, createSlideShell } from '../lib/templates.js'
+import { createTemplate, createSlideShell, perDivision } from '../lib/templates.js'
 import { api } from '../lib/apiClient.js'
 import { isOriginalShell, loadShellOriginal } from '../lib/templateOriginals.js'
 import OriginalSlidePreview from './OriginalSlidePreview.jsx'
@@ -96,6 +96,30 @@ function OriginalShellPreview({ shell }) {
   )
 }
 
+// One slide, or one per division (for clients whose department has divisions)
+export function DivisionToggle({ shell, onChange }) {
+  const on = perDivision(shell)
+  return (
+    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, color: 'var(--color-text-primary)', cursor: 'pointer', lineHeight: 1.4 }}>
+      <input
+        type="checkbox"
+        checked={on}
+        onChange={e => {
+          const { perDivision: _old, ...rest } = shell
+          onChange(e.target.checked ? rest : { ...rest, perDivision: false })
+        }}
+        style={{ marginTop: 2, accentColor: 'var(--color-accent)' }}
+      />
+      <span>
+        <strong>One slide per division</strong>
+        <span style={{ color: 'var(--color-text-muted)' }}> — {on
+          ? 'for a client with divisions set up in this department, a slide is made for each division (using that division’s files). Untick for a single slide.'
+          : 'a single slide is made, using all of the department’s files, even when the client has divisions.'}</span>
+      </span>
+    </label>
+  )
+}
+
 function SlideShellRow({ shell, onChange, onRemove, index }) {
   const [showTips, setShowTips] = useState(false)
   return (
@@ -111,6 +135,10 @@ function SlideShellRow({ shell, onChange, onRemove, index }) {
           placeholder="Slide title"
         />
         <button style={S.removeBtn} onClick={onRemove}>✕</button>
+      </div>
+      <div style={S.shellBottom}>
+        <span style={S.shellIdx} />
+        <DivisionToggle shell={shell} onChange={onChange} />
       </div>
       <div style={S.shellBottom}>
         <span style={S.shellIdx} />

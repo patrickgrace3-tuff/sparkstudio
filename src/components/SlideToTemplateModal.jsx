@@ -3,6 +3,7 @@ import { callClaude } from '../lib/api.js'
 import { api } from '../lib/apiClient.js'
 import { originalSlideToShell } from '../lib/templateOriginals.js'
 import { SlideThumbnail } from './SlideCard.jsx'
+import { DivisionToggle } from './AdminPanel.jsx'
 
 // Modal: converts a dept slide into a template shell (AI-fills instructions/dos/don'ts).
 // Props:
@@ -153,6 +154,8 @@ Return ONLY valid JSON (no markdown):
               />
             </>
           )}
+
+          <div style={{ margin: '4px 0 2px' }}><DivisionToggle shell={shell} onChange={setShell} /></div>
 
           <label style={S.label}>{addAll && fromSameFile.length > 1 ? 'Instructions for every slide' : 'Slide Instructions'}</label>
           <textarea
