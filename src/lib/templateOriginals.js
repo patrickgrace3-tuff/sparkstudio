@@ -49,6 +49,7 @@ export async function originalSlideToShell(slide, clientId, guidance = {}) {
     dontDoThis: guidance.dontDoThis ?? '',
     asset,
     fileName: original.fileName ?? '',
+    ...(guidance.perDivision === false ? { perDivision: false } : {}),
   }
 }
 

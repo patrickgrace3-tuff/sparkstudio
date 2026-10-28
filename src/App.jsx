@@ -17,7 +17,7 @@ import MarketResearchPicker from './components/MarketResearchPicker.jsx'
 import { DEPARTMENTS } from './lib/constants.js'
 import { loadFunnelConfig } from './lib/funnel.js'
 import { loadTeamConfig }  from './lib/team.js'
-import { seedFromShell } from './lib/templates.js'
+import { seedFromShell, templateSlidePlan, byPlanOrder } from './lib/templates.js'
 import { isOriginalShell, slideFromOriginalShell } from './lib/templateOriginals.js'
 import { loadFiles, loadFilesRemote, buildAIContext, loadGlobalFiles, loadGlobalFilesRemote } from './lib/files.js'
 import { enhanceSlideBody, generateDeck } from './lib/api.js'
@@ -347,17 +347,27 @@ export default function App() {
   async function applyTemplate(tmpl) {
     const divisions = clientDivisions(activeClient)
     const newId = () => `s${Date.now()}${Math.random().toString(36).slice(2)}`
+    // One group per department and division (division null: one slide, the
+    // department's files). Template slides set to "one per division" go in
+    // every division's group; the others once, in the null group.
     const plan = []
     for (const d of DEPARTMENTS) {
       const shells = tmpl.departments[d.name] || []
       if (!shells.length) continue
-      const divs = deptUsesDivisions(activeClient, d.id) && divisions.length ? divisions : [null]
-      for (const div of divs) {
-        plan.push({
-          d, div,
-          entries: shells.map(shell => (isOriginalShell(shell) ? { shell } : { seed: { ...seedFromShell(shell, d.name), _id: newId() } })),
+      const usesDivisions = deptUsesDivisions(activeClient, d.id) && divisions.length > 0
+      const groups = new Map()
+      const groupOf = div => {
+        const key = div?.id ?? ''
+        if (!groups.has(key)) groups.set(key, { d, div, entries: [] })
+        return groups.get(key)
+      }
+      for (const { shell, div, order } of templateSlidePlan(shells, usesDivisions ? divisions : [])) {
+        groupOf(div).entries.push({
+          order,
+          ...(isOriginalShell(shell) ? { shell } : { seed: { ...seedFromShell(shell, d.name), _id: newId() } }),
         })
       }
+      plan.push(...groups.values())
     }
     if (!plan.length) return
 
@@ -404,9 +414,10 @@ export default function App() {
             failed.push(e.shell.title || 'Imported slide')
             continue
           }
-          ;(additions[p.d.id] ??= []).push(slide)
+          ;(additions[p.d.id] ??= []).push({ slide, order: e.order })
         }
       }
+      for (const id of Object.keys(additions)) additions[id] = additions[id].sort(byPlanOrder).map(x => x.slide)
       setAllSlidesMap(prev => {
         const current = prev[activeClientId] ?? {}
         const updated = { ...current }
