@@ -259,7 +259,7 @@ function PresenterView({ slides, startIndex, onClose }) {
   )
 }
 
-export default function PreviewPanel({ deck, funnelConfig, teamConfig, presentationOrder, isGenerating, onExport, isExporting, onEditSlide, onSlidesListChange, onDeletePresentation }) {
+export default function PreviewPanel({ deck, funnelConfig, teamConfig, presentationOrder, isGenerating, onExport, isExporting, onEditSlide, onRemoveSlide, onSlidesListChange, onDeletePresentation }) {
   const [presenting,    setPresenting]    = useState(false)
   const [startIndex,    setStartIndex]    = useState(0)
   const [slidesList,    setSlidesList]    = useState(() => deck?.deckSlides ?? null)
@@ -267,6 +267,7 @@ export default function PreviewPanel({ deck, funnelConfig, teamConfig, presentat
   const [dividerDraft,  setDividerDraft]  = useState('')
   const [showDeleteDlg, setShowDeleteDlg] = useState(false)
   const [deleteInput,   setDeleteInput]   = useState('')
+  const [removing,      setRemoving]      = useState(null) // deck item to remove (asks first)
   const dragIdx = useRef(null)
   const overIdx = useRef(null)
 
@@ -431,6 +432,13 @@ export default function PreviewPanel({ deck, funnelConfig, teamConfig, presentat
                     onClick={e => { e.stopPropagation(); onEditSlide(item) }}
                   >Edit</button>
                 )}
+                {onRemoveSlide && (
+                  <button
+                    style={{ ...S.notesEditBtn, color: '#CD2F37', borderColor: '#CD2F3755' }}
+                    title="Remove this slide from the presentation"
+                    onClick={e => { e.stopPropagation(); setRemoving(item) }}
+                  >Delete</button>
+                )}
               </div>
             )}
           </div>
@@ -439,6 +447,27 @@ export default function PreviewPanel({ deck, funnelConfig, teamConfig, presentat
 
       {presenting && (
         <PresenterView slides={slides} startIndex={startIndex} onClose={() => setPresenting(false)} />
+      )}
+
+      {removing && (
+        <div style={S.dlgOverlay} onClick={() => setRemoving(null)}>
+          <div style={S.dlgBox} onClick={e => e.stopPropagation()} role="dialog" aria-label="Delete slide">
+            <p style={S.dlgTitle}>Delete slide from presentation</p>
+            <div style={{ width: 220, margin: '0 0 14px', borderRadius: 4, overflow: 'hidden', border: '0.5px solid var(--color-border)' }}>
+              <div style={{ aspectRatio: '16 / 9' }}>{renderSlide(removing)}</div>
+            </div>
+            <p style={S.dlgBody}>
+              <strong>{removing.slide?.title || 'This slide'}</strong> will be taken out of the generated presentation.
+              {' '}Its slide on Submit Slides is kept and marked as removed, and it stays out when you generate again until you add it back.
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button style={S.dlgCancelBtn} onClick={() => setRemoving(null)}>Cancel</button>
+              <button style={{ ...S.dlgConfirmBtn, cursor: 'pointer' }} onClick={() => { const it = removing; setRemoving(null); onRemoveSlide?.(it) }}>
+                Delete slide
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showDeleteDlg && (
