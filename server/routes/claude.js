@@ -58,14 +58,16 @@ router.post('/messages', async (req, res) => {
   if (system) body.system = system
 
   try {
+    let usedSlot = keyIndex
     let upstream = await callWithKey(apiKey, body)
 
     // If this key is rate-limited, try the remaining keys in order
     if (upstream.status === 429) {
       for (let i = 1; i < keys.length; i++) {
-        const fallback = keys[(keyIndex + i) % keys.length]
-        console.warn(`Worker key ${keyIndex} rate-limited — falling back to key ${(keyIndex + i) % keys.length}`)
-        upstream = await callWithKey(fallback, body)
+        const slot = (keyIndex + i) % keys.length
+        console.warn(`Worker key ${keyIndex} rate-limited — falling back to key ${slot}`)
+        upstream = await callWithKey(keys[slot], body)
+        usedSlot = slot
         if (upstream.status !== 429) break
       }
     }
@@ -79,9 +81,13 @@ router.post('/messages', async (req, res) => {
 
     const usage = data.usage
     if (usage) {
+      // Which key paid (1–3, as in Render's ANTHROPIC_API_KEY, _2, _3) and
+      // prompt-cache tokens, so estimates can be checked against the bill
       query(
-        'INSERT INTO token_logs (client_id, user_id, model, input_tokens, output_tokens) VALUES ($1, $2, $3, $4, $5)',
-        [clientId ?? null, req.user.id, model, usage.input_tokens ?? 0, usage.output_tokens ?? 0]
+        `INSERT INTO token_logs (client_id, user_id, model, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens, key_slot)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [clientId ?? null, req.user.id, data.model ?? model, usage.input_tokens ?? 0, usage.output_tokens ?? 0,
+          usage.cache_creation_input_tokens ?? 0, usage.cache_read_input_tokens ?? 0, usedSlot + 1]
       ).catch(err => console.error('Token log error:', err.message))
     }
 

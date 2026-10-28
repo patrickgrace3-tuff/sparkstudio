@@ -81,6 +81,9 @@ export const api = {
 
   // Admin
   adminStats:       ()              => apiFetch('/api/admin/stats'),
+  adminCosts:       (from, to)      => apiFetch(`/api/admin/costs?from=${from}&to=${to}`),
+  setCostCalibration:   (from, to, actual) => apiFetch('/api/admin/costs/calibration', { method: 'PUT', body: { from, to, actual } }),
+  clearCostCalibration: ()                 => apiFetch('/api/admin/costs/calibration', { method: 'DELETE' }),
   adminGetUsers:    ()              => apiFetch('/api/admin/users'),
   adminCreateUser:  (u)             => apiFetch('/api/admin/users',       { method: 'POST',   body: u }),
   adminUpdateUser:  (id, u)         => apiFetch(`/api/admin/users/${id}`, { method: 'PATCH',  body: u }),

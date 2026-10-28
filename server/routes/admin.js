@@ -5,6 +5,7 @@ import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { query } from '../db.js'
 import { requireAdmin } from '../auth.js'
+import { costSql, calibrationFactor, CALIBRATION_KEY, PRICES } from '../costs.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PUBLIC_DIR = resolve(__dirname, '../../public')
@@ -15,26 +16,29 @@ router.use(requireAdmin)
 // GET /api/admin/users
 router.get('/users', async (req, res) => {
   try {
-    const result = await query(`
+    // Slides and AI usage are totalled separately: joining both to the user
+    // at once repeated every usage row once per slide (costs were multiplied)
+    const [result, factor] = await Promise.all([query(`
       SELECT
         u.id, u.email, u.name, u.role, u.created_at, u.last_login,
-        COUNT(DISTINCT s.id)                                    AS slides_count,
-        COALESCE(SUM(tl.input_tokens + tl.output_tokens), 0)   AS tokens_used,
-        COALESCE(SUM(
-          tl.input_tokens  * CASE WHEN tl.model ILIKE '%haiku%' THEN 0.80 WHEN tl.model ILIKE '%opus%' THEN 15.0 ELSE 3.00 END / 1000000.0 +
-          tl.output_tokens * CASE WHEN tl.model ILIKE '%haiku%' THEN 4.00 WHEN tl.model ILIKE '%opus%' THEN 75.0 ELSE 15.00 END / 1000000.0
-        ), 0) AS tokens_cost
+        COALESCE(s.n, 0)    AS slides_count,
+        COALESCE(t.tokens, 0) AS tokens_used,
+        COALESCE(t.cost, 0)   AS tokens_cost
       FROM users u
-      LEFT JOIN slides     s  ON s.created_by  = u.id
-      LEFT JOIN token_logs tl ON tl.user_id    = u.id
-      GROUP BY u.id
+      LEFT JOIN (SELECT created_by, COUNT(*) AS n FROM slides GROUP BY created_by) s ON s.created_by = u.id
+      LEFT JOIN (
+        SELECT user_id,
+               SUM(input_tokens + output_tokens + cache_write_tokens + cache_read_tokens) AS tokens,
+               SUM(${costSql()}) AS cost
+        FROM token_logs GROUP BY user_id
+      ) t ON t.user_id = u.id
       ORDER BY u.created_at ASC
-    `)
+    `), calibrationFactor(query)])
     res.json(result.rows.map(r => ({
       ...r,
       slides_count: parseInt(r.slides_count),
       tokens_used:  parseInt(r.tokens_used),
-      tokens_cost:  parseFloat(parseFloat(r.tokens_cost).toFixed(4)),
+      tokens_cost:  parseFloat((parseFloat(r.tokens_cost) * factor).toFixed(4)),
     })))
   } catch (err) {
     console.error(err)
@@ -105,15 +109,13 @@ router.get('/stats', async (req, res) => {
       query('SELECT COUNT(*) FROM slides'),
       query(`
         SELECT
-          COALESCE(SUM(input_tokens),  0) AS input,
+          COALESCE(SUM(input_tokens + cache_write_tokens + cache_read_tokens),  0) AS input,
           COALESCE(SUM(output_tokens), 0) AS output,
-          COALESCE(SUM(
-            input_tokens  * CASE WHEN model ILIKE '%haiku%' THEN 0.80 WHEN model ILIKE '%opus%' THEN 15.0 ELSE 3.00 END / 1000000.0 +
-            output_tokens * CASE WHEN model ILIKE '%haiku%' THEN 4.00 WHEN model ILIKE '%opus%' THEN 75.0 ELSE 15.00 END / 1000000.0
-          ), 0) AS cost
+          COALESCE(SUM(${costSql()}), 0) AS cost
         FROM token_logs
       `),
     ])
+    const factor = await calibrationFactor(query)
     const input  = parseInt(tokens.rows[0].input)
     const output = parseInt(tokens.rows[0].output)
     res.json({
@@ -124,7 +126,8 @@ router.get('/stats', async (req, res) => {
       inputTokens:   input,
       outputTokens:  output,
       totalTokens:   input + output,
-      estimatedCost: parseFloat(parseFloat(tokens.rows[0].cost).toFixed(4)),
+      estimatedCost: parseFloat((parseFloat(tokens.rows[0].cost) * factor).toFixed(4)),
+      calibrated:    factor !== 1,
     })
   } catch (err) {
     console.error(err)
@@ -135,25 +138,29 @@ router.get('/stats', async (req, res) => {
 // GET /api/admin/clients  — clients with slide counts + token usage
 router.get('/clients', async (req, res) => {
   try {
-    const result = await query(`
+    // Slides and AI usage totalled separately (see /users)
+    const [result, factor] = await Promise.all([query(`
       SELECT c.id, c.name, c.divisions, c.division_depts, c.created_at,
-             COUNT(DISTINCT s.id)               AS slide_count,
-             COALESCE(SUM(tl.input_tokens),  0) AS input_tokens,
-             COALESCE(SUM(tl.output_tokens), 0) AS output_tokens,
-             COALESCE(SUM(
-               tl.input_tokens  * CASE WHEN tl.model ILIKE '%haiku%' THEN 0.80 WHEN tl.model ILIKE '%opus%' THEN 15.0 ELSE 3.00 END / 1000000.0 +
-               tl.output_tokens * CASE WHEN tl.model ILIKE '%haiku%' THEN 4.00 WHEN tl.model ILIKE '%opus%' THEN 75.0 ELSE 15.00 END / 1000000.0
-             ), 0) AS estimated_cost
+             COALESCE(s.n, 0)       AS slide_count,
+             COALESCE(t.input, 0)   AS input_tokens,
+             COALESCE(t.output, 0)  AS output_tokens,
+             COALESCE(t.cost, 0)    AS estimated_cost
       FROM clients c
-      LEFT JOIN slides     s  ON s.client_id  = c.id
-      LEFT JOIN token_logs tl ON tl.client_id = c.id
-      GROUP BY c.id
+      LEFT JOIN (SELECT client_id, COUNT(*) AS n FROM slides GROUP BY client_id) s ON s.client_id = c.id
+      LEFT JOIN (
+        SELECT client_id,
+               SUM(input_tokens + cache_write_tokens + cache_read_tokens) AS input,
+               SUM(output_tokens) AS output,
+               SUM(${costSql()}) AS cost
+        FROM token_logs GROUP BY client_id
+      ) t ON t.client_id = c.id
       ORDER BY c.created_at ASC
-    `)
+    `), calibrationFactor(query)])
     res.json(result.rows.map(r => ({
       ...r,
+      slide_count:    parseInt(r.slide_count),
       total_tokens:   parseInt(r.input_tokens) + parseInt(r.output_tokens),
-      estimated_cost: parseFloat(parseFloat(r.estimated_cost).toFixed(4)),
+      estimated_cost: parseFloat((parseFloat(r.estimated_cost) * factor).toFixed(4)),
     })))
   } catch (err) {
     console.error(err)
@@ -213,6 +220,76 @@ router.put('/branding/:filename', express.raw({ type: ['image/jpeg', 'image/png'
   }
 })
 
+// ── AI cost: compare with the Anthropic bill ──────────────────────────────
+// GET /api/admin/costs?from=YYYY-MM-DD&to=YYYY-MM-DD — estimated cost (before
+// calibration) per API key and per model for the period, to set against the
+// Anthropic console's cost per API key
+router.get('/costs', async (req, res) => {
+  const { from, to } = req.query
+  const day = /^\d{4}-\d{2}-\d{2}$/
+  if (!day.test(from ?? '') || !day.test(to ?? '')) return res.status(400).json({ error: 'from and to dates required (YYYY-MM-DD)' })
+  try {
+    const range = `created_at >= $1::date AND created_at < ($2::date + INTERVAL '1 day')`
+    const [byKey, byModel, unassigned, cal] = await Promise.all([
+      query(`SELECT key_slot, COUNT(*) AS calls, SUM(input_tokens + cache_write_tokens + cache_read_tokens) AS input, SUM(output_tokens) AS output, SUM(${costSql()}) AS cost
+             FROM token_logs WHERE ${range} GROUP BY key_slot ORDER BY key_slot NULLS LAST`, [from, to]),
+      query(`SELECT model, COUNT(*) AS calls, SUM(input_tokens + cache_write_tokens + cache_read_tokens) AS input, SUM(output_tokens) AS output, SUM(${costSql()}) AS cost
+             FROM token_logs WHERE ${range} GROUP BY model ORDER BY cost DESC`, [from, to]),
+      query(`SELECT COUNT(*) AS calls, COALESCE(SUM(${costSql()}), 0) AS cost FROM token_logs WHERE ${range} AND client_id IS NULL`, [from, to]),
+      query('SELECT value FROM admin_settings WHERE key = $1', [CALIBRATION_KEY]),
+    ])
+    const num = r => ({ ...r, calls: parseInt(r.calls), input: parseInt(r.input ?? 0), output: parseInt(r.output ?? 0), cost: parseFloat(r.cost ?? 0) })
+    const keys = byKey.rows.map(num)
+    res.json({
+      from, to,
+      estimate: keys.reduce((t, k) => t + k.cost, 0),
+      byKey: keys,
+      byModel: byModel.rows.map(num),
+      unassigned: { calls: parseInt(unassigned.rows[0].calls), cost: parseFloat(unassigned.rows[0].cost) },
+      calibration: cal.rows[0]?.value ?? null,
+      prices: PRICES.map(({ label, input, output }) => ({ label, input, output })),
+    })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// PUT /api/admin/costs/calibration { from, to, actual } — what Anthropic
+// actually charged for the period; estimates are scaled by actual ÷ estimate.
+// DELETE removes it.
+router.put('/costs/calibration', async (req, res) => {
+  const { from, to } = req.body ?? {}
+  const actual = Number(req.body?.actual)
+  const day = /^\d{4}-\d{2}-\d{2}$/
+  if (!day.test(from ?? '') || !day.test(to ?? '') || !(actual > 0)) return res.status(400).json({ error: 'from, to and an actual amount above 0 are required' })
+  try {
+    const est = await query(`SELECT COALESCE(SUM(${costSql()}), 0) AS cost FROM token_logs WHERE created_at >= $1::date AND created_at < ($2::date + INTERVAL '1 day')`, [from, to])
+    const estimate = parseFloat(est.rows[0].cost)
+    if (!(estimate > 0)) return res.status(400).json({ error: 'No AI usage was recorded in that period, so there is nothing to compare with.' })
+    const value = { factor: actual / estimate, actual, estimate, from, to, setAt: new Date().toISOString() }
+    await query(
+      `INSERT INTO admin_settings (key, value, updated_at) VALUES ($1, $2, NOW())
+       ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()`,
+      [CALIBRATION_KEY, JSON.stringify(value)]
+    )
+    res.json(value)
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+router.delete('/costs/calibration', async (req, res) => {
+  try {
+    await query('DELETE FROM admin_settings WHERE key = $1', [CALIBRATION_KEY])
+    res.json({ ok: true })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
 // GET /api/admin/settings/:key
 router.get('/settings/:key', async (req, res) => {
   try {
@@ -238,25 +315,5 @@ router.put('/settings/:key', async (req, res) => {
     res.status(500).json({ error: 'Server error' })
   }
 })
-
-// Pricing helper — blended rate across sonnet + haiku mix
-// Sonnet 4.6: $3/M input, $15/M output
-// Haiku 4.5:  $0.80/M input, $4/M output
-// Blended estimate weights ~70% haiku (deck gen) / 30% sonnet (AI assistant)
-// Per-model pricing (USD per token). Rates from Anthropic pricing page.
-// claude-sonnet-5 / claude-sonnet-4-6 / claude-sonnet-4-5 → Sonnet tier
-// claude-haiku-4-5 / claude-haiku-3   → Haiku tier
-// Everything else falls back to Sonnet tier (conservative).
-function modelRates(model = '') {
-  const m = model.toLowerCase()
-  if (m.includes('haiku'))  return { in: 0.80 / 1_000_000, out: 4.00  / 1_000_000 }
-  if (m.includes('opus'))   return { in: 15.0 / 1_000_000, out: 75.00 / 1_000_000 }
-  return                           { in: 3.00 / 1_000_000, out: 15.00 / 1_000_000 } // Sonnet default
-}
-
-function calcCost(model, input, output) {
-  const r = modelRates(model)
-  return parseFloat((input * r.in + output * r.out).toFixed(4))
-}
 
 export default router

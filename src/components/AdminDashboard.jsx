@@ -828,9 +828,131 @@ function OverviewTab() {
         <StatTile label="Total tokens"  value={fmtTokens(stats?.totalTokens)}  color="#F59E0B" />
         <StatTile label="Est. cost"     value={fmtCost(stats?.estimatedCost)}  color="#EC4899" />
       </div>
-      <p style={S.costNote}>Cost estimated using blended Sonnet 4.6 / Haiku 4.5 rates. Actual charges depend on your Anthropic billing.</p>
+      <p style={S.costNote}>
+        {stats?.calibrated
+          ? 'Estimated from logged tokens at each model\'s price, adjusted to match your Anthropic bill (see below).'
+          : 'Estimated from logged tokens at each model\'s price. Match it to your Anthropic bill below to make it closer.'}
+      </p>
+      <CostCheck onCalibrated={() => api.adminStats().then(setStats).catch(console.error)} />
     </div>
   )
+}
+
+// ── Compare estimated AI cost with the Anthropic bill ─────────────────────────
+const isoDay = d => d.toISOString().slice(0, 10)
+function CostCheck({ onCalibrated }) {
+  const today = new Date()
+  const [from, setFrom] = useState(isoDay(new Date(today.getFullYear(), today.getMonth(), 1)))
+  const [to, setTo] = useState(isoDay(today))
+  const [data, setData] = useState(null)
+  const [actual, setActual] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const load = () => api.adminCosts(from, to).then(d => { setData(d); setError('') }).catch(err => setError(err.message))
+  useEffect(() => { if (from && to) load() }, [from, to]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function calibrate() {
+    setBusy(true); setError('')
+    try { await api.setCostCalibration(from, to, Number(actual)); await load(); onCalibrated?.() }
+    catch (err) { setError(err.message) }
+    finally { setBusy(false) }
+  }
+  async function clear() {
+    setBusy(true)
+    try { await api.clearCostCalibration(); await load(); onCalibrated?.() }
+    catch (err) { setError(err.message) }
+    finally { setBusy(false) }
+  }
+
+  const cal = data?.calibration
+  const money = n => `$${Number(n ?? 0).toFixed(2)}`
+  const factor = cal?.factor ?? 1
+  return (
+    <div style={CC.box}>
+      <div style={S.sectionHeader}><span style={S.sectionTitle}>Match to your Anthropic bill</span></div>
+      <p style={CC.text}>
+        Pick the same dates as your Anthropic console's cost report and compare per API key (API key 1, 2 and 3 are
+        ANTHROPIC_API_KEY, _2 and _3 on Render). Then enter what Anthropic charged: every user and client estimate is scaled to match.
+      </p>
+      <div style={CC.row}>
+        <label style={CC.field}>From <input type="date" value={from} max={to} onChange={e => setFrom(e.target.value)} style={CC.input} /></label>
+        <label style={CC.field}>To <input type="date" value={to} min={from} onChange={e => setTo(e.target.value)} style={CC.input} /></label>
+      </div>
+      {error && <div style={CC.error}>{error}</div>}
+      {data && (
+        <>
+          <div style={CC.tableWrap}>
+            <table style={CC.table}>
+              <thead><tr><th style={CC.th}>API key</th><th style={CC.thR}>AI calls</th><th style={CC.thR}>Tokens in</th><th style={CC.thR}>Tokens out</th><th style={CC.thR}>Estimated cost</th>{factor !== 1 && <th style={CC.thR}>Adjusted</th>}</tr></thead>
+              <tbody>
+                {data.byKey.length === 0 && <tr><td style={CC.td} colSpan={6}>No AI usage recorded in this period.</td></tr>}
+                {data.byKey.map(k => (
+                  <tr key={k.key_slot ?? 'none'}>
+                    <td style={CC.td}>{k.key_slot ? `API key ${k.key_slot}` : 'Not recorded (older calls)'}</td>
+                    <td style={CC.tdR}>{k.calls.toLocaleString()}</td>
+                    <td style={CC.tdR}>{k.input.toLocaleString()}</td>
+                    <td style={CC.tdR}>{k.output.toLocaleString()}</td>
+                    <td style={CC.tdR}>{money(k.cost)}</td>
+                    {factor !== 1 && <td style={CC.tdR}>{money(k.cost * factor)}</td>}
+                  </tr>
+                ))}
+                {data.byKey.length > 0 && (
+                  <tr>
+                    <td style={{ ...CC.td, fontWeight: 700 }}>Total</td>
+                    <td style={{ ...CC.tdR, fontWeight: 700 }}>{data.byKey.reduce((t, k) => t + k.calls, 0).toLocaleString()}</td>
+                    <td style={{ ...CC.tdR, fontWeight: 700 }}>{data.byKey.reduce((t, k) => t + k.input, 0).toLocaleString()}</td>
+                    <td style={{ ...CC.tdR, fontWeight: 700 }}>{data.byKey.reduce((t, k) => t + k.output, 0).toLocaleString()}</td>
+                    <td style={{ ...CC.tdR, fontWeight: 700 }}>{money(data.estimate)}</td>
+                    {factor !== 1 && <td style={{ ...CC.tdR, fontWeight: 700 }}>{money(data.estimate * factor)}</td>}
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {data.byModel.length > 0 && (
+            <p style={CC.small}>By model: {data.byModel.map(m => `${m.model} ${money(m.cost)} (${m.calls} calls)`).join(' · ')}</p>
+          )}
+          {data.unassigned.calls > 0 && (
+            <p style={CC.small}>{data.unassigned.calls} call{data.unassigned.calls !== 1 ? 's' : ''} ({money(data.unassigned.cost)}) in this period weren't linked to a client, so they count for users but not for any client.</p>
+          )}
+          <div style={CC.row}>
+            <label style={CC.field}>Anthropic charged for these dates ($)
+              <input type="number" min="0" step="0.01" value={actual} onChange={e => setActual(e.target.value)} placeholder="e.g. 2.36" style={{ ...CC.input, width: 120 }} />
+            </label>
+            <button style={CC.btn} disabled={busy || !(Number(actual) > 0) || !(data.estimate > 0)} onClick={calibrate}>Match estimates to this bill</button>
+          </div>
+          {cal ? (
+            <div style={CC.cal}>
+              Estimates are adjusted ×{Number(cal.factor).toFixed(2)}: Anthropic charged {money(cal.actual)} for {cal.from} to {cal.to}, against an estimate of {money(cal.estimate)}.
+              <button style={CC.link} disabled={busy} onClick={clear}>Remove adjustment</button>
+            </div>
+          ) : (
+            <p style={CC.small}>No adjustment set: estimates use list prices ({data.prices.map(p => `${p.label} $${p.input}/$${p.output}`).join(', ')} per million tokens in/out).</p>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+const CC = {
+  box:     { display: 'flex', flexDirection: 'column', gap: 10, border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '16px 18px', background: 'var(--color-bg)', maxWidth: 900 },
+  text:    { fontSize: 13, color: 'var(--color-text-secondary)', margin: 0, lineHeight: 1.6 },
+  small:   { fontSize: 12, color: 'var(--color-text-muted)', margin: 0, lineHeight: 1.5 },
+  row:     { display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' },
+  field:   { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--color-text-secondary)' },
+  input:   { fontSize: 13, padding: '6px 8px', border: '0.5px solid var(--color-border)', borderRadius: 6, background: 'var(--color-bg)', color: 'var(--color-text-primary)' },
+  tableWrap: { overflowX: 'auto', border: '0.5px solid var(--color-border)', borderRadius: 8 },
+  table:   { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
+  th:      { textAlign: 'left', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-text-muted)', padding: '8px 12px', borderBottom: '0.5px solid var(--color-border)', fontWeight: 600 },
+  thR:     { textAlign: 'right', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-text-muted)', padding: '8px 12px', borderBottom: '0.5px solid var(--color-border)', fontWeight: 600 },
+  td:      { padding: '8px 12px', borderBottom: '0.5px solid var(--color-border)', whiteSpace: 'nowrap' },
+  tdR:     { padding: '8px 12px', borderBottom: '0.5px solid var(--color-border)', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' },
+  btn:     { background: 'var(--color-accent)', color: '#fff', border: 'none', borderRadius: 'var(--radius-pill)', padding: '7px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' },
+  cal:     { fontSize: 12, color: '#1f7a4d', background: '#1f7a4d14', border: '0.5px solid #1f7a4d55', borderRadius: 8, padding: '8px 12px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' },
+  link:    { background: 'none', border: 'none', color: 'var(--color-accent)', fontSize: 12, cursor: 'pointer', textDecoration: 'underline', padding: 0 },
+  error:   { fontSize: 13, background: '#dc262614', border: '0.5px solid #dc262655', color: '#dc2626', borderRadius: 8, padding: '8px 12px' },
 }
 
 // ── Deleted Slides tab ────────────────────────────────────────────────────────

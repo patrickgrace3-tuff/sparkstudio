@@ -314,6 +314,7 @@ ${existingSlides || 'No slides added yet.'}
           const reformatData = await api.callClaude({
             model: ANTHROPIC_MODEL,
             max_tokens: 600,
+            clientId,
             messages: [{
               role: 'user',
               content: 'Convert this response into a slide using EXACTLY this format and nothing else:\n\nSLIDE_START\nTITLE: <title>\nBULLETS:\n- <bullet>\n- <bullet>\n- <bullet>\nSLIDE_END\n\nResponse to convert:\n' + cleaned.slice(0, 1000)
