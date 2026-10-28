@@ -439,7 +439,7 @@ export default function App() {
   // above it.
   function withLockedOriginals(all) {
     const generated = all.filter(g => !isLockedOriginal(g))
-    if (!DEPARTMENTS.some(d => (allSlides[d.id] || []).some(isLockedOriginal))) return generated
+    if (!DEPARTMENTS.some(d => (allSlides[d.id] || []).some(sl => isLockedOriginal(sl) && !sl.style?.removedFromDeck))) return generated
     const out = []
     const used = new Set()
     for (const d of DEPARTMENTS) {
@@ -452,6 +452,7 @@ export default function App() {
         bySource.get(g.sourceId).push(g)
       }
       for (const b of builder) {
+        if (b.style?.removedFromDeck) continue
         if (isLockedOriginal(b)) {
           const { _id, ...rest } = b
           out.push({ ...rest, dept: d.name, sourceId: _id })
@@ -467,10 +468,13 @@ export default function App() {
   }
 
   async function handleGenerate() {
-    const hasSlides = DEPARTMENTS.filter(d => (allSlides[d.id] || []).length > 0)
+    // Slides removed from the presentation stay out until they're added back
+    const removedIds = new Set(Object.values(allSlides).flat().filter(sl => sl?.style?.removedFromDeck).map(sl => sl._id))
+    const inDeck = sl => !sl.style?.removedFromDeck
+    const hasSlides = DEPARTMENTS.filter(d => (allSlides[d.id] || []).some(inDeck))
     if (!hasSlides.length && !marketResearch) return
     // Slides imported with their original styling are used exactly as they are
-    const contributions = hasSlides.filter(d => allSlides[d.id].some(sl => !isLockedOriginal(sl)))
+    const contributions = hasSlides.filter(d => allSlides[d.id].some(sl => inDeck(sl) && !isLockedOriginal(sl)))
 
     setIsGenerating(true)
     setActiveTab('preview')
@@ -487,7 +491,7 @@ export default function App() {
       const withData = contributions.flatMap(d => {
         const groups = new Map()
         for (const sl of allSlides[d.id] || []) {
-          if (isLockedOriginal(sl)) continue
+          if (isLockedOriginal(sl) || !inDeck(sl)) continue
           const key = sl.divisionId ?? ''
           if (!groups.has(key)) groups.set(key, [])
           groups.get(key).push(sl)
@@ -495,7 +499,7 @@ export default function App() {
         return [...groups].map(([divisionId, slides]) => buildDeptContribution(d, slides, divisionId || null))
       })
       // Market Research slides are re-added fresh below, so never carry old ones over
-      const previousDeck = deck ? { ...deck, slides: withoutMarketResearch(deck.slides).filter(sl => !isLockedOriginal(sl)) } : null
+      const previousDeck = deck ? { ...deck, slides: withoutMarketResearch(deck.slides).filter(sl => !isLockedOriginal(sl) && !removedIds.has(sl.sourceId)) } : null
       const result = withData.length
         ? await generateDeck(withData, activeClient.name, activeClientId, previousDeck)
         : { title: `${activeClient.name} Presentation`, slides: [], _deptFingerprints: {} }
@@ -538,7 +542,7 @@ export default function App() {
         }]
       })
 
-      result.slides = withLockedOriginals(result.slides)
+      result.slides = withLockedOriginals(result.slides.filter(sl => !removedIds.has(sl.sourceId)))
       result.slides = insertMarketResearch(result.slides, mrSlides)
       result.slides.forEach((sl, i) => { sl.num = i + 1 })
 
@@ -557,6 +561,40 @@ export default function App() {
     } finally {
       setIsGenerating(false)
     }
+  }
+
+  // ── Removing slides from the generated presentation ──────────────────────
+  // The slide leaves the deck; the builder slide it came from is marked
+  // removedFromDeck (an overlay on Submit Slides, left out of generation
+  // until it's added back).
+  function handleRemoveDeckSlide(item) {
+    if (!deck || !item?.slide) return
+    const target = item.slide
+    const same = s => s === target || (s?.num != null && s.num === target.num && s.title === target.title)
+    const slides = deck.slides.filter(s => !same(s))
+    const newDeck = {
+      ...deck,
+      slides,
+      ...(deck.deckSlides ? { deckSlides: deck.deckSlides.filter(it => !(it.kind === 'content' && same(it.slide))) } : {}),
+    }
+    setDeckMap(prev => ({ ...prev, [activeClientId]: newDeck }))
+    api.savePresentation(activeClientId, { title: newDeck.title, deck: newDeck }).catch(console.error)
+
+    // Mark the builder slide once none of its slides are left in the deck
+    const sourceId = target.sourceId ?? target._id
+    if (!sourceId || slides.some(s => (s.sourceId ?? s._id) === sourceId)) return
+    const deptEntry = Object.entries(allSlides).find(([, list]) => (list || []).some(sl => sl._id === sourceId))
+    if (!deptEntry) return
+    const [deptId, list] = deptEntry
+    setSlides({ ...allSlides, [deptId]: list.map(sl => (sl._id === sourceId ? { ...sl, style: { ...(sl.style ?? {}), removedFromDeck: true } } : sl)) })
+  }
+
+  // Back into the presentation from the next generation on
+  function restoreToDeck(index) {
+    const sl = deptSlides[index]
+    if (!sl) return
+    const { removedFromDeck: _r, ...style } = sl.style ?? {}
+    setSlides({ ...allSlides, [activeDeptId]: deptSlides.map((s, i) => (i === index ? { ...sl, style } : s)) })
   }
 
   function handleEditDeckSlide(slideItem) {
@@ -856,6 +894,7 @@ export default function App() {
                           }}
                           onView={idx => setViewingOriginal({ slides: deptSlides, index: idx })}
                           onMove={moveSlide}
+                          onRestore={restoreToDeck}
                           moveTargets={DEPARTMENTS.filter(d => d.id !== activeDeptId)}
                           onUseAsTemplate={currentUser?.role === 'admin' ? slide => setTemplateSlide({ slide, deptName: activeDept?.name }) : undefined}
                           divisionName={slide.divisionId && deptUsesDivisions(activeClient, activeDeptId) ? clientDivisions(activeClient).find(dv => dv.id === slide.divisionId)?.name : undefined}
@@ -915,6 +954,7 @@ export default function App() {
               onExport={handleExport}
               isExporting={isExporting}
               onEditSlide={handleEditDeckSlide}
+              onRemoveSlide={handleRemoveDeckSlide}
               onDeletePresentation={handleDeletePresentation}
               onSlidesListChange={list => {
                 if (!deck) return

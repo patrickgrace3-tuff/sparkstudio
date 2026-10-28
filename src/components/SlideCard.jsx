@@ -183,7 +183,7 @@ export function SlideThumbnail({ slide, overlayOnly = false }) {
   )
 }
 
-export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, onView, onMove, moveTargets = [], onUseAsTemplate, divisionName }) {
+export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, onView, onMove, moveTargets = [], onUseAsTemplate, onRestore, divisionName }) {
   const [confirming, setConfirming] = useState(false)
   const [moving, setMoving] = useState(null) // menu position while open
   const moveRef = useRef(null)
@@ -208,6 +208,28 @@ export default function SlideCard({ slide, index, deptColor, onDelete, onEdit, o
   return (
     <div style={styles.card}>
       <div style={{ ...styles.accent, background: deptColor }} />
+
+      {/* Taken out of the generated presentation (Preview Deck → Delete) */}
+      {slide.style?.removedFromDeck && (
+        <div style={styles.removedOverlay} role="status">
+          <div style={styles.removedBox}>
+            <div style={styles.removedTitle}>Deleted from the generated presentation</div>
+            <div style={styles.removedText}>This slide was removed in Preview Deck and is left out when the presentation is generated.</div>
+            <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+              {onRestore && <button style={styles.removedBtn} onClick={() => onRestore(index)} title="Include this slide again the next time the presentation is generated">↺ Add back to presentation</button>}
+              <button style={styles.removedGhost} onClick={() => onEdit(index)}>Edit</button>
+              {confirming ? (
+                <>
+                  <button style={styles.confirmYes} onClick={() => onDelete(index)}>Delete slide</button>
+                  <button style={styles.confirmNo} onClick={() => setConfirming(false)}>Keep</button>
+                </>
+              ) : (
+                <button style={styles.removedGhost} onClick={() => setConfirming(true)} title="Delete this slide from Submit Slides too">Delete slide</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Left — metadata */}
       <div style={styles.left}>
@@ -335,6 +357,12 @@ const styles = {
   moveHead: { fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-muted)', padding: '6px 8px 4px' },
   moveItem: { display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', borderRadius: 6, padding: '6px 8px', fontSize: 12, color: 'var(--color-text-primary)', cursor: 'pointer', textAlign: 'left', whiteSpace: 'nowrap' },
   moveDot: { width: 8, height: 8, borderRadius: '50%', flexShrink: 0 },
+  removedOverlay: { position: 'absolute', inset: 0, zIndex: 3, background: 'rgba(255,255,255,0.82)', backdropFilter: 'grayscale(1)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 },
+  removedBox:  { textAlign: 'center', maxWidth: 460, background: 'var(--color-bg, #fff)', border: '0.5px solid #dc262655', borderRadius: 10, padding: '10px 16px', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' },
+  removedTitle:{ fontSize: 13, fontWeight: 700, color: '#dc2626' },
+  removedText: { fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 2, lineHeight: 1.4 },
+  removedBtn:  { background: 'var(--color-accent, #CD2F37)', color: '#fff', border: 'none', borderRadius: 'var(--radius-pill)', padding: '5px 12px', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
+  removedGhost:{ background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '5px 12px', fontSize: 11, color: 'var(--color-text-secondary)', cursor: 'pointer' },
   confirmRow:  { display: 'flex', alignItems: 'center', gap: 4 },
   confirmText: { fontSize: 10, color: '#dc2626', fontWeight: 600, whiteSpace: 'nowrap' },
   confirmYes:  { flex: 1, background: '#dc2626', border: 'none', borderRadius: 'var(--radius-pill)', padding: '4px 6px', fontSize: 10, fontWeight: 600, color: '#fff', cursor: 'pointer' },
