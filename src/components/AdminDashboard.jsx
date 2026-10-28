@@ -833,6 +833,122 @@ function OverviewTab() {
   )
 }
 
+// ── Deleted Slides tab ────────────────────────────────────────────────────────
+// Slides deleted from Submit Slides stay restorable for 5 days
+function timeLeft(expiresAt, now) {
+  const ms = new Date(expiresAt).getTime() - now
+  if (ms <= 0) return 'Deleting soon'
+  const h = Math.floor(ms / 3600000)
+  if (h >= 24) { const d = Math.floor(h / 24), rh = h % 24; return `${d} day${d !== 1 ? 's' : ''}${rh ? ` ${rh} h` : ''} left` }
+  if (h >= 1) return `${h} h left`
+  return `${Math.max(1, Math.round(ms / 60000))} min left`
+}
+
+function DeletedSlidesTab({ onSlideRestored }) {
+  const [data, setData] = useState(null)   // { keepDays, slides }
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(null)    // id being restored/deleted
+  const [confirmPurge, setConfirmPurge] = useState(null)
+  const [clientFilter, setClientFilter] = useState('')
+  const [notice, setNotice] = useState('')
+  const now = Date.now()
+
+  const load = () => api.getDeletedSlides().then(d => { setData(d); setError('') }).catch(err => setError(err.message))
+  useEffect(() => { load() }, [])
+
+  async function restore(row) {
+    setBusy(row.id); setNotice('')
+    try {
+      const res = await api.restoreDeletedSlide(row.id)
+      onSlideRestored?.(res.clientId)
+      setNotice(`Restored "${row.slide?.title || 'Untitled slide'}" to ${row.client_name ?? 'its client'} · ${deptName(row.dept_id)}. It's at the end of that department's slides.`)
+      await load()
+    } catch (err) { setError(err.message) }
+    finally { setBusy(null) }
+  }
+
+  async function purge(row) {
+    setBusy(row.id); setConfirmPurge(null)
+    try { await api.purgeDeletedSlide(row.id); await load() }
+    catch (err) { setError(err.message) }
+    finally { setBusy(null) }
+  }
+
+  const deptName = id => DEPARTMENTS.find(d => d.id === id)?.name ?? id
+  const rows = (data?.slides ?? []).filter(r => !clientFilter || r.client_id === clientFilter)
+  const clients = [...new Map((data?.slides ?? []).map(r => [r.client_id, r.client_name ?? 'Deleted client'])).entries()]
+
+  return (
+    <div style={S.tabContent}>
+      <div style={S.sectionHeader}>
+        <span style={S.sectionTitle}>Deleted Slides</span>
+        {clients.length > 1 && (
+          <select value={clientFilter} onChange={e => setClientFilter(e.target.value)} style={DS.select} aria-label="Filter by client">
+            <option value="">All clients</option>
+            {clients.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+          </select>
+        )}
+      </div>
+      <p style={DS.intro}>Slides deleted from Submit Slides are kept here for {data?.keepDays ?? 5} days. Restore one to put it back at the end of its department's slides. After {data?.keepDays ?? 5} days it's deleted permanently.</p>
+      {notice && <div style={DS.notice}>{notice}</div>}
+      {error && <div style={DS.error}>{error}</div>}
+      {!data ? <p style={DS.empty}>Loading…</p> : rows.length === 0 ? (
+        <p style={DS.empty}>No deleted slides in the last {data.keepDays} days.</p>
+      ) : (
+        <div style={DS.list}>
+          {rows.map(r => (
+            <div key={r.id} style={DS.row}>
+              <div style={DS.thumb}><SlideThumbnail slide={r.slide ?? {}} /></div>
+              <div style={DS.info}>
+                <div style={DS.title}>{r.slide?.title || 'Untitled slide'}</div>
+                <div style={DS.meta}>{r.client_name ?? 'Deleted client'} · {deptName(r.dept_id)}</div>
+                <div style={DS.meta}>
+                  Deleted {new Date(r.deleted_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                  {r.deleted_by_name || r.deleted_by_email ? ` by ${r.deleted_by_name || r.deleted_by_email}` : ''}
+                </div>
+              </div>
+              <span style={DS.left}>{timeLeft(r.expires_at, now)}</span>
+              <div style={DS.actions}>
+                <button style={DS.restore} disabled={busy === r.id || !r.client_name} onClick={() => restore(r)}
+                  title={r.client_name ? 'Put this slide back on Submit Slides' : 'The client no longer exists'}>
+                  {busy === r.id ? 'Working…' : '↺ Restore'}
+                </button>
+                {confirmPurge === r.id ? (
+                  <span style={{ display: 'flex', gap: 4 }}>
+                    <button style={DS.purgeYes} onClick={() => purge(r)}>Delete forever</button>
+                    <button style={DS.ghost} onClick={() => setConfirmPurge(null)}>Keep</button>
+                  </span>
+                ) : (
+                  <button style={DS.ghost} disabled={busy === r.id} onClick={() => setConfirmPurge(r.id)}>Delete now</button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const DS = {
+  intro:   { fontSize: 13, color: 'var(--color-text-secondary)', margin: '0 0 14px', maxWidth: 720, lineHeight: 1.6 },
+  select:  { fontSize: 12, padding: '5px 8px', border: '0.5px solid var(--color-border)', borderRadius: 6, background: 'var(--color-bg)', color: 'var(--color-text-primary)' },
+  notice:  { fontSize: 13, background: '#1f7a4d14', border: '0.5px solid #1f7a4d55', color: '#1f7a4d', borderRadius: 8, padding: '8px 12px', marginBottom: 12 },
+  error:   { fontSize: 13, background: '#dc262614', border: '0.5px solid #dc262655', color: '#dc2626', borderRadius: 8, padding: '8px 12px', marginBottom: 12 },
+  empty:   { fontSize: 13, color: 'var(--color-text-muted)', padding: '24px 0' },
+  list:    { display: 'flex', flexDirection: 'column', gap: 8 },
+  row:     { display: 'flex', alignItems: 'center', gap: 14, padding: 10, border: '0.5px solid var(--color-border)', borderRadius: 10, background: 'var(--color-bg)', flexWrap: 'wrap' },
+  thumb:   { width: 168, flexShrink: 0, borderRadius: 4, overflow: 'hidden', border: '0.5px solid var(--color-border)' },
+  info:    { flex: 1, minWidth: 200, display: 'flex', flexDirection: 'column', gap: 3 },
+  title:   { fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' },
+  meta:    { fontSize: 12, color: 'var(--color-text-muted)' },
+  left:    { fontSize: 11, fontWeight: 600, color: '#b45309', background: '#f59e0b1a', border: '0.5px solid #f59e0b55', borderRadius: 99, padding: '3px 10px', whiteSpace: 'nowrap' },
+  actions: { display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' },
+  restore: { background: 'var(--color-accent)', color: '#fff', border: 'none', borderRadius: 'var(--radius-pill)', padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' },
+  ghost:   { background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-pill)', padding: '6px 12px', fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'pointer' },
+  purgeYes:{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: 'var(--radius-pill)', padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' },
+}
+
 // ── Market Research tab ───────────────────────────────────────────────────────
 // Admins upload the latest market research deck. Only its content (titles,
 // bullets, tables) is extracted and stored — users then pull those slides into
@@ -1262,7 +1378,7 @@ const OS = {
 }
 
 // ── Main AdminDashboard ───────────────────────────────────────────────────────
-export default function AdminDashboard({ onClose, currentUser, onClientsChange }) {
+export default function AdminDashboard({ onClose, currentUser, onClientsChange, onSlideRestored }) {
   const [tab, setTab] = useState('overview')
 
   const isAdmin = currentUser?.role === 'admin'
@@ -1275,6 +1391,7 @@ export default function AdminDashboard({ onClose, currentUser, onClientsChange }
     { id: 'styles',    label: 'PowerPoint Template' },
     { id: 'market',    label: 'Market Research' },
     { id: 'order',     label: 'Presentation Order' },
+    { id: 'deleted',   label: 'Deleted Slides' },
   ]
 
   return (
@@ -1325,6 +1442,7 @@ export default function AdminDashboard({ onClose, currentUser, onClientsChange }
               {tab === 'styles'   && <StylesTab />}
               {tab === 'market'   && <MarketResearchTab />}
               {tab === 'order'    && <PresentationOrderTab />}
+              {tab === 'deleted'  && <DeletedSlidesTab onSlideRestored={onSlideRestored} />}
             </div>
           </>
         )}

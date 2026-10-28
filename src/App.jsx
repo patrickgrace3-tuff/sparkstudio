@@ -221,7 +221,21 @@ export default function App() {
   }
 
   function deleteSlide(index) {
+    const removed = deptSlides[index]
     setSlides({ ...allSlides, [activeDeptId]: deptSlides.filter((_, i) => i !== index) })
+    // Kept for 5 days in Admin Dashboard → Deleted Slides, where it can be restored
+    if (removed) api.recordDeletedSlide(activeClientId, activeDeptId, removed).catch(err => console.error('Could not keep the deleted slide:', err))
+  }
+
+  // After an admin restores a slide, reload that client's slides from the
+  // server so the next save doesn't drop it again
+  async function reloadClientSlides(clientId) {
+    try {
+      const map = await api.getSlides(clientId)
+      const normalised = {}
+      for (const [deptId, slides] of Object.entries(map)) normalised[deptId] = slides.map(s => ({ ...s, _id: s.id }))
+      setAllSlidesMap(prev => ({ ...prev, [clientId]: normalised }))
+    } catch (err) { console.error(err) }
   }
 
   // Moves a slide to the end of another department's list
@@ -741,6 +755,7 @@ export default function App() {
             <AdminDashboard
               onClose={() => { setShowAdminDashboard(false); loadPresentationOrder(); loadMarketResearchInfo() }}
               currentUser={currentUser}
+              onSlideRestored={clientId => { if (allSlidesMap[clientId]) reloadClientSlides(clientId) }}
               onClientsChange={updated => {
                 const normalized = updated.map(c => ({ id: c.id, name: c.name, divisions: c.divisions ?? [], division_depts: c.division_depts ?? [] }))
                 setClients(normalized)
